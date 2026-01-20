@@ -41,8 +41,8 @@ A full-featured desktop ERP application for construction companies. Manage accou
 
 ```bash
 # Clone repository
-git clone https://github.com/feyzanuraydinn/Construction-ERP.git
-cd Construction-ERP
+git clone https://github.com/feyzanuraydinn/construction-erp.git
+cd construction-erp
 
 # Install dependencies
 npm install
