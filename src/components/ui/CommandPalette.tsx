@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { FiSearch, FiUsers, FiFolder, FiPackage, FiX } from 'react-icons/fi';
 import type { Company, Project, Material } from '../../types';
 
@@ -21,19 +22,14 @@ const typeIcons = {
   material: FiPackage,
 };
 
-const typeLabels = {
-  company: 'Cari',
-  project: 'Proje',
-  material: 'Malzeme',
-};
-
 const typeColors = {
-  company: 'text-blue-600 bg-blue-50',
-  project: 'text-purple-600 bg-purple-50',
-  material: 'text-orange-600 bg-orange-50',
+  company: 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/30',
+  project: 'text-purple-600 bg-purple-50 dark:text-purple-400 dark:bg-purple-900/30',
+  material: 'text-orange-600 bg-orange-50 dark:text-orange-400 dark:bg-orange-900/30',
 };
 
 export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
@@ -41,12 +37,22 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cacheRef = useRef<{ companies: Company[]; projects: Project[]; materials: Material[] } | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setQuery('');
       setResults([]);
       setSelectedIndex(0);
+      // Load all data once when palette opens
+      cacheRef.current = null;
+      Promise.all([
+        window.electronAPI.company.getAll(),
+        window.electronAPI.project.getAll(),
+        window.electronAPI.material.getAll(),
+      ]).then(([companies, projects, materials]) => {
+        cacheRef.current = { companies, projects, materials };
+      }).catch((error) => console.error('Command palette data load error:', error));
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [isOpen]);
@@ -59,11 +65,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
     setLoading(true);
     try {
-      const [companies, projects, materials] = await Promise.all([
-        window.electronAPI.company.getAll(),
-        window.electronAPI.project.getAll(),
-        window.electronAPI.material.getAll(),
-      ]);
+      // Use cached data if available, otherwise fetch fresh
+      const { companies, projects, materials } = cacheRef.current ?? {
+        companies: await window.electronAPI.company.getAll(),
+        projects: await window.electronAPI.project.getAll(),
+        materials: await window.electronAPI.material.getAll(),
+      };
 
       const lowerQuery = searchQuery.toLowerCase();
       const searchResults: SearchResult[] = [];
@@ -166,33 +173,40 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   if (!isOpen) return null;
 
+  const typeLabels: Record<string, string> = {
+    company: t('commandPalette.company'),
+    project: t('commandPalette.project'),
+    material: t('commandPalette.material'),
+  };
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="fixed inset-0 bg-black/50 transition-opacity" onClick={onClose} />
       <div className="flex items-start justify-center min-h-screen pt-24 px-4">
-        <div className="relative w-full max-w-xl bg-white rounded-xl shadow-2xl transform transition-all">
-          <div className="flex items-center px-4 border-b border-gray-200">
-            <FiSearch className="text-gray-400" size={20} />
+        <div className="relative w-full max-w-xl bg-white dark:bg-gray-800 rounded-xl shadow-2xl transform transition-all">
+          <div className="flex items-center px-4 border-b border-gray-200 dark:border-gray-700">
+            <FiSearch className="text-gray-400 dark:text-gray-500" size={20} />
             <input
               ref={inputRef}
               type="text"
-              placeholder="Cari, proje veya malzeme ara..."
-              className="flex-1 px-3 py-4 text-gray-900 placeholder-gray-400 bg-transparent border-0 focus:outline-none focus:ring-0"
+              placeholder={t('commandPalette.placeholder')}
+              className="flex-1 px-3 py-4 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-transparent border-0 focus:outline-none focus:ring-0"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
             />
             <button
               onClick={onClose}
-              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label={t('commandPalette.close')}
+              className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
             >
               <FiX size={20} />
             </button>
           </div>
 
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto" aria-live="polite">
             {loading ? (
-              <div className="px-4 py-8 text-center text-gray-500">
+              <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
                 <div className="w-6 h-6 mx-auto border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : results.length > 0 ? (
@@ -203,7 +217,9 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                     <li key={`${result.type}-${result.id}`}>
                       <button
                         className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${
-                          index === selectedIndex ? 'bg-blue-50' : 'hover:bg-gray-50'
+                          index === selectedIndex
+                            ? 'bg-blue-50 dark:bg-blue-900/20'
+                            : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
                         }`}
                         onClick={() => handleSelect(result)}
                         onMouseEnter={() => setSelectedIndex(index)}
@@ -212,12 +228,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                           <Icon size={16} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate">{result.name}</p>
+                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{result.name}</p>
                           {result.subtitle && (
-                            <p className="text-sm text-gray-500 truncate">{result.subtitle}</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{result.subtitle}</p>
                           )}
                         </div>
-                        <span className="text-xs text-gray-400 px-2 py-1 bg-gray-100 rounded">
+                        <span className="text-xs text-gray-400 dark:text-gray-500 px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">
                           {typeLabels[result.type]}
                         </span>
                       </button>
@@ -226,25 +242,25 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                 })}
               </ul>
             ) : query ? (
-              <div className="px-4 py-8 text-center text-gray-500">Sonuç bulunamadı</div>
+              <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">{t('commandPalette.noResults')}</div>
             ) : (
-              <div className="px-4 py-6 text-center text-gray-400 text-sm">
-                Aramak için yazmaya başlayın
+              <div className="px-4 py-6 text-center text-gray-400 dark:text-gray-500 text-sm">
+                {t('commandPalette.startTyping')}
               </div>
             )}
           </div>
 
-          <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 rounded-b-xl">
-            <div className="flex items-center justify-between text-xs text-gray-400">
+          <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">
+            <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
               <div className="flex items-center gap-4">
                 <span>
-                  <kbd className="px-1.5 py-0.5 bg-gray-200 rounded text-gray-600">↑↓</kbd> gezin
+                  <kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-400">↑↓</kbd> {t('commandPalette.navigate')}
                 </span>
                 <span>
-                  <kbd className="px-1.5 py-0.5 bg-gray-200 rounded text-gray-600">Enter</kbd> seç
+                  <kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-400">Enter</kbd> {t('commandPalette.select')}
                 </span>
                 <span>
-                  <kbd className="px-1.5 py-0.5 bg-gray-200 rounded text-gray-600">Esc</kbd> kapat
+                  <kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-400">Esc</kbd> {t('commandPalette.close')}
                 </span>
               </div>
             </div>

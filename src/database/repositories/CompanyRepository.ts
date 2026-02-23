@@ -1,193 +1,94 @@
-/**
- * Company Repository
- *
- * Handles all database operations related to companies (customers, suppliers, etc.)
- *
- * @module CompanyRepository
- */
-
 import type { Database as SqlJsDatabase } from 'sql.js';
-import { BaseRepository, BaseEntity } from './BaseRepository';
+import { BaseRepository } from './BaseRepository';
+import type { Company, CompanyWithBalance } from '../../types';
+import type { CompanyInput } from '../../utils/schemas';
 
-/** Company entity interface */
-export interface Company extends BaseEntity {
-  name: string;
-  type: 'person' | 'company';
-  account_type: 'customer' | 'supplier' | 'subcontractor' | 'investor';
-  tax_number?: string;
-  tax_office?: string;
-  address?: string;
-  phone?: string;
-  email?: string;
-  notes?: string;
-  is_active: boolean;
-}
-
-/** Company with calculated balance */
-export interface CompanyWithBalance extends Company {
-  balance: number;
-  transaction_count: number;
-}
-
-/**
- * Repository for company operations
- */
 export class CompanyRepository extends BaseRepository<Company> {
-  protected tableName = 'companies';
-
   constructor(db: SqlJsDatabase) {
-    super(db);
+    super(db, 'companies');
   }
 
-  /**
-   * Get all companies with their calculated balances
-   */
   getWithBalance(): CompanyWithBalance[] {
-    const sql = `
-      SELECT
-        c.*,
-        COALESCE(
-          (SELECT SUM(CASE
-            WHEN t.type = 'invoice_out' THEN t.amount * CASE t.currency WHEN 'USD' THEN 35 WHEN 'EUR' THEN 38 ELSE 1 END
-            WHEN t.type = 'payment_in' THEN -t.amount * CASE t.currency WHEN 'USD' THEN 35 WHEN 'EUR' THEN 38 ELSE 1 END
-            WHEN t.type = 'invoice_in' THEN -t.amount * CASE t.currency WHEN 'USD' THEN 35 WHEN 'EUR' THEN 38 ELSE 1 END
-            WHEN t.type = 'payment_out' THEN t.amount * CASE t.currency WHEN 'USD' THEN 35 WHEN 'EUR' THEN 38 ELSE 1 END
-            ELSE 0 END)
-          FROM transactions t WHERE t.company_id = c.id), 0
-        ) as balance,
-        (SELECT COUNT(*) FROM transactions WHERE company_id = c.id) as transaction_count
+    return this.query(`
+      SELECT c.*,
+        COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_invoice_out,
+        COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_payment_in,
+        COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_invoice_in,
+        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_payment_out,
+        COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
+        COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as receivable,
+        COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
+        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as payable,
+        (COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
+         COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0)) -
+        (COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
+         COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0)) as balance,
+        COUNT(DISTINCT t.id) as transaction_count
       FROM companies c
+      LEFT JOIN transactions t ON t.company_id = c.id
       WHERE c.is_active = 1
-      ORDER BY c.name
-    `;
-    return this.query<CompanyWithBalance>(sql);
+      GROUP BY c.id
+      ORDER BY c.name ASC
+    `);
   }
 
-  /**
-   * Create a new company
-   */
-  create(data: Omit<Company, 'id' | 'created_at' | 'updated_at'>): Company {
-    const sql = `
-      INSERT INTO companies (name, type, account_type, tax_number, tax_office, address, phone, email, notes, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-    const params = [
-      data.name,
-      data.type,
-      data.account_type,
-      data.tax_number || null,
-      data.tax_office || null,
-      data.address || null,
-      data.phone || null,
-      data.email || null,
-      data.notes || null,
-      data.is_active !== false ? 1 : 0,
-    ];
-
-    const result = this.run(sql, params);
-    return this.getById(result.lastInsertRowid!)!;
+  create(data: CompanyInput): Company {
+    const result = this.run(
+      `INSERT INTO companies (type, account_type, name, tc_number, profession, tax_office, tax_number, trade_registry_no, contact_person, phone, email, address, bank_name, iban, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [data.type, data.account_type, data.name, data.tc_number || null, data.profession || null, data.tax_office || null, data.tax_number || null, data.trade_registry_no || null, data.contact_person || null, data.phone || null, data.email || null, data.address || null, data.bank_name || null, data.iban || null, data.notes || null]
+    );
+    return this.getById(result.lastInsertRowid)!;
   }
 
-  /**
-   * Update a company
-   */
-  update(id: number, data: Partial<Omit<Company, 'id'>>): Company | undefined {
+  update(id: number, data: Partial<CompanyInput>): Company | undefined {
     const fields: string[] = [];
-    const params: unknown[] = [];
-
-    if (data.name !== undefined) {
-      fields.push('name = ?');
-      params.push(data.name);
+    const values: unknown[] = [];
+    const updatable = ['type', 'account_type', 'name', 'tc_number', 'profession', 'tax_office', 'tax_number', 'trade_registry_no', 'contact_person', 'phone', 'email', 'address', 'bank_name', 'iban', 'notes'] as const;
+    for (const field of updatable) {
+      if (field in data) {
+        fields.push(`${field} = ?`);
+        values.push(data[field] ?? null);
+      }
     }
-    if (data.type !== undefined) {
-      fields.push('type = ?');
-      params.push(data.type);
-    }
-    if (data.account_type !== undefined) {
-      fields.push('account_type = ?');
-      params.push(data.account_type);
-    }
-    if (data.tax_number !== undefined) {
-      fields.push('tax_number = ?');
-      params.push(data.tax_number);
-    }
-    if (data.tax_office !== undefined) {
-      fields.push('tax_office = ?');
-      params.push(data.tax_office);
-    }
-    if (data.address !== undefined) {
-      fields.push('address = ?');
-      params.push(data.address);
-    }
-    if (data.phone !== undefined) {
-      fields.push('phone = ?');
-      params.push(data.phone);
-    }
-    if (data.email !== undefined) {
-      fields.push('email = ?');
-      params.push(data.email);
-    }
-    if (data.notes !== undefined) {
-      fields.push('notes = ?');
-      params.push(data.notes);
-    }
-    if (data.is_active !== undefined) {
-      fields.push('is_active = ?');
-      params.push(data.is_active ? 1 : 0);
-    }
-
     if (fields.length === 0) return this.getById(id);
-
-    fields.push('updated_at = CURRENT_TIMESTAMP');
-    params.push(id);
-
-    const sql = `UPDATE companies SET ${fields.join(', ')} WHERE id = ?`;
-    this.run(sql, params);
-
+    fields.push("updated_at = CURRENT_TIMESTAMP");
+    values.push(id);
+    this.run(`UPDATE companies SET ${fields.join(', ')} WHERE id = ?`, values);
     return this.getById(id);
   }
 
   /**
-   * Soft delete a company (move to trash)
+   * Müşteriye ait işlem ve proje sayısını döndürür (silme uyarısı için)
    */
+  getRelatedCounts(id: number): { transactionCount: number; projectCount: number } {
+    const txCount = this.queryOne<{ count: number }>(
+      `SELECT COUNT(*) as count FROM transactions WHERE company_id = ?`, [id]
+    );
+    const projCount = this.queryOne<{ count: number }>(
+      `SELECT COUNT(*) as count FROM projects WHERE client_company_id = ? AND is_active = 1`, [id]
+    );
+    return {
+      transactionCount: txCount?.count || 0,
+      projectCount: projCount?.count || 0,
+    };
+  }
+
   delete(id: number): { success: boolean } {
     const company = this.getById(id);
     if (!company) return { success: false };
-
-    // Move to trash
-    this.run(
-      `INSERT INTO trash (entity_type, entity_id, data) VALUES (?, ?, ?)`,
-      ['company', id, JSON.stringify(company)]
-    );
-
-    // Delete from companies
-    this.run('DELETE FROM companies WHERE id = ?', [id]);
-
-    return { success: true };
-  }
-
-  /**
-   * Search companies by name
-   */
-  search(query: string, limit = 10): Company[] {
-    const sql = `
-      SELECT * FROM companies
-      WHERE is_active = 1 AND name LIKE ?
-      ORDER BY name
-      LIMIT ?
-    `;
-    return this.query(sql, [`%${query}%`, limit]);
-  }
-
-  /**
-   * Get companies by account type
-   */
-  getByAccountType(accountType: Company['account_type']): Company[] {
-    return this.query(
-      'SELECT * FROM companies WHERE account_type = ? AND is_active = 1 ORDER BY name',
-      [accountType]
-    );
+    this.db.run('BEGIN TRANSACTION');
+    try {
+      this.run(`INSERT INTO trash (type, data) VALUES ('company', ?)`, [JSON.stringify(company)]);
+      // Delete client projects (CASCADE handles project_parties and related transactions)
+      this.run(`DELETE FROM projects WHERE client_company_id = ?`, [id]);
+      // Delete company (CASCADE handles transactions, project_parties)
+      this.run(`DELETE FROM companies WHERE id = ?`, [id]);
+      this.db.run('COMMIT');
+      return { success: true };
+    } catch (error) {
+      this.db.run('ROLLBACK');
+      throw error;
+    }
   }
 }
-
-export default CompanyRepository;

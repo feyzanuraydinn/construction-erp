@@ -1,16 +1,14 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useKeyboardShortcuts, useDebounce, usePagination, paginateArray } from '../hooks';
-import { FiPlus, FiSearch, FiEdit2, FiTrash2, FiUser, FiUsers, FiDownload } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
+import { useCRUDPage, getPaginationProps } from '../hooks';
+import { FiPlus, FiSearch, FiEdit2, FiTrash2, FiUsers, FiDownload } from 'react-icons/fi';
 import {
   Card,
   CardBody,
   Button,
   Input,
   Select,
-  Modal,
-  ModalBody,
-  ModalFooter,
   Table,
   TableHeader,
   TableBody,
@@ -23,209 +21,113 @@ import {
   EmptyState,
   ConfirmDialog,
   Pagination,
+  LoadingSpinner,
+  Divider,
+  SelectAllCheckbox,
+  RowCheckbox,
 } from '../components/ui';
-import { useToast } from '../contexts/ToastContext';
+import { CompanyModal } from '../components/modals';
 import { formatCurrency } from '../utils/formatters';
 import { COMPANY_TYPES, ACCOUNT_TYPES } from '../utils/constants';
-import { companyColumns, formatRecordsForExport, exportToCSV } from '../utils/exportUtils';
-import type { CompanyWithBalance, CompanyType, AccountType, CompanyFormData } from '../types';
-
-interface CompanyModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  company: CompanyWithBalance | null;
-  onSave: (isNew: boolean) => void;
-}
+import { companyColumns } from '../utils/exportUtils';
+import type { CompanyWithBalance } from '../types';
 
 function Companies() {
   const navigate = useNavigate();
-  const toast = useToast();
-  const [companies, setCompanies] = useState<CompanyWithBalance[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [filterAccountType, setFilterAccountType] = useState('');
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingCompany, setEditingCompany] = useState<CompanyWithBalance | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<CompanyWithBalance | null>(null);
+  const { t } = useTranslation();
 
-  // Bulk selection state
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  // Companies-specific state for related entity counts on delete
+  const [deleteRelated, setDeleteRelated] = useState<{ transactionCount: number; projectCount: number } | null>(null);
 
-  // Keyboard shortcuts
-  useKeyboardShortcuts({
-    onNew: () => setModalOpen(true),
-    onEscape: () => {
-      if (modalOpen) {
-        setModalOpen(false);
-        setEditingCompany(null);
-      }
+  const crud = useCRUDPage<CompanyWithBalance, { type: string; accountType: string }>({
+    loadFn: async () => {
+      const companies = await window.electronAPI.company.getWithBalance();
+      return { companies };
+    },
+    dataKey: 'companies',
+    onDataLoaded: () => {},
+    deleteFn: (id) => window.electronAPI.company.delete(id),
+    entityKey: 'companies',
+    toastKeys: {
+      create: 'companies.createSuccess',
+      update: 'companies.updateSuccess',
+      delete: 'companies.deleteSuccess',
+    },
+    initialFilters: { type: '', accountType: '' },
+    filterFn: (items, search, filters) => items.filter((company) => {
+      const matchesSearch = company.name.toLowerCase().includes(search.toLowerCase());
+      const matchesType = !filters.type || company.type === filters.type;
+      const matchesAccountType = !filters.accountType || company.account_type === filters.accountType;
+      return matchesSearch && matchesType && matchesAccountType;
+    }),
+    exportConfig: {
+      filename: 'cari_hesaplar',
+      columns: companyColumns,
     },
   });
 
-  useEffect(() => {
-    loadCompanies();
-  }, []);
+  // Translated select options
+  const translatedCompanyTypes = useMemo(() =>
+    COMPANY_TYPES.map((opt) => ({ ...opt, label: t(opt.label) })),
+    [t]
+  );
+  const translatedAccountTypes = useMemo(() =>
+    ACCOUNT_TYPES.map((opt) => ({ ...opt, label: t(opt.label) })),
+    [t]
+  );
 
-  const loadCompanies = async () => {
-    setLoading(true);
-    try {
-      const data = await window.electronAPI.company.getWithBalance();
-      setCompanies(data);
-    } catch (error) {
-      console.error('Companies loading error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteConfirm) return;
-    try {
-      await window.electronAPI.company.delete(deleteConfirm.id);
-      setDeleteConfirm(null);
-      toast.success('Cari hesap başarıyla silindi');
-      loadCompanies();
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast.error('Silme sırasında hata oluştu');
-    }
-  };
-
-  // Bulk selection handlers
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      const allIds = new Set(paginatedCompanies.map((c) => c.id));
-      setSelectedIds(allIds);
-    } else {
-      setSelectedIds(new Set());
-    }
-  };
-
-  const handleSelectOne = (id: number, checked: boolean) => {
-    const newSelected = new Set(selectedIds);
-    if (checked) {
-      newSelected.add(id);
-    } else {
-      newSelected.delete(id);
-    }
-    setSelectedIds(newSelected);
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-
-    try {
-      const idsArray = Array.from(selectedIds);
-      let successCount = 0;
-      let errorCount = 0;
-
-      for (const id of idsArray) {
-        try {
-          await window.electronAPI.company.delete(id);
-          successCount++;
-        } catch {
-          errorCount++;
-        }
+  // Build delete confirmation message
+  const deleteMessage = useMemo(() => {
+    if (!crud.deleteConfirm) return '';
+    let msg = t('companies.deleteMessage', { name: crud.deleteConfirm.name });
+    if (deleteRelated && (deleteRelated.transactionCount > 0 || deleteRelated.projectCount > 0)) {
+      const parts: string[] = [];
+      if (deleteRelated.transactionCount > 0) {
+        parts.push(t('companies.relatedTransactions', { count: deleteRelated.transactionCount }));
       }
-
-      setBulkDeleteConfirm(false);
-      setSelectedIds(new Set());
-
-      if (errorCount === 0) {
-        toast.success(`${successCount} cari hesap başarıyla silindi`);
-      } else {
-        toast.warning(`${successCount} silindi, ${errorCount} silinemedi`);
+      if (deleteRelated.projectCount > 0) {
+        parts.push(t('companies.relatedProjects', { count: deleteRelated.projectCount }));
       }
-
-      loadCompanies();
-    } catch (error) {
-      console.error('Bulk delete error:', error);
-      toast.error('Toplu silme sırasında hata oluştu');
+      const details = parts.join(t('companies.relatedAnd'));
+      msg += '\n\n' + t('companies.deleteRelatedMessage', { details });
     }
+    msg += '\n\n' + t('companies.deleteUndoable');
+    return msg;
+  }, [crud.deleteConfirm, deleteRelated, t]);
+
+  // Delete wrapper that also clears deleteRelated
+  const handleDeleteWithRelated = async () => {
+    await crud.handleDelete();
+    setDeleteRelated(null);
   };
-
-  const clearSelection = () => {
-    setSelectedIds(new Set());
-  };
-
-  const handleSave = (isNew: boolean) => {
-    setModalOpen(false);
-    setEditingCompany(null);
-    toast.success(isNew ? 'Cari hesap başarıyla oluşturuldu' : 'Cari hesap başarıyla güncellendi');
-    loadCompanies();
-  };
-
-  const handleExport = async () => {
-    try {
-      const exportData = formatRecordsForExport(filteredCompanies, companyColumns);
-      const result = await exportToCSV('cari_hesaplar', exportData);
-      if (result) {
-        toast.success('Veriler başarıyla dışa aktarıldı');
-      }
-    } catch (error) {
-      toast.error('Dışa aktarma sırasında hata oluştu');
-    }
-  };
-
-  const debouncedSearch = useDebounce(search, 300);
-
-  const filteredCompanies = useMemo(() => {
-    return companies.filter((company) => {
-      const matchesSearch = company.name.toLowerCase().includes(debouncedSearch.toLowerCase());
-      const matchesType = !filterType || company.type === filterType;
-      const matchesAccountType = !filterAccountType || company.account_type === filterAccountType;
-      return matchesSearch && matchesType && matchesAccountType;
-    });
-  }, [companies, debouncedSearch, filterType, filterAccountType]);
-
-  // Pagination
-  const pagination = usePagination({
-    totalItems: filteredCompanies.length,
-    initialPageSize: 25,
-  });
-
-  // Reset to first page when filters change
-  useEffect(() => {
-    pagination.goToPage(1);
-  }, [debouncedSearch, filterType, filterAccountType]);
-
-  const paginatedCompanies = useMemo(() => {
-    return paginateArray(filteredCompanies, pagination.currentPage, pagination.pageSize);
-  }, [filteredCompanies, pagination.currentPage, pagination.pageSize]);
 
   return (
     <div className="page-container">
       {/* Header */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Cari Hesaplar</h1>
-          <p className="mt-1 text-sm text-gray-500">Müşteri, tedarikçi ve taşeron yönetimi</p>
+          <h1 className="page-title">{t('companies.title')}</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t('companies.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
-          {selectedIds.size > 0 && (
+          {crud.selectedIds.size > 0 && (
             <>
-              <button
-                onClick={() => setBulkDeleteConfirm(true)}
-                className="flex items-center gap-2 text-red-600 bg-red-50 hover:bg-red-100 btn"
-              >
-                <FiTrash2 size={16} />
-                {selectedIds.size} cari sil
-              </button>
-              <div className="w-px h-6 bg-gray-300" />
+              <Button variant="ghost-danger" size="sm" icon={FiTrash2} onClick={() => crud.setBulkDeleteConfirm(true)}>
+                {t('companies.bulkDeleteCount', { count: crud.selectedIds.size })}
+              </Button>
+              <Divider />
             </>
           )}
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-2 btn btn-secondary"
-            title="Excel'e Aktar"
+          <Button
+            variant="secondary"
+            icon={FiDownload}
+            onClick={() => crud.handleExport()}
+            title={t('common.exportToExcel')}
           >
-            <FiDownload size={16} />
-            Dışa Aktar
-          </button>
-          <Button icon={FiPlus} onClick={() => setModalOpen(true)}>
-            Yeni Cari
+            {t('common.exportToExcel')}
+          </Button>
+          <Button icon={FiPlus} onClick={() => crud.setModalOpen(true)}>
+            {t('companies.newCompany')}
           </Button>
         </div>
       </div>
@@ -236,30 +138,30 @@ function Companies() {
           <div className="flex flex-wrap gap-4">
             <div className="flex-1 min-w-[200px]">
               <Input
-                placeholder="Cari ara..."
+                placeholder={t('companies.searchPlaceholder')}
                 icon={FiSearch}
-                value={search}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
+                value={crud.search}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => crud.setSearch(e.target.value)}
               />
             </div>
             <div className="w-40">
               <Select
-                options={COMPANY_TYPES}
-                value={filterType}
+                options={translatedCompanyTypes}
+                value={crud.filters.type}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  setFilterType(e.target.value)
+                  crud.setFilter('type', e.target.value)
                 }
-                placeholder="Tür"
+                placeholder={t('companies.table.type')}
               />
             </div>
             <div className="w-40">
               <Select
-                options={ACCOUNT_TYPES}
-                value={filterAccountType}
+                options={translatedAccountTypes}
+                value={crud.filters.accountType}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  setFilterAccountType(e.target.value)
+                  crud.setFilter('accountType', e.target.value)
                 }
-                placeholder="Cari Tipi"
+                placeholder={t('companies.table.accountType')}
               />
             </div>
           </div>
@@ -269,17 +171,15 @@ function Companies() {
       {/* Table */}
       <Card>
         <CardBody className="p-0">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="w-10 h-10 spinner"></div>
-            </div>
-          ) : filteredCompanies.length === 0 ? (
+          {crud.loading ? (
+            <LoadingSpinner />
+          ) : crud.filteredData.length === 0 ? (
             <EmptyState
               icon={FiUsers}
-              title="Cari hesap bulunamadı"
-              description="Yeni bir cari hesap ekleyerek başlayın"
-              action={() => setModalOpen(true)}
-              actionLabel="Yeni Cari Ekle"
+              title={t('companies.noCompanies')}
+              description={t('companies.noCompaniesDesc')}
+              action={() => crud.setModalOpen(true)}
+              actionLabel={t('companies.addNew')}
               actionIcon={FiPlus}
             />
           ) : (
@@ -287,39 +187,34 @@ function Companies() {
               <TableHeader>
                 <TableRow hover={false}>
                   <TableHead className="w-10">
-                    <input
-                      type="checkbox"
-                      checked={
-                        paginatedCompanies.length > 0 &&
-                        paginatedCompanies.every((c) => selectedIds.has(c.id))
-                      }
-                      onChange={(e) => handleSelectAll(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    <SelectAllCheckbox
+                      itemIds={crud.paginatedData.map(c => c.id)}
+                      selectedIds={crud.selectedIds}
+                      onSelectAll={crud.handleSelectAll}
                     />
                   </TableHead>
-                  <TableHead>Tür</TableHead>
-                  <TableHead>Cari Tipi</TableHead>
-                  <TableHead>Ad/Ünvan</TableHead>
-                  <TableHead>Telefon</TableHead>
-                  <TableHead className="text-right">Alacak</TableHead>
-                  <TableHead className="text-right">Borç</TableHead>
-                  <TableHead className="text-right">Bakiye</TableHead>
-                  <TableHead className="text-center">İşlemler</TableHead>
+                  <TableHead>{t('companies.table.type')}</TableHead>
+                  <TableHead>{t('companies.table.accountType')}</TableHead>
+                  <TableHead>{t('companies.table.name')}</TableHead>
+                  <TableHead>{t('companies.table.phone')}</TableHead>
+                  <TableHead className="text-right">{t('companies.table.receivable')}</TableHead>
+                  <TableHead className="text-right">{t('companies.table.payable')}</TableHead>
+                  <TableHead className="text-right">{t('companies.table.balance')}</TableHead>
+                  <TableHead className="text-center">{t('companies.table.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedCompanies.map((company) => (
+                {crud.paginatedData.map((company) => (
                   <TableRow
                     key={company.id}
-                    className={`cursor-pointer ${selectedIds.has(company.id) ? 'bg-blue-50' : ''}`}
+                    selected={crud.selectedIds.has(company.id)}
                     onClick={() => navigate(`/companies/${company.id}`)}
                   >
                     <TableCell onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(company.id)}
-                        onChange={(e) => handleSelectOne(company.id, e.target.checked)}
-                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                      <RowCheckbox
+                        id={company.id}
+                        selectedIds={crud.selectedIds}
+                        onSelectOne={crud.handleSelectOne}
                       />
                     </TableCell>
                     <TableCell>
@@ -329,13 +224,13 @@ function Companies() {
                       <AccountTypeBadge accountType={company.account_type} />
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium text-gray-900">{company.name}</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">{company.name}</span>
                     </TableCell>
                     <TableCell>{company.phone || '-'}</TableCell>
-                    <TableCell className="text-right text-green-600">
+                    <TableCell className="text-right text-green-600 dark:text-green-400">
                       {formatCurrency(company.receivable)}
                     </TableCell>
-                    <TableCell className="text-right text-red-600">
+                    <TableCell className="text-right text-red-600 dark:text-red-400">
                       {formatCurrency(company.payable)}
                     </TableCell>
                     <TableCell className="text-right">
@@ -346,23 +241,31 @@ function Companies() {
                         className="flex items-center justify-center gap-1"
                         onClick={(e: React.MouseEvent) => e.stopPropagation()}
                       >
-                        <button
+                        <Button
+                          variant="ghost-warning"
+                          size="icon"
+                          icon={FiEdit2}
                           onClick={() => {
-                            setEditingCompany(company);
-                            setModalOpen(true);
+                            crud.setEditingItem(company);
+                            crud.setModalOpen(true);
                           }}
-                          className="p-2 text-gray-500 transition-colors rounded-lg hover:text-yellow-600 hover:bg-yellow-50"
-                          title="Düzenle"
-                        >
-                          <FiEdit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(company)}
-                          className="p-2 text-gray-500 transition-colors rounded-lg hover:text-red-600 hover:bg-red-50"
-                          title="Sil"
-                        >
-                          <FiTrash2 size={16} />
-                        </button>
+                          title={t('common.edit')}
+                        />
+                        <Button
+                          variant="ghost-danger"
+                          size="icon"
+                          icon={FiTrash2}
+                          onClick={async () => {
+                            crud.setDeleteConfirm(company);
+                            try {
+                              const counts = await window.electronAPI.company.getRelatedCounts(company.id);
+                              setDeleteRelated(counts);
+                            } catch {
+                              setDeleteRelated(null);
+                            }
+                          }}
+                          title={t('common.delete')}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>
@@ -370,518 +273,45 @@ function Companies() {
               </TableBody>
             </Table>
           )}
-          {filteredCompanies.length > 0 && (
-            <Pagination
-              currentPage={pagination.currentPage}
-              totalPages={pagination.totalPages}
-              totalItems={pagination.totalItems}
-              pageSize={pagination.pageSize}
-              startIndex={pagination.startIndex}
-              endIndex={pagination.endIndex}
-              pageNumbers={pagination.pageNumbers}
-              canPrevPage={pagination.canPrevPage}
-              canNextPage={pagination.canNextPage}
-              onPageChange={pagination.goToPage}
-              onPageSizeChange={pagination.setPageSize}
-              onFirstPage={pagination.goToFirstPage}
-              onLastPage={pagination.goToLastPage}
-              onPrevPage={pagination.goToPrevPage}
-              onNextPage={pagination.goToNextPage}
-            />
+          {crud.filteredData.length > 0 && (
+            <Pagination {...getPaginationProps(crud.pagination)} />
           )}
         </CardBody>
       </Card>
 
       {/* Company Modal */}
       <CompanyModal
-        isOpen={modalOpen}
+        isOpen={crud.modalOpen}
         onClose={() => {
-          setModalOpen(false);
-          setEditingCompany(null);
+          crud.setModalOpen(false);
+          crud.setEditingItem(null);
         }}
-        company={editingCompany}
-        onSave={handleSave}
+        company={crud.editingItem}
+        onSave={crud.handleSave}
       />
 
       {/* Delete Confirmation */}
       <ConfirmDialog
-        isOpen={!!deleteConfirm}
-        onClose={() => setDeleteConfirm(null)}
-        onConfirm={handleDelete}
-        title="Cari Hesabı Sil"
-        message={`"${deleteConfirm?.name}" cari hesabını silmek istediğinize emin misiniz? Bu işlem geri alınabilir.`}
+        isOpen={!!crud.deleteConfirm}
+        onClose={() => { crud.setDeleteConfirm(null); setDeleteRelated(null); }}
+        onConfirm={handleDeleteWithRelated}
+        title={t('companies.deleteTitle')}
+        message={deleteMessage}
         type="danger"
-        confirmText="Sil"
+        confirmText={t('common.delete')}
       />
 
       {/* Bulk Delete Confirmation */}
       <ConfirmDialog
-        isOpen={bulkDeleteConfirm}
-        onClose={() => setBulkDeleteConfirm(false)}
-        onConfirm={handleBulkDelete}
-        title="Toplu Silme"
-        message={`${selectedIds.size} cari hesabı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        isOpen={crud.bulkDeleteConfirm}
+        onClose={() => crud.setBulkDeleteConfirm(false)}
+        onConfirm={() => crud.handleBulkDelete()}
+        title={t('companies.bulkDeleteTitle')}
+        message={t('companies.bulkDeleteMessage', { count: crud.selectedIds.size })}
         type="danger"
-        confirmText={`${selectedIds.size} Kayıt Sil`}
+        confirmText={t('companies.bulkDeleteConfirm', { count: crud.selectedIds.size })}
       />
     </div>
-  );
-}
-
-// Company Modal Component
-function CompanyModal({ isOpen, onClose, company, onSave }: CompanyModalProps) {
-  const [formData, setFormData] = useState<CompanyFormData>({
-    type: 'person',
-    account_type: 'customer',
-    name: '',
-    tc_number: '',
-    profession: '',
-    tax_office: '',
-    tax_number: '',
-    trade_registry_no: '',
-    contact_person: '',
-    phone: '',
-    email: '',
-    address: '',
-    bank_name: '',
-    iban: '',
-    notes: '',
-  });
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (company) {
-      setFormData({
-        type: company.type || 'person',
-        account_type: company.account_type || 'customer',
-        name: company.name || '',
-        tc_number: company.tc_number || '',
-        profession: company.profession || '',
-        tax_office: company.tax_office || '',
-        tax_number: company.tax_number || '',
-        trade_registry_no: company.trade_registry_no || '',
-        contact_person: company.contact_person || '',
-        phone: company.phone || '',
-        email: company.email || '',
-        address: company.address || '',
-        bank_name: company.bank_name || '',
-        iban: company.iban || '',
-        notes: company.notes || '',
-      });
-    } else {
-      setFormData({
-        type: 'person',
-        account_type: '' as AccountType,
-        name: '',
-        tc_number: '',
-        profession: '',
-        tax_office: '',
-        tax_number: '',
-        trade_registry_no: '',
-        contact_person: '',
-        phone: '',
-        email: '',
-        address: '',
-        bank_name: '',
-        iban: '',
-        notes: '',
-      });
-    }
-  }, [company, isOpen]);
-
-  const phoneInputRef = useRef<HTMLInputElement>(null);
-  const tcInputRef = useRef<HTMLInputElement>(null);
-  const emailInputRef = useRef<HTMLInputElement>(null);
-  const ibanInputRef = useRef<HTMLInputElement>(null);
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    const phoneDigits = formData.phone?.replace(/\D/g, '') || '';
-    if (phoneDigits.length > 0 && phoneDigits.length < 11) {
-      if (phoneInputRef.current) {
-        phoneInputRef.current.setCustomValidity('Telefon numarası 11 haneli olmalıdır');
-        phoneInputRef.current.reportValidity();
-      }
-      return;
-    }
-
-    if (
-      formData.type === 'person' &&
-      formData.tc_number &&
-      formData.tc_number.length > 0 &&
-      formData.tc_number.length < 11
-    ) {
-      if (tcInputRef.current) {
-        tcInputRef.current.setCustomValidity('TC Kimlik No 11 haneli olmalıdır');
-        tcInputRef.current.reportValidity();
-      }
-      return;
-    }
-
-    const ibanText = formData.iban?.replace(/\s/g, '') || '';
-    const isIbanEmpty = ibanText === '' || ibanText === 'TR';
-    const ibanNumbers = formData.iban?.replace(/[^0-9]/g, '') || '';
-    if (!isIbanEmpty && ibanNumbers.length < 24) {
-      if (ibanInputRef.current) {
-        ibanInputRef.current.setCustomValidity('IBAN 24 haneli olmalıdır (TR hariç)');
-        ibanInputRef.current.reportValidity();
-      }
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const dataToSave = {
-        ...formData,
-        iban: isIbanEmpty ? '' : formData.iban,
-      };
-
-      if (company) {
-        await window.electronAPI.company.update(company.id, dataToSave);
-        onSave(false);
-      } else {
-        await window.electronAPI.company.create(dataToSave);
-        onSave(true);
-      }
-    } catch (error) {
-      console.error('Save error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={company ? 'Cari Hesap Düzenle' : 'Yeni Cari Hesap'}
-      size="lg"
-    >
-      <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-        <ModalBody className="space-y-6">
-          {/* Type Selection */}
-          <div className="flex gap-4">
-            <label className="flex-1">
-              <input
-                type="radio"
-                name="type"
-                value="person"
-                checked={formData.type === 'person'}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, type: e.target.value as CompanyType })
-                }
-                className="sr-only"
-              />
-              <div
-                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                  formData.type === 'person'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <FiUser
-                    className={formData.type === 'person' ? 'text-blue-600' : 'text-gray-400'}
-                    size={24}
-                  />
-                  <div>
-                    <p className="font-medium">Şahıs</p>
-                    <p className="text-xs text-gray-500">Bireysel hesap</p>
-                  </div>
-                </div>
-              </div>
-            </label>
-            <label className="flex-1">
-              <input
-                type="radio"
-                name="type"
-                value="company"
-                checked={formData.type === 'company'}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, type: e.target.value as CompanyType })
-                }
-                className="sr-only"
-              />
-              <div
-                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                  formData.type === 'company'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <FiUsers
-                    className={formData.type === 'company' ? 'text-blue-600' : 'text-gray-400'}
-                    size={24}
-                  />
-                  <div>
-                    <p className="font-medium">Kuruluş</p>
-                    <p className="text-xs text-gray-500">Firma hesabı</p>
-                  </div>
-                </div>
-              </div>
-            </label>
-          </div>
-
-          {/* Account Type */}
-          <Select
-            label="Cari Tipi *"
-            options={ACCOUNT_TYPES}
-            value={formData.account_type}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-              setFormData({ ...formData, account_type: e.target.value as AccountType })
-            }
-            required
-          />
-
-          {/* Conditional Fields based on type */}
-          {formData.type === 'person' ? (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Ad Soyad *"
-                  value={formData.name}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  required
-                />
-                <Input
-                  ref={tcInputRef}
-                  label="TC Kimlik No"
-                  value={formData.tc_number || ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                    tcInputRef.current?.setCustomValidity('');
-                    const value = e.target.value.replace(/\D/g, '').slice(0, 11);
-                    setFormData({ ...formData, tc_number: value });
-                  }}
-                  placeholder="12345678901"
-                  maxLength={11}
-                />
-              </div>
-              <Input
-                label="Meslek/Uzmanlık"
-                value={formData.profession || ''}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, profession: e.target.value })
-                }
-              />
-            </>
-          ) : (
-            <>
-              <Input
-                label="Firma Ünvanı *"
-                value={formData.name}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                required
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Vergi Dairesi"
-                  value={formData.tax_office || ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setFormData({ ...formData, tax_office: e.target.value })
-                  }
-                />
-                <Input
-                  label="Vergi No"
-                  value={formData.tax_number || ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setFormData({ ...formData, tax_number: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Ticaret Sicil No"
-                  value={formData.trade_registry_no || ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setFormData({ ...formData, trade_registry_no: e.target.value })
-                  }
-                />
-                <Input
-                  label="Yetkili Kişi"
-                  value={formData.contact_person || ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setFormData({ ...formData, contact_person: e.target.value })
-                  }
-                />
-              </div>
-            </>
-          )}
-
-          {/* Common Fields */}
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              ref={phoneInputRef}
-              label="Telefon"
-              type="tel"
-              value={formData.phone || ''}
-              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                if (e.key === 'Backspace') {
-                  e.preventDefault();
-                  phoneInputRef.current?.setCustomValidity('');
-                  const currentDigits = formData.phone?.replace(/\D/g, '') || '';
-                  if (currentDigits.length > 0) {
-                    const newDigits = currentDigits.slice(0, -1);
-                    if (newDigits.length === 0) {
-                      setFormData({ ...formData, phone: '' });
-                    } else {
-                      let formatted = '';
-                      if (newDigits.length >= 1) formatted += newDigits[0];
-                      if (newDigits.length >= 2) formatted += '(' + newDigits[1];
-                      if (newDigits.length >= 3) formatted += newDigits[2];
-                      if (newDigits.length >= 4) formatted += newDigits[3] + ') ';
-                      if (newDigits.length >= 5) formatted += newDigits[4];
-                      if (newDigits.length >= 6) formatted += newDigits[5];
-                      if (newDigits.length >= 7) formatted += newDigits[6] + ' ';
-                      if (newDigits.length >= 8) formatted += newDigits[7];
-                      if (newDigits.length >= 9) formatted += newDigits[8] + ' ';
-                      if (newDigits.length >= 10) formatted += newDigits[9];
-                      setFormData({ ...formData, phone: formatted });
-                    }
-                  }
-                }
-              }}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                phoneInputRef.current?.setCustomValidity('');
-
-                const newDigits = e.target.value.replace(/\D/g, '');
-                if (newDigits.length === 0) {
-                  setFormData({ ...formData, phone: '' });
-                  return;
-                }
-
-                let digits = newDigits;
-                if (!digits.startsWith('0')) {
-                  digits = '0' + digits;
-                }
-                if (digits.length > 1 && digits[1] !== '5') {
-                  digits = '05' + digits.slice(2);
-                }
-                digits = digits.slice(0, 11);
-
-                let formatted = '';
-                if (digits.length >= 1) formatted += digits[0];
-                if (digits.length >= 2) formatted += '(' + digits[1];
-                if (digits.length >= 3) formatted += digits[2];
-                if (digits.length >= 4) formatted += digits[3] + ') ';
-                if (digits.length >= 5) formatted += digits[4];
-                if (digits.length >= 6) formatted += digits[5];
-                if (digits.length >= 7) formatted += digits[6] + ' ';
-                if (digits.length >= 8) formatted += digits[7];
-                if (digits.length >= 9) formatted += digits[8] + ' ';
-                if (digits.length >= 10) formatted += digits[9];
-                if (digits.length >= 11) formatted += digits[10];
-
-                setFormData({ ...formData, phone: formatted });
-              }}
-              placeholder="0(5XX) XXX XX XX"
-              maxLength={16}
-            />
-            <Input
-              ref={emailInputRef}
-              label="E-posta"
-              type="email"
-              value={formData.email || ''}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                emailInputRef.current?.setCustomValidity('');
-                setFormData({ ...formData, email: e.target.value });
-              }}
-              placeholder="ornek@email.com"
-            />
-          </div>
-
-          <Input
-            label="Adres"
-            value={formData.address || ''}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setFormData({ ...formData, address: e.target.value })
-            }
-          />
-
-          {/* Bank Info */}
-          <div className="pt-4 border-t">
-            <p className="mb-3 text-sm font-medium text-gray-700">Banka Bilgileri (Opsiyonel)</p>
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Banka"
-                value={formData.bank_name || ''}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, bank_name: e.target.value })
-                }
-              />
-              <Input
-                ref={ibanInputRef}
-                label="IBAN"
-                value={formData.iban || ''}
-                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                  if (e.key === 'Backspace') {
-                    e.preventDefault();
-                    ibanInputRef.current?.setCustomValidity('');
-                    const currentNumbers = formData.iban?.replace(/[^0-9]/g, '') || '';
-                    if (currentNumbers.length > 0) {
-                      const newNumbers = currentNumbers.slice(0, -1);
-                      if (newNumbers.length === 0) {
-                        setFormData({ ...formData, iban: '' });
-                      } else {
-                        let formatted = 'TR';
-                        for (let i = 0; i < newNumbers.length; i++) {
-                          if (i % 4 === 0) formatted += ' ';
-                          formatted += newNumbers[i];
-                        }
-                        setFormData({ ...formData, iban: formatted });
-                      }
-                    }
-                  }
-                }}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  ibanInputRef.current?.setCustomValidity('');
-
-                  const value = e.target.value.toUpperCase();
-                  const numbers = value.replace(/[^0-9]/g, '').slice(0, 24);
-
-                  if (numbers.length === 0) {
-                    setFormData({ ...formData, iban: '' });
-                    return;
-                  }
-
-                  let formatted = 'TR';
-                  for (let i = 0; i < numbers.length; i++) {
-                    if (i % 4 === 0) formatted += ' ';
-                    formatted += numbers[i];
-                  }
-
-                  setFormData({ ...formData, iban: formatted });
-                }}
-                placeholder="TR00 0000 0000 0000 0000 0000 00"
-                maxLength={32}
-              />
-            </div>
-          </div>
-
-          <Input
-            label="Notlar"
-            value={formData.notes || ''}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setFormData({ ...formData, notes: e.target.value })
-            }
-          />
-        </ModalBody>
-
-        <ModalFooter>
-          <Button variant="secondary" onClick={onClose} type="button">
-            İptal
-          </Button>
-          <Button type="submit" loading={loading}>
-            {company ? 'Güncelle' : 'Kaydet'}
-          </Button>
-        </ModalFooter>
-      </form>
-    </Modal>
   );
 }
 

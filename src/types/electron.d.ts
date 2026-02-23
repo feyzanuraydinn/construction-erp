@@ -2,6 +2,7 @@ import type {
   Company,
   CompanyWithBalance,
   CompanyFormData,
+  AccountType,
   Project,
   ProjectWithSummary,
   ProjectFormData,
@@ -23,9 +24,13 @@ import type {
   DebtorCreditor,
   MonthlyStats,
   CategoryBreakdown,
+  CashFlowData,
+  AgingReceivable,
   ExchangeRates,
   DriveBackupFile,
   DriveOperationResult,
+  PaymentAllocationWithDetails,
+  InvoiceWithBalance,
 } from './index';
 
 export interface ElectronAPI {
@@ -36,6 +41,7 @@ export interface ElectronAPI {
     create: (data: CompanyFormData) => Promise<Company>;
     update: (id: number, data: CompanyFormData) => Promise<Company>;
     delete: (id: number) => Promise<{ success: boolean }>;
+    getRelatedCounts: (id: number) => Promise<{ transactionCount: number; projectCount: number }>;
   };
 
   project: {
@@ -50,7 +56,7 @@ export interface ElectronAPI {
     addParty: (data: {
       project_id: number;
       company_id: number;
-      role: string;
+      role: AccountType;
       notes?: string;
     }) => Promise<ProjectParty>;
     removeParty: (id: number) => Promise<{ success: boolean }>;
@@ -69,6 +75,11 @@ export interface ElectronAPI {
     create: (data: TransactionFormData) => Promise<Transaction>;
     update: (id: number, data: TransactionFormData) => Promise<Transaction>;
     delete: (id: number) => Promise<{ success: boolean }>;
+    getInvoicesForProject: (projectId: number) => Promise<TransactionWithDetails[]>;
+    getInvoicesForCompany: (companyId: number) => Promise<TransactionWithDetails[]>;
+    getInvoicesWithBalance: (entityId: number, entityType: 'project' | 'company', invoiceType: 'invoice_out' | 'invoice_in') => Promise<InvoiceWithBalance[]>;
+    setAllocations: (paymentId: number, allocations: { invoiceId: number; amount: number }[]) => Promise<{ success: boolean }>;
+    getAllocationsForPayment: (paymentId: number) => Promise<PaymentAllocationWithDetails[]>;
   };
 
   material: {
@@ -88,8 +99,8 @@ export interface ElectronAPI {
   };
 
   category: {
-    getAll: (type?: string) => Promise<Category[]>;
-    create: (data: { name: string; type: string; color?: string }) => Promise<Category>;
+    getAll: (type?: Category['type']) => Promise<Category[]>;
+    create: (data: { name: string; type: Category['type']; color?: string }) => Promise<Category>;
     delete: (id: number) => Promise<{ success: boolean }>;
   };
 
@@ -103,14 +114,16 @@ export interface ElectronAPI {
   dashboard: {
     getStats: () => Promise<DashboardStats>;
     getRecentTransactions: (limit?: number) => Promise<TransactionWithDetails[]>;
-    getTopDebtors: (limit?: number) => Promise<DebtorCreditor[]>;
-    getTopCreditors: (limit?: number) => Promise<DebtorCreditor[]>;
+    getTopDebtors: (limit?: number, startDate?: string) => Promise<DebtorCreditor[]>;
+    getTopCreditors: (limit?: number, startDate?: string) => Promise<DebtorCreditor[]>;
   };
 
   analytics: {
     getMonthlyStats: (year: number) => Promise<MonthlyStats[]>;
     getProjectCategoryBreakdown: (projectId: number) => Promise<CategoryBreakdown[]>;
     getCompanyMonthlyStats: (companyId: number, year: number) => Promise<MonthlyStats[]>;
+    getCashFlowReport: (year: number) => Promise<CashFlowData[]>;
+    getAgingReceivables: () => Promise<AgingReceivable[]>;
   };
 
   backup: {
@@ -144,6 +157,8 @@ export interface ElectronAPI {
 
   app: {
     getVersion: () => Promise<string>;
+    print: () => Promise<{ success: boolean; error?: string }>;
+    setLanguage: (locale: string) => Promise<void>;
   };
 }
 

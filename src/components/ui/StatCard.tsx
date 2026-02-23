@@ -23,39 +23,39 @@ interface ColorSet {
 
 const colors: Record<StatCardColor, ColorSet> = {
   blue: {
-    bg: 'bg-blue-50',
-    icon: 'bg-blue-100 text-blue-600',
-    text: 'text-blue-600',
+    bg: 'bg-blue-50 dark:bg-blue-900/20',
+    icon: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400',
+    text: 'text-blue-600 dark:text-blue-400',
   },
   green: {
-    bg: 'bg-green-50',
-    icon: 'bg-green-100 text-green-600',
-    text: 'text-green-600',
+    bg: 'bg-green-50 dark:bg-green-900/20',
+    icon: 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400',
+    text: 'text-green-600 dark:text-green-400',
   },
   red: {
-    bg: 'bg-red-50',
-    icon: 'bg-red-100 text-red-600',
-    text: 'text-red-600',
+    bg: 'bg-red-50 dark:bg-red-900/20',
+    icon: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400',
+    text: 'text-red-600 dark:text-red-400',
   },
   yellow: {
-    bg: 'bg-yellow-50',
-    icon: 'bg-yellow-100 text-yellow-600',
-    text: 'text-yellow-600',
+    bg: 'bg-yellow-50 dark:bg-yellow-900/20',
+    icon: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/40 dark:text-yellow-400',
+    text: 'text-yellow-600 dark:text-yellow-400',
   },
   purple: {
-    bg: 'bg-purple-50',
-    icon: 'bg-purple-100 text-purple-600',
-    text: 'text-purple-600',
+    bg: 'bg-purple-50 dark:bg-purple-900/20',
+    icon: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-400',
+    text: 'text-purple-600 dark:text-purple-400',
   },
   gray: {
-    bg: 'bg-gray-50',
-    icon: 'bg-gray-100 text-gray-600',
-    text: 'text-gray-600',
+    bg: 'bg-gray-50 dark:bg-gray-700/30',
+    icon: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+    text: 'text-gray-600 dark:text-gray-400',
   },
   orange: {
-    bg: 'bg-orange-50',
-    icon: 'bg-orange-100 text-orange-600',
-    text: 'text-orange-600',
+    bg: 'bg-orange-50 dark:bg-orange-900/20',
+    icon: 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400',
+    text: 'text-orange-600 dark:text-orange-400',
   },
 };
 
@@ -64,53 +64,53 @@ const highlightedColors: Record<
   { bg: string; border: string; title: string; value: string; subtitle: string }
 > = {
   green: {
-    bg: 'bg-green-50',
-    border: 'border-green-200',
-    title: 'text-green-700',
-    value: 'text-green-700',
-    subtitle: 'text-green-600',
+    bg: 'bg-green-50 dark:bg-green-900/20',
+    border: 'border-green-200 dark:border-green-700',
+    title: 'text-green-700 dark:text-green-400',
+    value: 'text-green-700 dark:text-green-300',
+    subtitle: 'text-green-600 dark:text-green-400',
   },
   red: {
-    bg: 'bg-red-50',
-    border: 'border-red-200',
-    title: 'text-red-700',
-    value: 'text-red-700',
-    subtitle: 'text-red-600',
+    bg: 'bg-red-50 dark:bg-red-900/20',
+    border: 'border-red-200 dark:border-red-700',
+    title: 'text-red-700 dark:text-red-400',
+    value: 'text-red-700 dark:text-red-300',
+    subtitle: 'text-red-600 dark:text-red-400',
   },
   blue: {
-    bg: 'bg-blue-50',
-    border: 'border-blue-200',
-    title: 'text-blue-700',
-    value: 'text-blue-700',
-    subtitle: 'text-blue-600',
+    bg: 'bg-blue-50 dark:bg-blue-900/20',
+    border: 'border-blue-200 dark:border-blue-700',
+    title: 'text-blue-700 dark:text-blue-400',
+    value: 'text-blue-700 dark:text-blue-300',
+    subtitle: 'text-blue-600 dark:text-blue-400',
   },
   yellow: {
-    bg: 'bg-yellow-50',
-    border: 'border-yellow-200',
-    title: 'text-yellow-700',
-    value: 'text-yellow-700',
-    subtitle: 'text-yellow-600',
+    bg: 'bg-yellow-50 dark:bg-yellow-900/20',
+    border: 'border-yellow-200 dark:border-yellow-700',
+    title: 'text-yellow-700 dark:text-yellow-400',
+    value: 'text-yellow-700 dark:text-yellow-300',
+    subtitle: 'text-yellow-600 dark:text-yellow-400',
   },
   purple: {
-    bg: 'bg-purple-50',
-    border: 'border-purple-200',
-    title: 'text-purple-700',
-    value: 'text-purple-700',
-    subtitle: 'text-purple-600',
+    bg: 'bg-purple-50 dark:bg-purple-900/20',
+    border: 'border-purple-200 dark:border-purple-700',
+    title: 'text-purple-700 dark:text-purple-400',
+    value: 'text-purple-700 dark:text-purple-300',
+    subtitle: 'text-purple-600 dark:text-purple-400',
   },
   gray: {
-    bg: 'bg-gray-50',
-    border: 'border-gray-200',
-    title: 'text-gray-700',
-    value: 'text-gray-700',
-    subtitle: 'text-gray-600',
+    bg: 'bg-gray-50 dark:bg-gray-700/30',
+    border: 'border-gray-200 dark:border-gray-600',
+    title: 'text-gray-700 dark:text-gray-300',
+    value: 'text-gray-700 dark:text-gray-200',
+    subtitle: 'text-gray-600 dark:text-gray-400',
   },
   orange: {
-    bg: 'bg-orange-50',
-    border: 'border-orange-200',
-    title: 'text-orange-700',
-    value: 'text-orange-700',
-    subtitle: 'text-orange-600',
+    bg: 'bg-orange-50 dark:bg-orange-900/20',
+    border: 'border-orange-200 dark:border-orange-700',
+    title: 'text-orange-700 dark:text-orange-400',
+    value: 'text-orange-700 dark:text-orange-300',
+    subtitle: 'text-orange-600 dark:text-orange-400',
   },
 };
 
@@ -130,10 +130,10 @@ export const StatCard = memo(function StatCard({
 
   const cardBg = highlighted
     ? `${highlightSet.bg} ${highlightSet.border}`
-    : 'bg-white border-gray-100';
-  const titleColor = highlighted ? highlightSet.title : 'text-gray-500';
-  const valueColor = highlighted ? highlightSet.value : 'text-gray-900';
-  const subtitleColor = highlighted ? highlightSet.subtitle : 'text-gray-500';
+    : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
+  const titleColor = highlighted ? highlightSet.title : 'text-gray-500 dark:text-gray-400';
+  const valueColor = highlighted ? highlightSet.value : 'text-gray-900 dark:text-gray-100';
+  const subtitleColor = highlighted ? highlightSet.subtitle : 'text-gray-500 dark:text-gray-400';
 
   return (
     <div
@@ -154,7 +154,7 @@ export const StatCard = memo(function StatCard({
             <div className="mt-2 flex items-center gap-1">
               <span
                 className={`text-xs sm:text-sm font-medium ${
-                  trend === 'up' ? 'text-green-600' : 'text-red-600'
+                  trend === 'up' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                 }`}
               >
                 {trend === 'up' ? '↑' : '↓'} {trendValue}

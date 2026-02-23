@@ -19,6 +19,11 @@ body {
   overflow: hidden;
 }
 
+html.dark body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
 #root {
   height: 100vh;
   overflow: hidden;
@@ -44,6 +49,19 @@ body {
   background: #94a3b8;
 }
 
+/* Dark scrollbar */
+html.dark ::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
 /* Modal body scrollbar - always visible when content overflows */
 .modal-body-scroll {
   overflow-y: scroll;
@@ -51,6 +69,10 @@ body {
 
 .modal-body-scroll::-webkit-scrollbar-track {
   background: #e5e7eb;
+}
+
+html.dark .modal-body-scroll::-webkit-scrollbar-track {
+  background: #334155;
 }
 
 /* Input focus styles */
@@ -112,6 +134,10 @@ table {
 .card-hover:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+html.dark .card-hover:hover {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
 }
 
 /* Status badges */

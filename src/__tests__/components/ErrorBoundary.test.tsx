@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+// Initialize i18n before importing ErrorBoundary (which uses i18n.t() at module level)
+import '../../i18n';
 import ErrorBoundary, {
   AppRenderError,
   PageErrorBoundary,
@@ -274,7 +276,7 @@ describe('PageErrorBoundary', () => {
       </PageErrorBoundary>
     );
     expect(screen.getByText('Sayfa yüklenirken hata oluştu')).toBeInTheDocument();
-    expect(screen.getByText('Dashboard sayfası yüklenemedi.')).toBeInTheDocument();
+    expect(screen.getByText('Dashboard yüklenemedi.')).toBeInTheDocument();
   });
 
   it('should show generic message when pageName not provided', () => {

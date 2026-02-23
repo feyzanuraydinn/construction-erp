@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -27,8 +27,23 @@ interface ToastProviderProps {
 
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const timerMapRef = useRef<Map<string, number>>(new Map());
+
+  // Clean up all timers on unmount
+  useEffect(() => {
+    return () => {
+      timerMapRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      timerMapRef.current.clear();
+    };
+  }, []);
 
   const removeToast = useCallback((id: string) => {
+    // Clear timer if exists
+    const timerId = timerMapRef.current.get(id);
+    if (timerId) {
+      window.clearTimeout(timerId);
+      timerMapRef.current.delete(id);
+    }
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
@@ -40,12 +55,14 @@ export function ToastProvider({ children }: ToastProviderProps) {
       setToasts((prev) => [...prev, toast]);
 
       if (duration > 0) {
-        setTimeout(() => {
-          removeToast(id);
+        const timerId = window.setTimeout(() => {
+          timerMapRef.current.delete(id);
+          setToasts((prev) => prev.filter((t) => t.id !== id));
         }, duration);
+        timerMapRef.current.set(id, timerId);
       }
     },
-    [removeToast]
+    []
   );
 
   const success = useCallback((message: string) => addToast('success', message), [addToast]);
@@ -93,7 +110,7 @@ interface ToastItemProps {
   onRemove: (id: string) => void;
 }
 
-function ToastItem({ toast }: ToastItemProps) {
+function ToastItem({ toast, onRemove }: ToastItemProps) {
   const baseStyles =
     'flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white animate-slide-in';
 
@@ -115,6 +132,13 @@ function ToastItem({ toast }: ToastItemProps) {
     <div className={`${baseStyles} ${typeStyles[toast.type]}`}>
       <span className="text-lg font-bold">{icons[toast.type]}</span>
       <span className="flex-1 text-sm">{toast.message}</span>
+      <button
+        onClick={() => onRemove(toast.id)}
+        className="ml-1 p-0.5 rounded hover:bg-white/20 transition-colors"
+        aria-label="Close"
+      >
+        ✕
+      </button>
     </div>
   );
 }

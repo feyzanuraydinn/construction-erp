@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useToast } from '../contexts/ToastContext';
 import {
   FiArrowLeft,
   FiPlus,
@@ -9,9 +11,13 @@ import {
   FiGrid,
   FiDollarSign,
   FiPrinter,
+  FiUser,
+  FiDownload,
+  FiFilter,
 } from 'react-icons/fi';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { ProjectPrintView } from '../components/PrintView';
+import { StakeholderDetailModal, ExpenseBreakdownChart } from './project-detail';
+import { PrintPreviewModal, TransactionModal } from '../components/modals';
+import { TransactionDetailView, ProjectPrintView } from '../components/shared';
 import {
   Card,
   CardHeader,
@@ -19,10 +25,6 @@ import {
   Button,
   Input,
   Select,
-  Textarea,
-  Modal,
-  ModalBody,
-  ModalFooter,
   Table,
   TableHeader,
   TableBody,
@@ -32,286 +34,144 @@ import {
   StatCard,
   StatusBadge,
   Badge,
+  BalanceBadge,
   EmptyState,
   ConfirmDialog,
   Pagination,
+  LoadingSpinner,
+  Divider,
+  TabGroup,
+  SelectAllCheckbox,
+  RowCheckbox,
 } from '../components/ui';
-import { useToast } from '../contexts/ToastContext';
-import { useKeyboardShortcuts, usePagination, paginateArray } from '../hooks';
-import { formatCurrency, formatDate, formatDateForInput } from '../utils/formatters';
+import { useTransactionList, calculateProjectFinancials, getPaginationProps } from '../hooks';
+import { formatCurrency, formatDate } from '../utils/formatters';
+import { getTransactionTextColor, getTransactionBadgeVariant, isIncomeType, isExpenseType } from '../utils/transactionHelpers';
 import {
   TRANSACTION_TYPES,
-  CURRENCIES,
   TRANSACTION_TYPE_LABELS,
-  INCOME_TYPES,
-  EXPENSE_TYPES,
 } from '../utils/constants';
 import type {
-  Project,
+  ProjectWithSummary,
   TransactionWithDetails,
   Company,
   Category,
   CategoryBreakdown,
-  TransactionType,
-  Currency,
   AccountType,
 } from '../types';
 
-const COLORS = [
-  '#3b82f6',
-  '#22c55e',
-  '#f59e0b',
-  '#ef4444',
-  '#8b5cf6',
-  '#06b6d4',
-  '#ec4899',
-  '#64748b',
-];
-
-// Helper functions for transaction colors
-const getTransactionTextColor = (type: TransactionType): string => {
-  switch (type) {
-    case 'invoice_out':
-      return 'text-green-600';
-    case 'payment_in':
-      return 'text-blue-600';
-    case 'invoice_in':
-      return 'text-red-600';
-    case 'payment_out':
-      return 'text-orange-600';
-    default:
-      return 'text-gray-600';
-  }
-};
-
-const getTransactionBadgeVariant = (
-  type: TransactionType
-): 'success' | 'info' | 'danger' | 'warning' => {
-  switch (type) {
-    case 'invoice_out':
-      return 'success';
-    case 'payment_in':
-      return 'info';
-    case 'invoice_in':
-      return 'danger';
-    case 'payment_out':
-      return 'warning';
-    default:
-      return 'info';
-  }
-};
-
-// Check if transaction is income-generating (invoice_out) or expense-generating (invoice_in)
-const isIncomeType = (type: TransactionType): boolean => INCOME_TYPES.includes(type);
-const isExpenseType = (type: TransactionType): boolean => EXPENSE_TYPES.includes(type);
-
-interface TransactionModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  transaction: TransactionWithDetails | null;
-  projectId: number;
-  companies: Company[];
-  categories: Category[];
-  onSave: (isNew: boolean) => void;
-}
-
-interface TransactionFormData {
-  type: TransactionType;
-  date: string;
-  description: string;
-  amount: string;
-  currency: Currency;
-  category_id: string;
-  company_id: string;
-  document_no: string;
-  notes: string;
-}
 
 function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const toast = useToast();
-  const printRef = useRef<HTMLDivElement>(null);
-  const [project, setProject] = useState<Project | null>(null);
+
+  // Data state'leri (bağımsız async veri)
+  const [project, setProject] = useState<ProjectWithSummary | null>(null);
   const [transactions, setTransactions] = useState<TransactionWithDetails[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'transactions' | 'parties'>('transactions');
-  const [filterType, setFilterType] = useState('');
-  const [filterCompanyId, setFilterCompanyId] = useState('');
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<TransactionWithDetails | null>(null);
-  const [viewingTransaction, setViewingTransaction] = useState<TransactionWithDetails | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<TransactionWithDetails | null>(null);
-  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
-  const [stakeholderDetailModal, setStakeholderDetailModal] = useState<{
-    company_id: number;
-    company_name: string;
-  } | null>(null);
-  // Toplu seçim state'leri
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
-  // Filtered transactions (must be before pagination hook)
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      if (filterType && tx.type !== filterType) return false;
+  // Page-specific state (ProjectDetail'e özgü)
+  const [activeTab, setActiveTab] = useState<'transactions' | 'parties'>('transactions');
+  const [filterCompanyId, setFilterCompanyId] = useState('');
+  const [stakeholderDetailModal, setStakeholderDetailModal] = useState<{ company_id: number; company_name: string } | null>(null);
+
+  // Shared transaction list hook
+  const {
+    ui, dispatch, printRef, viewingAllocations,
+    filteredTransactions, paginatedTransactions, pagination,
+    handleDeleteTransaction, handleSelectAll, handleSelectOne,
+    handleBulkDelete, handleSaveTransaction, handleExport, handlePrint,
+  } = useTransactionList({
+    transactions,
+    loadData,
+    extraFilter: (tx) => {
       if (filterCompanyId && String(tx.company_id) !== filterCompanyId) return false;
       return true;
-    });
-  }, [transactions, filterType, filterCompanyId]);
-
-  // Pagination hook - must be called unconditionally
-  const txPagination = usePagination({
-    totalItems: filteredTransactions.length,
-    initialPageSize: 25,
-  });
-
-  const paginatedTransactions = useMemo(() => {
-    return paginateArray(filteredTransactions, txPagination.currentPage, txPagination.pageSize);
-  }, [filteredTransactions, txPagination.currentPage, txPagination.pageSize]);
-
-  // Keyboard shortcuts
-  useKeyboardShortcuts({
-    onNew: () => setModalOpen(true),
-    onEscape: () => {
-      if (modalOpen) {
-        setModalOpen(false);
-        setEditingTransaction(null);
-      }
     },
+    exportPrefix: project?.name || 'proje_islemler',
   });
 
   useEffect(() => {
     loadData();
   }, [id]);
 
-  const loadData = async () => {
+  function loadData() {
     if (!id) return;
     setLoading(true);
-    try {
-      const numericId = parseInt(id, 10);
-      const [projectData, txData, companiesData, categoriesData, breakdown] = await Promise.all([
-        window.electronAPI.project.getById(numericId),
-        window.electronAPI.transaction.getByProject(numericId),
-        window.electronAPI.company.getAll(),
-        window.electronAPI.category.getAll(),
-        window.electronAPI.analytics.getProjectCategoryBreakdown(numericId),
-      ]);
-      setProject(projectData || null);
-      setTransactions(txData);
-      setCompanies(companiesData);
-      setCategories(categoriesData);
-      setCategoryBreakdown(breakdown);
-    } catch (error) {
-      console.error('Load error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteTransaction = async () => {
-    if (!deleteConfirm) return;
-    try {
-      await window.electronAPI.transaction.delete(deleteConfirm.id);
-      setDeleteConfirm(null);
-      toast.success('İşlem başarıyla silindi');
-      loadData();
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast.error('Silme sırasında hata oluştu');
-    }
-  };
-
-  // Toplu seçim fonksiyonları
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(new Set(filteredTransactions.map((tx) => tx.id)));
-    } else {
-      setSelectedIds(new Set());
-    }
-  };
-
-  const handleSelectOne = (id: number, checked: boolean) => {
-    const newSet = new Set(selectedIds);
-    if (checked) {
-      newSet.add(id);
-    } else {
-      newSet.delete(id);
-    }
-    setSelectedIds(newSet);
-  };
-
-  const handleBulkDelete = async () => {
-    try {
-      await Promise.all(
-        Array.from(selectedIds).map((id) => window.electronAPI.transaction.delete(id))
-      );
-      toast.success(`${selectedIds.size} işlem başarıyla silindi`);
-      setSelectedIds(new Set());
-      setBulkDeleteConfirm(false);
-      loadData();
-    } catch (error) {
-      console.error('Bulk delete error:', error);
-      toast.error('Toplu silme sırasında hata oluştu');
-    }
-  };
-
-  const handleSaveTransaction = (isNew: boolean) => {
-    setModalOpen(false);
-    setEditingTransaction(null);
-    toast.success(isNew ? 'İşlem başarıyla oluşturuldu' : 'İşlem başarıyla güncellendi');
-    loadData();
-  };
-
-  const handlePrint = () => {
-    setPrintPreviewOpen(true);
-  };
-
-  const executePrint = () => {
-    window.print();
-  };
+    const numericId = parseInt(id, 10);
+    Promise.all([
+      window.electronAPI.project.getById(numericId),
+      window.electronAPI.transaction.getByProject(numericId),
+      window.electronAPI.company.getAll(),
+      window.electronAPI.category.getAll(),
+      window.electronAPI.analytics.getProjectCategoryBreakdown(numericId),
+    ])
+      .then(([projectData, txData, companiesData, categoriesData, breakdown]) => {
+        setProject(projectData || null);
+        setTransactions(txData);
+        setCompanies(companiesData);
+        setCategories(categoriesData);
+        setCategoryBreakdown(breakdown);
+      })
+      .catch((error) => {
+        console.error('Load error:', error);
+        toast.error(t('common.loadError'));
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center page-container">
-        <div className="w-12 h-12 spinner"></div>
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   if (!project) {
     return (
       <div className="page-container">
         <EmptyState
-          title="Proje bulunamadı"
-          description="Aradığınız proje mevcut değil"
+          title={t('projectDetail.notFound.title')}
+          description={t('projectDetail.notFound.description')}
           action={() => navigate('/projects')}
-          actionLabel="Projelere Dön"
+          actionLabel={t('projectDetail.notFound.actionLabel')}
         />
       </div>
     );
   }
 
-  const totalIncome = transactions
-    .filter((t) => isIncomeType(t.type))
-    .reduce((sum, t) => sum + (t.amount_try || t.amount), 0);
-  const totalExpense = transactions
-    .filter((t) => isExpenseType(t.type))
-    .reduce((sum, t) => sum + (t.amount_try || t.amount), 0);
-  const profitLoss = totalIncome - totalExpense;
-  const budgetUsed = project.estimated_budget ? (totalExpense / project.estimated_budget) * 100 : 0;
+  const isClientProject = project.ownership_type === 'client';
+
+  const {
+    totalInvoiceOut,
+    totalInvoiceIn,
+    independentPaymentIn,
+    independentPaymentOut,
+    totalIncome,
+    totalExpense,
+    projectProfit,
+    estimatedProfit,
+    budgetUsed,
+    projectDebt,
+    clientReceivable,
+  } = calculateProjectFinancials(transactions, project.ownership_type, project.estimated_budget);
 
   // İşlemlerde geçen benzersiz carileri al (paydaşlar için)
   const stakeholders = transactions.reduce(
     (acc, tx) => {
       if (tx.company_id && tx.company_name) {
+        const amount = tx.amount_try || tx.amount;
+        const isInvoice = tx.type === 'invoice_in' || tx.type === 'invoice_out';
+        const isPayment = tx.type === 'payment_in' || tx.type === 'payment_out';
         const existing = acc.find((s) => s.company_id === tx.company_id);
         if (existing) {
           existing.transaction_count += 1;
-          existing.total_amount += tx.amount_try || tx.amount;
+          if (isInvoice) existing.total_invoice += amount;
+          if (isPayment) existing.total_payment += amount;
         } else {
           const company = companies.find((c) => c.id === tx.company_id);
           acc.push({
@@ -321,7 +181,8 @@ function ProjectDetail() {
             phone: company?.phone || '',
             email: company?.email || '',
             transaction_count: 1,
-            total_amount: tx.amount_try || tx.amount,
+            total_invoice: isInvoice ? amount : 0,
+            total_payment: isPayment ? amount : 0,
           });
         }
       }
@@ -334,7 +195,8 @@ function ProjectDetail() {
       phone: string;
       email: string;
       transaction_count: number;
-      total_amount: number;
+      total_invoice: number;
+      total_payment: number;
     }[]
   );
 
@@ -343,62 +205,96 @@ function ProjectDetail() {
       {/* Header */}
       <div className="page-header">
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate('/projects')}
-            className="p-2 transition-colors rounded-lg hover:bg-gray-100"
-          >
-            <FiArrowLeft size={20} />
-          </button>
+          <Button variant="ghost" size="icon" icon={FiArrowLeft} onClick={() => navigate('/projects')} aria-label={t('common.back')} />
           <div>
             <div className="flex items-center gap-3">
               <h1 className="page-title">{project.name}</h1>
               <StatusBadge status={project.status} />
               <Badge variant={project.ownership_type === 'own' ? 'info' : 'purple'}>
-                {project.ownership_type === 'own' ? 'Kendi Projemiz' : 'Müşteri Projesi'}
+                {project.ownership_type === 'own' ? t('projectDetail.badge.ownProject') : t('projectDetail.badge.clientProject')}
               </Badge>
             </div>
-            <p className="mt-1 text-sm text-gray-500">{project.code}</p>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {project.code}
+              {project.client_name && (
+                <span className="ml-2 text-purple-600 dark:text-purple-400 font-medium">• {t('projectDetail.clientLabel')}: {project.client_name}</span>
+              )}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handlePrint} className="flex items-center gap-2 btn btn-secondary">
-            <FiPrinter size={16} />
-            Yazdır
-          </button>
-          <Button icon={FiPlus} onClick={() => setModalOpen(true)}>
-            Yeni İşlem
+          <Button variant="secondary" icon={FiDownload} onClick={handleExport}>{t('common.exportToExcel')}</Button>
+          <Button variant="secondary" icon={FiPrinter} onClick={handlePrint}>{t('common.print')}</Button>
+          <Button icon={FiPlus} onClick={() => dispatch({ type: 'OPEN_NEW_TRANSACTION' })}>
+            {t('shared.newTransaction')}
           </Button>
         </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4">
-        <StatCard title="Toplam Gelir" value={formatCurrency(totalIncome)} color="green" />
-        <StatCard title="Toplam Gider" value={formatCurrency(totalExpense)} color="red" />
+      <div className="grid grid-cols-1 gap-4 mb-4 md:grid-cols-3">
         <StatCard
-          title="Kar/Zarar"
-          value={formatCurrency(profitLoss)}
-          color={profitLoss >= 0 ? 'green' : 'red'}
+          title={isClientProject ? t('projectDetail.stats.projectIncome') : t('projectDetail.stats.totalIncome')}
+          value={formatCurrency(totalIncome)}
+          subtitle={t('projectDetail.stats.incomeBreakdown', { invoice: formatCurrency(totalInvoiceOut), independentPayment: formatCurrency(independentPaymentIn) })}
+          color="green"
+        />
+        <StatCard
+          title={isClientProject ? t('projectDetail.stats.projectCost') : t('projectDetail.stats.totalExpense')}
+          value={formatCurrency(totalExpense)}
+          subtitle={t('projectDetail.stats.expenseBreakdown', { invoice: formatCurrency(totalInvoiceIn), independentPayment: formatCurrency(independentPaymentOut) })}
+          color="red"
+        />
+        <StatCard
+          title={isClientProject ? t('projectDetail.stats.profitMargin') : t('projectDetail.stats.projectProfit')}
+          value={formatCurrency(projectProfit)}
+          subtitle={isClientProject ? t('projectDetail.stats.incomeMinusCost') : t('projectDetail.stats.incomeMinusExpense')}
+          color={projectProfit >= 0 ? 'green' : 'red'}
+          highlighted
+        />
+      </div>
+      <div className={`grid grid-cols-1 gap-4 mb-6 ${isClientProject ? 'md:grid-cols-4' : 'md:grid-cols-2'}`}>
+        <StatCard
+          title={t('projectDetail.stats.estimatedProfit')}
+          value={estimatedProfit !== null ? formatCurrency(estimatedProfit) : '-'}
+          subtitle={estimatedProfit === null ? t('projectDetail.stats.noBudget') : undefined}
+          color={estimatedProfit === null ? 'gray' : estimatedProfit >= 0 ? 'green' : 'red'}
           highlighted
         />
         <StatCard
-          title="Bütçe Durumu"
+          title={t('projectDetail.stats.budgetStatus')}
           value={project.estimated_budget ? `%${budgetUsed.toFixed(0)}` : '-'}
           subtitle={
             project.estimated_budget
               ? `${formatCurrency(totalExpense)} / ${formatCurrency(project.estimated_budget)}`
-              : '-/-'
+              : t('projectDetail.stats.noBudget')
           }
           color={
             !project.estimated_budget
               ? 'gray'
-              : budgetUsed > 90
+              : budgetUsed > 100
                 ? 'red'
-                : budgetUsed > 70
+                : budgetUsed > 80
                   ? 'yellow'
                   : 'green'
           }
         />
+        {isClientProject && (
+          <>
+            <StatCard
+              title={t('projectDetail.stats.clientReceivable')}
+              value={formatCurrency(clientReceivable)}
+              subtitle={t('projectDetail.stats.invoiceMinusCollection')}
+              color={clientReceivable > 0 ? 'blue' : 'gray'}
+            />
+            <StatCard
+              title={t('projectDetail.stats.projectDebt')}
+              value={formatCurrency(projectDebt)}
+              subtitle={t('projectDetail.stats.subcontractorDebt')}
+              color={projectDebt > 0 ? 'orange' : 'gray'}
+            />
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -407,7 +303,7 @@ function ProjectDetail() {
           {/* Project Info */}
           <Card>
             <CardHeader>
-              <h3 className="font-semibold">Proje Bilgileri</h3>
+              <h3 className="font-semibold">{t('projectDetail.projectInfo')}</h3>
             </CardHeader>
             <CardBody className="space-y-3 text-sm">
               {!project.location &&
@@ -417,54 +313,63 @@ function ProjectDetail() {
               !project.planned_end &&
               !project.actual_start &&
               !project.description ? (
-                <p className="text-gray-500">Projeye ait bilgi eklenmemiş</p>
+                <p className="text-gray-500 dark:text-gray-400">{t('projectDetail.noProjectInfo')}</p>
               ) : (
                 <>
+                  {project.client_name && (
+                    <div className="flex items-center gap-3">
+                      <FiUser className="text-purple-500" />
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400 text-xs">{t('projectDetail.fields.client')}</span>
+                        <p className="font-medium text-purple-700 dark:text-purple-400">{project.client_name}</p>
+                      </div>
+                    </div>
+                  )}
                   {project.location && (
                     <div className="flex items-start gap-3">
-                      <FiMapPin className="text-gray-400 mt-0.5" />
+                      <FiMapPin className="text-gray-400 dark:text-gray-500 mt-0.5" />
                       <span>{project.location}</span>
                     </div>
                   )}
                   {project.total_area && (
                     <div className="flex items-center gap-3">
-                      <FiGrid className="text-gray-400" />
+                      <FiGrid className="text-gray-400 dark:text-gray-500" />
                       <span>
-                        {project.total_area} m2 - {project.unit_count || '-'} birim
+                        {project.total_area} m2 - {project.unit_count || '-'} {t('projectDetail.fields.units')}
                       </span>
                     </div>
                   )}
                   {project.estimated_budget && (
                     <div className="flex items-center gap-3">
-                      <FiDollarSign className="text-gray-400" />
-                      <span>Bütçe: {formatCurrency(project.estimated_budget)}</span>
+                      <FiDollarSign className="text-gray-400 dark:text-gray-500" />
+                      <span>{t('projectDetail.fields.budget')}: {formatCurrency(project.estimated_budget)}</span>
                     </div>
                   )}
                   {(project.planned_start || project.planned_end || project.actual_start) && (
-                    <div className="pt-2 space-y-2 border-t">
+                    <div className="pt-2 space-y-2 border-t dark:border-gray-700">
                       {project.planned_start && (
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Planlanan Başlangıç</span>
+                          <span className="text-gray-500 dark:text-gray-400">{t('projectDetail.fields.plannedStart')}</span>
                           <span>{formatDate(project.planned_start)}</span>
                         </div>
                       )}
                       {project.planned_end && (
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Planlanan Bitiş</span>
+                          <span className="text-gray-500 dark:text-gray-400">{t('projectDetail.fields.plannedEnd')}</span>
                           <span>{formatDate(project.planned_end)}</span>
                         </div>
                       )}
                       {project.actual_start && (
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Gerçek Başlangıç</span>
+                          <span className="text-gray-500 dark:text-gray-400">{t('projectDetail.fields.actualStart')}</span>
                           <span>{formatDate(project.actual_start)}</span>
                         </div>
                       )}
                     </div>
                   )}
                   {project.description && (
-                    <div className="pt-2 border-t">
-                      <p className="mb-1 text-gray-500">Açıklama</p>
+                    <div className="pt-2 border-t dark:border-gray-700">
+                      <p className="mb-1 text-gray-500 dark:text-gray-400">{t('projectDetail.fields.description')}</p>
                       <p>{project.description}</p>
                     </div>
                   )}
@@ -473,118 +378,41 @@ function ProjectDetail() {
             </CardBody>
           </Card>
 
-          {/* Category Breakdown Chart - Donut Style */}
-          <Card>
-            <CardHeader>
-              <h3 className="font-semibold">Gider Dağılımı</h3>
-            </CardHeader>
-            <CardBody className="p-4">
-              {categoryBreakdown.length === 0 ? (
-                <p className="py-4 text-center text-gray-500">Gider kaydı yok</p>
-              ) : (
-                <div className="flex flex-col items-center">
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
-                      <Pie
-                        data={categoryBreakdown}
-                        dataKey="total"
-                        nameKey="category"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={40}
-                        outerRadius={70}
-                        paddingAngle={2}
-                      >
-                        {categoryBreakdown.map((entry, index) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={entry.color || COLORS[index % COLORS.length]}
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  {/* Custom Legend */}
-                  <div className="flex flex-wrap justify-center px-2 mt-2 gap-x-3 gap-y-1">
-                    {categoryBreakdown.map((entry, index) => {
-                      const total = categoryBreakdown.reduce((sum, e) => sum + e.total, 0);
-                      return (
-                        <div key={index} className="flex items-center gap-1 text-xs">
-                          <div
-                            className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                            style={{
-                              backgroundColor: entry.color || COLORS[index % COLORS.length],
-                            }}
-                          />
-                          <span
-                            className="text-gray-600 truncate max-w-[80px]"
-                            title={entry.category}
-                          >
-                            {entry.category}
-                          </span>
-                          <span className="text-gray-400">
-                            {((entry.total / total) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </CardBody>
-          </Card>
+          <ExpenseBreakdownChart categoryBreakdown={categoryBreakdown} />
         </div>
 
         {/* Right Column - Tabs */}
         <div className="lg:col-span-2">
           <Card>
             {/* Tab Navigation */}
-            <div className="border-b border-gray-100">
+            <div className="border-b border-gray-100 dark:border-gray-700">
               <div className="flex items-center justify-between px-4 min-h-[56px]">
                 <div className="flex items-center">
-                  <button
-                    onClick={() => setActiveTab('transactions')}
-                    className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                      activeTab === 'transactions'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    İşlemler
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('parties')}
-                    className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                      activeTab === 'parties'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    Paydaşlar
-                  </button>
-                  {activeTab === 'transactions' && selectedIds.size > 0 && (
+                  <TabGroup
+                    tabs={[
+                      { key: 'transactions', label: t('projectDetail.transactionsTab') },
+                      { key: 'parties', label: t('projectDetail.partiesTab') },
+                    ]}
+                    activeTab={activeTab}
+                    onChange={(key) => setActiveTab(key as 'transactions' | 'parties')}
+                  />
+                  {activeTab ==='transactions' && ui.selectedIds.size > 0 && (
                     <div className="flex items-center gap-2 ml-3">
-                      <div className="w-px h-6 bg-gray-300" />
-                      <button
-                        onClick={() => setBulkDeleteConfirm(true)}
-                        className="flex items-center gap-2 text-red-600 bg-red-50 hover:bg-red-100 btn"
-                      >
-                        <FiTrash2 size={16} />
-                        {selectedIds.size} işlem sil
-                      </button>
+                      <Divider />
+                      <Button variant="ghost-danger" size="sm" icon={FiTrash2} onClick={() => dispatch({ type: 'OPEN_BULK_DELETE' })}>{t('shared.bulkDeleteCount', { count: ui.selectedIds.size })}</Button>
                     </div>
                   )}
                 </div>
-                {activeTab === 'transactions' && (
+                {activeTab ==='transactions' && (
                   <div className="flex items-center gap-2">
+                    <Button variant={ui.showFilters ? 'primary' : 'ghost'} size="icon" icon={FiFilter} onClick={() => dispatch({ type: 'TOGGLE_FILTERS' })} aria-label={t('common.filter')} />
                     <Select
                       options={TRANSACTION_TYPES}
-                      value={filterType}
+                      value={ui.filterType}
                       onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                        setFilterType(e.target.value)
+                        dispatch({ type: 'SET_FILTER', filterType: e.target.value })
                       }
-                      placeholder="Tüm Türler"
+                      placeholder={t('shared.filters.allTypes')}
                       className="w-36"
                     />
                     <Select
@@ -596,73 +424,131 @@ function ProjectDetail() {
                       onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                         setFilterCompanyId(e.target.value)
                       }
-                      placeholder="Tüm Cariler"
+                      placeholder={t('shared.filters.allCompanies')}
                       className="w-44"
                     />
                   </div>
                 )}
               </div>
+              {activeTab === 'transactions' && ui.showFilters && (
+                <div className="flex flex-wrap items-center gap-3 px-6 pt-3 border-t dark:border-gray-700">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-500 dark:text-gray-400">{t('shared.filters.categoryLabel')}:</label>
+                    <Select
+                      options={categories.map((c) => ({ value: c.id, label: t(`categories.${c.name}`, c.name) }))}
+                      value={ui.filterCategory}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                        dispatch({ type: 'SET_FILTER', filterCategory: e.target.value })
+                      }
+                      placeholder={t('common.all')}
+                      className="w-40"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-500 dark:text-gray-400">{t('shared.filters.startDateLabel')}:</label>
+                    <Input
+                      type="date"
+                      value={ui.filterStartDate}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        dispatch({ type: 'SET_FILTER', filterStartDate: e.target.value })
+                      }
+                      className="w-40"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-500 dark:text-gray-400">{t('shared.filters.endDateLabel')}:</label>
+                    <Input
+                      type="date"
+                      value={ui.filterEndDate}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        dispatch({ type: 'SET_FILTER', filterEndDate: e.target.value })
+                      }
+                      className="w-40"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-500 dark:text-gray-400">{t('shared.filters.minLabel')}:</label>
+                    <Input
+                      type="number" step="0.01" min="0"
+                      value={ui.filterMinAmount}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        dispatch({ type: 'SET_FILTER', filterMinAmount: e.target.value })
+                      }
+                      placeholder="0" className="w-28"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-500 dark:text-gray-400">{t('shared.filters.maxLabel')}:</label>
+                    <Input
+                      type="number" step="0.01" min="0"
+                      value={ui.filterMaxAmount}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        dispatch({ type: 'SET_FILTER', filterMaxAmount: e.target.value })
+                      }
+                      placeholder="∞" className="w-28"
+                    />
+                  </div>
+                  {(ui.filterCategory || ui.filterMinAmount || ui.filterMaxAmount || ui.filterStartDate || ui.filterEndDate) && (
+                    <Button variant="ghost-danger" size="xs" onClick={() => { dispatch({ type: 'CLEAR_FILTERS' }); setFilterCompanyId(''); }}>{t('shared.clearFilters')}</Button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Tab Content */}
             <CardBody className="p-0">
-              {activeTab === 'transactions' && (
+              {activeTab ==='transactions' && (
                 <>
                   {filteredTransactions.length === 0 ? (
-                    <EmptyState title="İşlem bulunamadı" />
+                    <EmptyState title={t('shared.transactionNotFound')} />
                   ) : (
                     <>
                       <Table>
                         <TableHeader>
                           <TableRow hover={false}>
                             <TableHead className="w-10">
-                              <input
-                                type="checkbox"
-                                checked={
-                                  paginatedTransactions.length > 0 &&
-                                  paginatedTransactions.every((tx) => selectedIds.has(tx.id))
-                                }
-                                onChange={(e) => handleSelectAll(e.target.checked)}
-                                className="w-4 h-4 rounded border-gray-300"
+                              <SelectAllCheckbox
+                                itemIds={paginatedTransactions.map((tx) => tx.id)}
+                                selectedIds={ui.selectedIds}
+                                onSelectAll={handleSelectAll}
                               />
                             </TableHead>
-                            <TableHead>Tarih</TableHead>
-                            <TableHead>Tür</TableHead>
-                            <TableHead>Açıklama</TableHead>
-                            <TableHead>Cari</TableHead>
-                            <TableHead className="text-right">Tutar</TableHead>
-                            <TableHead className="text-center">İşlem</TableHead>
+                            <TableHead>{t('common.date')}</TableHead>
+                            <TableHead>{t('common.type')}</TableHead>
+                            <TableHead>{t('common.description')}</TableHead>
+                            <TableHead>{t('shared.transactionDetail.company')}</TableHead>
+                            <TableHead className="text-right">{t('common.amount')}</TableHead>
+                            <TableHead className="text-center">{t('common.actions')}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {paginatedTransactions.map((tx) => (
                             <TableRow
                               key={tx.id}
-                              className={`cursor-pointer ${selectedIds.has(tx.id) ? 'bg-blue-50' : ''}`}
-                              onClick={() => setViewingTransaction(tx)}
+                              selected={ui.selectedIds.has(tx.id)}
+                              onClick={() => dispatch({ type: 'VIEW_TRANSACTION', transaction: tx })}
                             >
                               <TableCell onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="checkbox"
-                                  checked={selectedIds.has(tx.id)}
-                                  onChange={(e) => handleSelectOne(tx.id, e.target.checked)}
-                                  className="w-4 h-4 rounded border-gray-300"
+                                <RowCheckbox
+                                  id={tx.id}
+                                  selectedIds={ui.selectedIds}
+                                  onSelectOne={handleSelectOne}
                                 />
                               </TableCell>
                               <TableCell>{formatDate(tx.date)}</TableCell>
                               <TableCell>
                                 <Badge variant={getTransactionBadgeVariant(tx.type)}>
-                                  {TRANSACTION_TYPE_LABELS[tx.type]}
+                                  {t(TRANSACTION_TYPE_LABELS[tx.type])}
                                 </Badge>
                               </TableCell>
                               <TableCell>
                                 <p className="font-medium">{tx.description}</p>
                                 {tx.category_name && (
-                                  <p className="text-xs text-gray-500">{tx.category_name}</p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{t(`categories.${tx.category_name}`, tx.category_name)}</p>
                                 )}
                               </TableCell>
                               <TableCell>
-                                {tx.company_name || <span className="text-gray-400">-</span>}
+                                {tx.company_name || <span className="text-gray-400 dark:text-gray-500">-</span>}
                               </TableCell>
                               <TableCell
                                 className={`text-right font-medium ${getTransactionTextColor(tx.type)}`}
@@ -675,69 +561,37 @@ function ProjectDetail() {
                                   className="flex items-center justify-center gap-1"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <button
-                                    onClick={() => {
-                                      setEditingTransaction(tx);
-                                      setModalOpen(true);
-                                    }}
-                                    className="p-1.5 text-gray-500 hover:text-yellow-600 hover:bg-yellow-50 rounded transition-colors"
-                                  >
-                                    <FiEdit2 size={14} />
-                                  </button>
-                                  <button
-                                    onClick={() => setDeleteConfirm(tx)}
-                                    className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                  >
-                                    <FiTrash2 size={14} />
-                                  </button>
+                                  <Button variant="ghost-warning" size="icon" icon={FiEdit2} onClick={() => dispatch({ type: 'EDIT_TRANSACTION', transaction: tx })} title={t('common.edit')} />
+                                  <Button variant="ghost-danger" size="icon" icon={FiTrash2} onClick={() => dispatch({ type: 'CONFIRM_DELETE', transaction: tx })} title={t('common.delete')} />
                                 </div>
                               </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
                       </Table>
-                      <Pagination
-                        currentPage={txPagination.currentPage}
-                        totalPages={txPagination.totalPages}
-                        totalItems={txPagination.totalItems}
-                        pageSize={txPagination.pageSize}
-                        startIndex={txPagination.startIndex}
-                        endIndex={txPagination.endIndex}
-                        pageNumbers={txPagination.pageNumbers}
-                        canPrevPage={txPagination.canPrevPage}
-                        canNextPage={txPagination.canNextPage}
-                        onPageChange={txPagination.setPage}
-                        onPageSizeChange={txPagination.setPageSize}
-                        onFirstPage={txPagination.firstPage}
-                        onLastPage={txPagination.lastPage}
-                        onPrevPage={txPagination.prevPage}
-                        onNextPage={txPagination.nextPage}
-                      />
+                      <Pagination {...getPaginationProps(pagination)} />
                     </>
                   )}
                 </>
               )}
 
-              {activeTab === 'parties' && (
+              {activeTab ==='parties' && (
                 <>
-                  <div className="p-4 border-b border-gray-100">
-                    <span className="text-sm text-gray-500">
-                      {stakeholders.length} paydaş (işlemlerden otomatik)
-                    </span>
-                  </div>
                   {stakeholders.length === 0 ? (
                     <EmptyState
-                      title="Paydaş bulunamadı"
-                      description="Bu projede henüz cari hesap ile işlem yapılmamış"
+                      title={t('projectDetail.stakeholders.notFound')}
+                      description={t('projectDetail.stakeholders.noTransactions')}
                     />
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow hover={false}>
-                          <TableHead>Rol</TableHead>
-                          <TableHead>Cari</TableHead>
-                          <TableHead className="text-right">İşlem Sayısı</TableHead>
-                          <TableHead className="text-right">Toplam Tutar</TableHead>
+                          <TableHead>{t('projectDetail.stakeholders.role')}</TableHead>
+                          <TableHead>{t('shared.transactionDetail.company')}</TableHead>
+                          <TableHead className="text-right">{t('projectDetail.stakeholders.invoiceTotal')}</TableHead>
+                          <TableHead className="text-right">{t('projectDetail.stakeholders.paymentCollection')}</TableHead>
+                          <TableHead className="text-right">{t('projectDetail.stakeholders.balance')}</TableHead>
+                          <TableHead className="text-right">{t('common.actions')}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -749,15 +603,16 @@ function ProjectDetail() {
                               variant: 'success' | 'info' | 'purple' | 'warning' | 'gray';
                             }
                           > = {
-                            customer: { label: 'Müşteri', variant: 'success' },
-                            supplier: { label: 'Tedarikçi', variant: 'info' },
-                            subcontractor: { label: 'Taşeron', variant: 'purple' },
-                            investor: { label: 'Yatırımcı', variant: 'warning' },
+                            customer: { label: t('projectDetail.roles.customer'), variant: 'success' },
+                            supplier: { label: t('projectDetail.roles.supplier'), variant: 'info' },
+                            subcontractor: { label: t('projectDetail.roles.subcontractor'), variant: 'purple' },
+                            investor: { label: t('projectDetail.roles.investor'), variant: 'warning' },
                           };
                           const roleConfig = roleLabels[stakeholder.account_type] || {
                             label: stakeholder.account_type,
                             variant: 'gray' as const,
                           };
+                          const balance = stakeholder.total_invoice - stakeholder.total_payment;
                           return (
                             <TableRow
                               key={stakeholder.company_id}
@@ -775,11 +630,17 @@ function ProjectDetail() {
                               <TableCell>
                                 <span className="font-medium">{stakeholder.company_name}</span>
                               </TableCell>
-                              <TableCell className="text-right">
-                                {stakeholder.transaction_count}
+                              <TableCell className="text-right font-medium">
+                                {formatCurrency(stakeholder.total_invoice)}
                               </TableCell>
                               <TableCell className="text-right font-medium">
-                                {formatCurrency(stakeholder.total_amount)}
+                                {formatCurrency(stakeholder.total_payment)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <BalanceBadge amount={balance} size="sm" />
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {stakeholder.transaction_count}
                               </TableCell>
                             </TableRow>
                           );
@@ -796,13 +657,11 @@ function ProjectDetail() {
 
       {/* Transaction Modal */}
       <TransactionModal
-        isOpen={modalOpen}
-        onClose={() => {
-          setModalOpen(false);
-          setEditingTransaction(null);
-        }}
-        transaction={editingTransaction}
-        projectId={project.id}
+        isOpen={ui.modalOpen}
+        onClose={() => dispatch({ type: 'CLOSE_MODAL' })}
+        transaction={ui.editingTransaction}
+        scope="project"
+        entityId={project.id}
         companies={companies}
         categories={categories}
         onSave={handleSaveTransaction}
@@ -810,539 +669,64 @@ function ProjectDetail() {
 
       {/* Delete Transaction Confirmation */}
       <ConfirmDialog
-        isOpen={!!deleteConfirm}
-        onClose={() => setDeleteConfirm(null)}
+        isOpen={!!ui.deleteConfirm}
+        onClose={() => dispatch({ type: 'CANCEL_DELETE' })}
         onConfirm={handleDeleteTransaction}
-        title="İşlemi Sil"
-        message="Bu işlemi silmek istediğinize emin misiniz?"
+        title={t('shared.deleteTransaction.title')}
+        message={t('shared.deleteTransaction.message')}
         type="danger"
-        confirmText="Sil"
+        confirmText={t('common.delete')}
       />
 
       {/* Bulk Delete Confirmation */}
       <ConfirmDialog
-        isOpen={bulkDeleteConfirm}
-        onClose={() => setBulkDeleteConfirm(false)}
+        isOpen={ui.bulkDeleteConfirm}
+        onClose={() => dispatch({ type: 'CANCEL_BULK_DELETE' })}
         onConfirm={handleBulkDelete}
-        title="Toplu Silme"
-        message={`Seçili ${selectedIds.size} işlemi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        title={t('shared.bulkDelete.title')}
+        message={t('shared.bulkDelete.message', { count: ui.selectedIds.size })}
         type="danger"
-        confirmText="Tümünü Sil"
+        confirmText={t('shared.bulkDelete.confirmText')}
       />
 
       {/* Transaction Detail View Modal */}
-      <Modal
-        isOpen={!!viewingTransaction}
-        onClose={() => setViewingTransaction(null)}
-        title="İşlem Detayı"
-        size="md"
-      >
-        {viewingTransaction && (
-          <ModalBody>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between pb-4 border-b">
-                <Badge
-                  variant={getTransactionBadgeVariant(viewingTransaction.type)}
-                  className="text-sm px-3 py-1.5"
-                >
-                  {TRANSACTION_TYPE_LABELS[viewingTransaction.type]}
-                </Badge>
-                <span
-                  className={`text-xl font-bold ${getTransactionTextColor(viewingTransaction.type)}`}
-                >
-                  {isIncomeType(viewingTransaction.type)
-                    ? '+'
-                    : isExpenseType(viewingTransaction.type)
-                      ? '-'
-                      : ''}
-                  {formatCurrency(viewingTransaction.amount, viewingTransaction.currency)}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-500">Tarih</p>
-                  <p className="font-medium">{formatDate(viewingTransaction.date)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Kategori</p>
-                  <p className="font-medium">{viewingTransaction.category_name || '-'}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-gray-500">Açıklama</p>
-                  <p className="font-medium">{viewingTransaction.description}</p>
-                </div>
-                {viewingTransaction.company_name && (
-                  <div className="col-span-2">
-                    <p className="text-gray-500">Cari</p>
-                    <p className="font-medium">{viewingTransaction.company_name}</p>
-                  </div>
-                )}
-                {viewingTransaction.document_no && (
-                  <div>
-                    <p className="text-gray-500">Belge No</p>
-                    <p className="font-medium">{viewingTransaction.document_no}</p>
-                  </div>
-                )}
-                {viewingTransaction.currency !== 'TRY' && (
-                  <div>
-                    <p className="text-gray-500">TL Karşılığı</p>
-                    <p className="font-medium">{formatCurrency(viewingTransaction.amount_try)}</p>
-                  </div>
-                )}
-                {viewingTransaction.notes && (
-                  <div className="col-span-2">
-                    <p className="text-gray-500">Not</p>
-                    <p className="font-medium">{viewingTransaction.notes}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </ModalBody>
-        )}
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setViewingTransaction(null)}>
-            Kapat
-          </Button>
-          <Button
-            onClick={() => {
-              setEditingTransaction(viewingTransaction);
-              setViewingTransaction(null);
-              setModalOpen(true);
-            }}
-          >
-            <FiEdit2 className="mr-2" size={16} />
-            Düzenle
-          </Button>
-        </ModalFooter>
-      </Modal>
+      <TransactionDetailView
+        transaction={ui.viewingTransaction}
+        allocations={viewingAllocations}
+        onClose={() => dispatch({ type: 'CLOSE_VIEW' })}
+        onEdit={(tx) => {
+          dispatch({ type: 'EDIT_TRANSACTION', transaction: tx });
+          dispatch({ type: 'CLOSE_VIEW' });
+        }}
+      />
 
       {/* Stakeholder Detail Modal */}
-      <Modal
-        isOpen={!!stakeholderDetailModal}
+      <StakeholderDetailModal
+        stakeholder={stakeholderDetailModal}
+        transactions={transactions}
         onClose={() => setStakeholderDetailModal(null)}
-        title={`${stakeholderDetailModal?.company_name || ''} - Proje İşlemleri`}
-        size="lg"
-      >
-        <ModalBody className="p-0">
-          {stakeholderDetailModal && (
-            <>
-              {transactions.filter((tx) => tx.company_id === stakeholderDetailModal.company_id)
-                .length === 0 ? (
-                <EmptyState title="İşlem bulunamadı" />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow hover={false}>
-                      <TableHead>Tarih</TableHead>
-                      <TableHead>Tür</TableHead>
-                      <TableHead>Açıklama</TableHead>
-                      <TableHead className="text-right">Tutar</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {transactions
-                      .filter((tx) => tx.company_id === stakeholderDetailModal.company_id)
-                      .map((tx) => (
-                        <TableRow key={tx.id}>
-                          <TableCell>{formatDate(tx.date)}</TableCell>
-                          <TableCell>
-                            <Badge variant={getTransactionBadgeVariant(tx.type)}>
-                              {TRANSACTION_TYPE_LABELS[tx.type]}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <p className="font-medium">{tx.description}</p>
-                            {tx.category_name && (
-                              <p className="text-xs text-gray-500">{tx.category_name}</p>
-                            )}
-                          </TableCell>
-                          <TableCell
-                            className={`text-right font-medium ${getTransactionTextColor(tx.type)}`}
-                          >
-                            {isIncomeType(tx.type) ? '+' : isExpenseType(tx.type) ? '-' : ''}
-                            {formatCurrency(tx.amount, tx.currency)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
-              )}
-            </>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setStakeholderDetailModal(null)}>
-            Kapat
-          </Button>
-          <Button
-            onClick={() => {
-              if (stakeholderDetailModal) {
-                navigate(`/companies/${stakeholderDetailModal.company_id}`);
-              }
-            }}
-          >
-            Cari Hesaba Git
-          </Button>
-        </ModalFooter>
-      </Modal>
+      />
 
       {/* Print Preview Modal */}
-      <Modal
-        isOpen={printPreviewOpen}
-        onClose={() => setPrintPreviewOpen(false)}
-        title="Yazdırma Önizleme"
-        size="xl"
+      <PrintPreviewModal
+        isOpen={ui.printPreviewOpen}
+        onClose={() => dispatch({ type: 'CLOSE_PRINT_PREVIEW' })}
       >
-        <ModalBody className="p-4 bg-gray-100">
-          <div className="mx-auto bg-white shadow-lg" style={{ maxWidth: '210mm' }}>
-            <ProjectPrintView
-              ref={printRef}
-              project={project!}
-              transactions={transactions}
-              categoryBreakdown={categoryBreakdown}
-              parties={stakeholders.map((s) => ({
-                id: s.company_id,
-                role: s.account_type,
-                company_name: s.company_name,
-                phone: s.phone,
-                email: s.email,
-              }))}
-            />
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setPrintPreviewOpen(false)}>
-            Kapat
-          </Button>
-          <Button icon={FiPrinter} onClick={executePrint}>
-            Yazdır
-          </Button>
-        </ModalFooter>
-      </Modal>
-
-      {/* Hidden Print View */}
-      <div className="hidden print:block">
-        {project && (
-          <ProjectPrintView
-            ref={printRef}
-            project={project}
-            transactions={transactions}
-            categoryBreakdown={categoryBreakdown}
-            parties={stakeholders.map((s) => ({
-              id: s.company_id,
-              role: s.account_type,
-              company_name: s.company_name,
-              phone: s.phone,
-              email: s.email,
-            }))}
-          />
-        )}
-      </div>
-
-      {/* Print styles */}
-      <style>{`
-        @media print {
-          body > *:not(.print\\:block) { display: none !important; }
-          .print\\:block { display: block !important; }
-        }
-      `}</style>
+        <ProjectPrintView
+          ref={printRef}
+          project={project!}
+          transactions={transactions}
+          categoryBreakdown={categoryBreakdown}
+          parties={stakeholders.map((s) => ({
+            id: s.company_id,
+            role: s.account_type,
+            company_name: s.company_name,
+            phone: s.phone,
+            email: s.email,
+          }))}
+        />
+      </PrintPreviewModal>
     </div>
-  );
-}
-
-// Transaction Modal for Project
-function TransactionModal({
-  isOpen,
-  onClose,
-  transaction,
-  projectId,
-  companies,
-  categories,
-  onSave,
-}: TransactionModalProps) {
-  const [formData, setFormData] = useState<TransactionFormData>({
-    type: 'invoice_out',
-    date: formatDateForInput(new Date().toISOString()),
-    description: '',
-    amount: '',
-    currency: 'TRY',
-    category_id: '',
-    company_id: '',
-    document_no: '',
-    notes: '',
-  });
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (transaction) {
-      setFormData({
-        type: transaction.type,
-        date: formatDateForInput(transaction.date),
-        description: transaction.description,
-        amount: String(transaction.amount),
-        currency: transaction.currency || 'TRY',
-        category_id: transaction.category_id ? String(transaction.category_id) : '',
-        company_id: transaction.company_id ? String(transaction.company_id) : '',
-        document_no: transaction.document_no || '',
-        notes: transaction.notes || '',
-      });
-    } else {
-      setFormData({
-        type: 'invoice_out',
-        date: formatDateForInput(new Date().toISOString()),
-        description: '',
-        amount: '',
-        currency: 'TRY',
-        category_id: '',
-        company_id: '',
-        document_no: '',
-        notes: '',
-      });
-    }
-  }, [transaction, isOpen]);
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const data = {
-        ...formData,
-        scope: 'project' as const,
-        project_id: projectId,
-        amount: parseFloat(formData.amount),
-        category_id: formData.category_id || undefined,
-        company_id: formData.company_id || undefined,
-      };
-
-      if (transaction) {
-        await window.electronAPI.transaction.update(transaction.id, data);
-        onSave(false);
-      } else {
-        await window.electronAPI.transaction.create(data);
-        onSave(true);
-      }
-    } catch (error) {
-      console.error('Save error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const incomeCategories = categories.filter(
-    (c) => c.type === 'invoice_in' || c.type === 'payment'
-  );
-  const expenseCategories = categories.filter(
-    (c) => c.type === 'invoice_in' || c.type === 'payment'
-  );
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={transaction ? 'İşlem Düzenle' : 'Yeni Proje İşlemi'}
-      size="md"
-    >
-      <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-        <ModalBody className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <label>
-              <input
-                type="radio"
-                name="type"
-                value="invoice_out"
-                checked={formData.type === 'invoice_out'}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({
-                    ...formData,
-                    type: e.target.value as TransactionType,
-                    category_id: '',
-                  })
-                }
-                className="sr-only"
-              />
-              <div
-                className={`p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${
-                  formData.type === 'invoice_out'
-                    ? 'border-green-500 bg-green-50 text-green-700'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <span className="text-sm font-medium">Satış Faturası</span>
-              </div>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="type"
-                value="payment_in"
-                checked={formData.type === 'payment_in'}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({
-                    ...formData,
-                    type: e.target.value as TransactionType,
-                    category_id: '',
-                  })
-                }
-                className="sr-only"
-              />
-              <div
-                className={`p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${
-                  formData.type === 'payment_in'
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <span className="text-sm font-medium">Tahsilat</span>
-              </div>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="type"
-                value="invoice_in"
-                checked={formData.type === 'invoice_in'}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({
-                    ...formData,
-                    type: e.target.value as TransactionType,
-                    category_id: '',
-                  })
-                }
-                className="sr-only"
-              />
-              <div
-                className={`p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${
-                  formData.type === 'invoice_in'
-                    ? 'border-red-500 bg-red-50 text-red-700'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <span className="text-sm font-medium">Alış Faturası</span>
-              </div>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="type"
-                value="payment_out"
-                checked={formData.type === 'payment_out'}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({
-                    ...formData,
-                    type: e.target.value as TransactionType,
-                    category_id: '',
-                  })
-                }
-                className="sr-only"
-              />
-              <div
-                className={`p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${
-                  formData.type === 'payment_out'
-                    ? 'border-orange-500 bg-orange-50 text-orange-700'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <span className="text-sm font-medium">Ödeme</span>
-              </div>
-            </label>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Tarih *"
-              type="date"
-              value={formData.date}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setFormData({ ...formData, date: e.target.value })
-              }
-              required
-            />
-            <Select
-              label="Kategori *"
-              options={(isIncomeType(formData.type) ? incomeCategories : expenseCategories).map(
-                (c) => ({
-                  value: c.id,
-                  label: c.name,
-                })
-              )}
-              value={formData.category_id}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                setFormData({ ...formData, category_id: e.target.value })
-              }
-              required
-            />
-          </div>
-
-          <Input
-            label="Açıklama *"
-            value={formData.description}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setFormData({ ...formData, description: e.target.value })
-            }
-            required
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Tutar *"
-              type="number"
-              step="0.01"
-              min="0"
-              value={formData.amount}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setFormData({ ...formData, amount: e.target.value })
-              }
-              required
-            />
-            <Select
-              label="Para Birimi"
-              options={CURRENCIES}
-              value={formData.currency}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                setFormData({ ...formData, currency: e.target.value as Currency })
-              }
-            />
-          </div>
-
-          <Select
-            label="Cari (Opsiyonel)"
-            options={companies.map((c) => ({ value: c.id, label: c.name }))}
-            value={formData.company_id}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-              setFormData({ ...formData, company_id: e.target.value })
-            }
-            placeholder="Cari seçin..."
-          />
-
-          <Input
-            label="Belge No"
-            value={formData.document_no}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setFormData({ ...formData, document_no: e.target.value })
-            }
-          />
-
-          <Textarea
-            label="Not"
-            value={formData.notes}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-              setFormData({ ...formData, notes: e.target.value })
-            }
-            rows={2}
-          />
-        </ModalBody>
-
-        <ModalFooter>
-          <Button variant="secondary" onClick={onClose} type="button">
-            İptal
-          </Button>
-          <Button type="submit" loading={loading}>
-            {transaction ? 'Güncelle' : 'Kaydet'}
-          </Button>
-        </ModalFooter>
-      </form>
-    </Modal>
   );
 }
 

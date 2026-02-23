@@ -17,121 +17,111 @@ interface TypedSelectOption<T extends string> {
 }
 
 export const COMPANY_TYPES: TypedSelectOption<CompanyType>[] = [
-  { value: 'person', label: 'Şahıs' },
-  { value: 'company', label: 'Kuruluş' },
+  { value: 'person', label: 'enums.companyType.person' },
+  { value: 'company', label: 'enums.companyType.company' },
 ];
 
 export const ACCOUNT_TYPES: TypedSelectOption<AccountType>[] = [
-  { value: 'customer', label: 'Müşteri' },
-  { value: 'supplier', label: 'Tedarikçi' },
-  { value: 'subcontractor', label: 'Taşeron' },
-  { value: 'investor', label: 'Yatırımcı' },
+  { value: 'customer', label: 'enums.accountType.customer' },
+  { value: 'supplier', label: 'enums.accountType.supplier' },
+  { value: 'subcontractor', label: 'enums.accountType.subcontractor' },
+  { value: 'investor', label: 'enums.accountType.investor' },
 ];
 
 export const PROJECT_STATUSES: TypedSelectOption<ProjectStatus>[] = [
-  { value: 'planned', label: 'Planlanan' },
-  { value: 'active', label: 'Devam Eden' },
-  { value: 'completed', label: 'Tamamlandı' },
-  { value: 'cancelled', label: 'İptal' },
+  { value: 'planned', label: 'enums.projectStatus.planned' },
+  { value: 'active', label: 'enums.projectStatus.active' },
+  { value: 'completed', label: 'enums.projectStatus.completed' },
+  { value: 'cancelled', label: 'enums.projectStatus.cancelled' },
 ];
 
 export const PROJECT_TYPES: TypedSelectOption<ProjectType>[] = [
-  { value: 'residential', label: 'Konut (Apartman/Site)' },
-  { value: 'villa', label: 'Villa' },
-  { value: 'commercial', label: 'Ticari (İşyeri/Plaza)' },
-  { value: 'mixed', label: 'Karma (Konut + Ticari)' },
-  { value: 'infrastructure', label: 'Altyapı' },
-  { value: 'renovation', label: 'Tadilat/Renovasyon' },
+  { value: 'residential', label: 'enums.projectType.residential' },
+  { value: 'villa', label: 'enums.projectType.villa' },
+  { value: 'commercial', label: 'enums.projectType.commercial' },
+  { value: 'mixed', label: 'enums.projectType.mixed' },
+  { value: 'infrastructure', label: 'enums.projectType.infrastructure' },
+  { value: 'renovation', label: 'enums.projectType.renovation' },
 ];
 
 export const OWNERSHIP_TYPES: TypedSelectOption<OwnershipType>[] = [
-  { value: 'own', label: 'Kendi Projemiz' },
-  { value: 'client', label: 'Müşteri Projesi' },
+  { value: 'own', label: 'enums.ownershipType.own' },
+  { value: 'client', label: 'enums.ownershipType.client' },
 ];
 
 export const TRANSACTION_TYPES: TypedSelectOption<TransactionType>[] = [
-  { value: 'invoice_out', label: 'Satış Faturası' },
-  { value: 'payment_in', label: 'Tahsilat' },
-  { value: 'invoice_in', label: 'Alış Faturası' },
-  { value: 'payment_out', label: 'Ödeme' },
+  { value: 'invoice_out', label: 'enums.transactionType.invoice_out' },
+  { value: 'payment_in', label: 'enums.transactionType.payment_in' },
+  { value: 'invoice_in', label: 'enums.transactionType.invoice_in' },
+  { value: 'payment_out', label: 'enums.transactionType.payment_out' },
 ];
 
 // İşlem tipleri grupları
-export const INVOICE_TYPES: TransactionType[] = ['invoice_out', 'invoice_in'];
-export const PAYMENT_TYPES: TransactionType[] = ['payment_in', 'payment_out'];
 export const INCOME_TYPES: TransactionType[] = ['invoice_out']; // Gelir oluşturan
 export const EXPENSE_TYPES: TransactionType[] = ['invoice_in']; // Gider oluşturan
 
-// İşlem tipi label'ları
+// İşlem tipi label'ları (i18n keys)
 export const TRANSACTION_TYPE_LABELS: Record<TransactionType, string> = {
-  invoice_out: 'Satış Faturası',
-  payment_in: 'Tahsilat',
-  invoice_in: 'Alış Faturası',
-  payment_out: 'Ödeme',
-};
-
-// İşlem tipi renkleri
-export const TRANSACTION_TYPE_COLORS: Record<TransactionType, string> = {
-  invoice_out: 'green',
-  payment_in: 'blue',
-  invoice_in: 'red',
-  payment_out: 'orange',
+  invoice_out: 'enums.transactionType.invoice_out',
+  payment_in: 'enums.transactionType.payment_in',
+  invoice_in: 'enums.transactionType.invoice_in',
+  payment_out: 'enums.transactionType.payment_out',
 };
 
 export const TRANSACTION_SCOPES: TypedSelectOption<TransactionScope>[] = [
-  { value: 'cari', label: 'Cari İşlem' },
-  { value: 'project', label: 'Proje İşlemi' },
-  { value: 'company', label: 'Firma Genel' },
+  { value: 'cari', label: 'enums.transactionScope.cari' },
+  { value: 'project', label: 'enums.transactionScope.project' },
+  { value: 'company', label: 'enums.transactionScope.company' },
 ];
 
 export const CURRENCIES: TypedSelectOption<Currency>[] = [
-  { value: 'TRY', label: 'TRY (₺)' },
-  { value: 'USD', label: 'USD ($)' },
-  { value: 'EUR', label: 'EUR (€)' },
+  { value: 'TRY', label: 'enums.currency.TRY' },
+  { value: 'USD', label: 'enums.currency.USD' },
+  { value: 'EUR', label: 'enums.currency.EUR' },
 ];
 
 export const MOVEMENT_TYPES: TypedSelectOption<MovementType>[] = [
-  { value: 'in', label: 'Giriş (Satın Alma)' },
-  { value: 'out', label: 'Çıkış (Kullanım)' },
-  { value: 'adjustment', label: 'Sayım Düzeltme' },
-  { value: 'waste', label: 'Fire/Kayıp' },
+  { value: 'in', label: 'enums.movementType.in' },
+  { value: 'out', label: 'enums.movementType.out' },
+  { value: 'adjustment', label: 'enums.movementType.adjustment' },
+  { value: 'waste', label: 'enums.movementType.waste' },
 ];
 
 export const MATERIAL_CATEGORIES: SelectOption[] = [
-  { value: 'construction', label: 'İnşaat Malzemesi' },
-  { value: 'steel', label: 'Demir/Çelik' },
-  { value: 'electrical', label: 'Elektrik Malzemesi' },
-  { value: 'plumbing', label: 'Sıhhi Tesisat' },
-  { value: 'paint', label: 'Boya/Kaplama' },
-  { value: 'wood', label: 'Ahşap/Kereste' },
-  { value: 'other', label: 'Diğer' },
+  { value: 'construction', label: 'enums.materialCategory.construction' },
+  { value: 'steel', label: 'enums.materialCategory.steel' },
+  { value: 'electrical', label: 'enums.materialCategory.electrical' },
+  { value: 'plumbing', label: 'enums.materialCategory.plumbing' },
+  { value: 'paint', label: 'enums.materialCategory.paint' },
+  { value: 'wood', label: 'enums.materialCategory.wood' },
+  { value: 'other', label: 'enums.materialCategory.other' },
 ];
 
 export const MATERIAL_UNITS: SelectOption[] = [
-  { value: 'adet', label: 'Adet' },
-  { value: 'kg', label: 'Kg' },
-  { value: 'ton', label: 'Ton' },
-  { value: 'm2', label: 'm²' },
-  { value: 'm3', label: 'm³' },
-  { value: 'lt', label: 'Litre' },
-  { value: 'torba', label: 'Torba' },
-  { value: 'paket', label: 'Paket' },
-  { value: 'metre', label: 'Metre' },
+  { value: 'adet', label: 'enums.materialUnit.adet' },
+  { value: 'kg', label: 'enums.materialUnit.kg' },
+  { value: 'ton', label: 'enums.materialUnit.ton' },
+  { value: 'm2', label: 'enums.materialUnit.m2' },
+  { value: 'm3', label: 'enums.materialUnit.m3' },
+  { value: 'lt', label: 'enums.materialUnit.lt' },
+  { value: 'torba', label: 'enums.materialUnit.torba' },
+  { value: 'paket', label: 'enums.materialUnit.paket' },
+  { value: 'metre', label: 'enums.materialUnit.metre' },
 ];
 
 export const MONTHS: SelectOption[] = [
-  { value: '01', label: 'Ocak' },
-  { value: '02', label: 'Şubat' },
-  { value: '03', label: 'Mart' },
-  { value: '04', label: 'Nisan' },
-  { value: '05', label: 'Mayıs' },
-  { value: '06', label: 'Haziran' },
-  { value: '07', label: 'Temmuz' },
-  { value: '08', label: 'Ağustos' },
-  { value: '09', label: 'Eylül' },
-  { value: '10', label: 'Ekim' },
-  { value: '11', label: 'Kasım' },
-  { value: '12', label: 'Aralık' },
+  { value: '01', label: 'enums.months.01' },
+  { value: '02', label: 'enums.months.02' },
+  { value: '03', label: 'enums.months.03' },
+  { value: '04', label: 'enums.months.04' },
+  { value: '05', label: 'enums.months.05' },
+  { value: '06', label: 'enums.months.06' },
+  { value: '07', label: 'enums.months.07' },
+  { value: '08', label: 'enums.months.08' },
+  { value: '09', label: 'enums.months.09' },
+  { value: '10', label: 'enums.months.10' },
+  { value: '11', label: 'enums.months.11' },
+  { value: '12', label: 'enums.months.12' },
 ];
 
 // ============================================
@@ -159,18 +149,6 @@ export const TIMING = {
 } as const;
 
 /**
- * Pagination defaults
- */
-export const PAGINATION = {
-  /** Default page size */
-  DEFAULT_PAGE_SIZE: 25,
-  /** Available page size options */
-  PAGE_SIZE_OPTIONS: [10, 25, 50, 100],
-  /** Number of page buttons to show */
-  VISIBLE_PAGES: 5,
-} as const;
-
-/**
  * API and network configuration
  */
 export const API = {
@@ -182,22 +160,6 @@ export const API = {
   EXPORT_BATCH_SIZE: 1000,
   /** Large export threshold for progress notification */
   LARGE_EXPORT_THRESHOLD: 5000,
-} as const;
-
-/**
- * Rate limiting configuration
- */
-export const RATE_LIMITS = {
-  /** Max read operations per second */
-  READ_OPS_PER_SEC: 100,
-  /** Max write operations per second */
-  WRITE_OPS_PER_SEC: 30,
-  /** Max delete operations per second */
-  DELETE_OPS_PER_SEC: 10,
-  /** Max heavy operations per second (backup, restore) */
-  HEAVY_OPS_PER_SEC: 5,
-  /** Default rate limit window (ms) */
-  WINDOW_MS: 1000,
 } as const;
 
 /**

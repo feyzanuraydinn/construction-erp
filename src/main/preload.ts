@@ -1,22 +1,25 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+// These mirror TransactionFilters and StockMovementFilters from types/index.ts.
+// Kept local because preload runs in a separate compilation context (electron main).
+// Union types match the Zod schemas in utils/schemas.ts.
 interface TransactionFilters {
-  scope?: string;
-  type?: string;
-  company_id?: number;
-  project_id?: number;
-  start_date?: string;
-  end_date?: string;
+  scope?: 'cari' | 'project' | 'company';
+  type?: 'invoice_out' | 'payment_in' | 'invoice_in' | 'payment_out';
+  company_id?: number | null;
+  project_id?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
   search?: string;
-  limit?: number;
+  limit?: number | null;
 }
 
 interface StockMovementFilters {
-  material_id?: number;
-  movement_type?: string;
-  project_id?: number;
-  start_date?: string;
-  end_date?: string;
+  material_id?: number | null;
+  movement_type?: 'in' | 'out' | 'adjustment' | 'waste';
+  project_id?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -28,6 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (data: unknown) => ipcRenderer.invoke('company:create', data),
     update: (id: number, data: unknown) => ipcRenderer.invoke('company:update', id, data),
     delete: (id: number) => ipcRenderer.invoke('company:delete', id),
+    getRelatedCounts: (id: number) => ipcRenderer.invoke('company:getRelatedCounts', id),
   },
 
   // Project operations
@@ -54,6 +58,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (data: unknown) => ipcRenderer.invoke('transaction:create', data),
     update: (id: number, data: unknown) => ipcRenderer.invoke('transaction:update', id, data),
     delete: (id: number) => ipcRenderer.invoke('transaction:delete', id),
+    getInvoicesForProject: (projectId: number) =>
+      ipcRenderer.invoke('transaction:getInvoicesForProject', projectId),
+    getInvoicesForCompany: (companyId: number) =>
+      ipcRenderer.invoke('transaction:getInvoicesForCompany', companyId),
+    getInvoicesWithBalance: (entityId: number, entityType: string, invoiceType: string) =>
+      ipcRenderer.invoke('transaction:getInvoicesWithBalance', entityId, entityType, invoiceType),
+    setAllocations: (paymentId: number, allocations: { invoiceId: number; amount: number }[]) =>
+      ipcRenderer.invoke('transaction:setAllocations', paymentId, allocations),
+    getAllocationsForPayment: (paymentId: number) =>
+      ipcRenderer.invoke('transaction:getAllocationsForPayment', paymentId),
   },
 
   // Material operations
@@ -94,8 +108,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getStats: () => ipcRenderer.invoke('dashboard:getStats'),
     getRecentTransactions: (limit: number) =>
       ipcRenderer.invoke('dashboard:getRecentTransactions', limit),
-    getTopDebtors: (limit: number) => ipcRenderer.invoke('dashboard:getTopDebtors', limit),
-    getTopCreditors: (limit: number) => ipcRenderer.invoke('dashboard:getTopCreditors', limit),
+    getTopDebtors: (limit: number, startDate?: string) => ipcRenderer.invoke('dashboard:getTopDebtors', limit, startDate),
+    getTopCreditors: (limit: number, startDate?: string) => ipcRenderer.invoke('dashboard:getTopCreditors', limit, startDate),
   },
 
   // Analytics operations
@@ -105,6 +119,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('analytics:getProjectCategoryBreakdown', projectId),
     getCompanyMonthlyStats: (companyId: number, year: number) =>
       ipcRenderer.invoke('analytics:getCompanyMonthlyStats', companyId, year),
+    getCashFlowReport: (year: number) => ipcRenderer.invoke('analytics:getCashFlowReport', year),
+    getAgingReceivables: () => ipcRenderer.invoke('analytics:getAgingReceivables'),
   },
 
   // Backup operations
@@ -147,5 +163,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // App info
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
+    print: () => ipcRenderer.invoke('app:print'),
+    setLanguage: (locale: string) => ipcRenderer.invoke('app:setLanguage', locale),
   },
 });

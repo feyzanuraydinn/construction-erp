@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FiTrash2, FiRefreshCw, FiAlertTriangle } from 'react-icons/fi';
 import {
   Card,
@@ -14,6 +15,7 @@ import {
   Badge,
   EmptyState,
   ConfirmDialog,
+  LoadingSpinner,
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
 import { formatDate, formatCurrency } from '../utils/formatters';
@@ -25,13 +27,6 @@ interface ConfirmDialogState {
   item: TrashItem | null;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  company: 'Cari Hesap',
-  project: 'Proje',
-  transaction: 'İşlem',
-  material: 'Malzeme',
-};
-
 const TYPE_COLORS: Record<string, BadgeVariant> = {
   company: 'info',
   project: 'purple',
@@ -40,6 +35,7 @@ const TYPE_COLORS: Record<string, BadgeVariant> = {
 };
 
 function Trash() {
+  const { t } = useTranslation();
   const toast = useToast();
   const [items, setItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +44,13 @@ function Trash() {
     type: '',
     item: null,
   });
+
+  const TYPE_LABELS: Record<string, string> = {
+    company: t('trash.typeLabels.company'),
+    project: t('trash.typeLabels.project'),
+    transaction: t('trash.typeLabels.transaction'),
+    material: t('trash.typeLabels.material'),
+  };
 
   useEffect(() => {
     loadTrash();
@@ -59,6 +62,7 @@ function Trash() {
       setItems(data);
     } catch (error) {
       console.error('Trash load error:', error);
+      toast.error(t('common.loadError'));
     } finally {
       setLoading(false);
     }
@@ -73,11 +77,11 @@ function Trash() {
     try {
       await window.electronAPI.trash.restore(confirmDialog.item.id);
       setConfirmDialog({ open: false, type: '', item: null });
-      toast.success('Öğe başarıyla geri yüklendi');
+      toast.success(t('trash.restoreSuccess'));
       loadTrash();
     } catch (error) {
       console.error('Restore error:', error);
-      toast.error('Geri yükleme sırasında hata oluştu');
+      toast.error(t('trash.restoreError'));
     }
   };
 
@@ -86,11 +90,11 @@ function Trash() {
     try {
       await window.electronAPI.trash.permanentDelete(confirmDialog.item.id);
       setConfirmDialog({ open: false, type: '', item: null });
-      toast.success('Öğe kalıcı olarak silindi');
+      toast.success(t('trash.permanentDeleteSuccess'));
       loadTrash();
     } catch (error) {
       console.error('Permanent delete error:', error);
-      toast.error('Silme sırasında hata oluştu');
+      toast.error(t('trash.permanentDeleteError'));
     }
   };
 
@@ -98,27 +102,31 @@ function Trash() {
     try {
       await window.electronAPI.trash.empty();
       setConfirmDialog({ open: false, type: '', item: null });
-      toast.success('Çöp kutusu boşaltıldı');
+      toast.success(t('trash.emptyTrashSuccess'));
       loadTrash();
     } catch (error) {
       console.error('Empty trash error:', error);
-      toast.error('Çöp kutusu boşaltılırken hata oluştu');
+      toast.error(t('trash.emptyTrashError'));
     }
   };
 
   const getItemName = (item: TrashItem): string => {
-    const data = JSON.parse(item.data);
-    switch (item.type) {
-      case 'company':
-        return data.name;
-      case 'project':
-        return data.name;
-      case 'transaction':
-        return `${data.description || 'İşlem'} - ${formatCurrency(data.amount)}`;
-      case 'material':
-        return data.name;
-      default:
-        return 'Bilinmeyen';
+    try {
+      const data = JSON.parse(item.data);
+      switch (item.type) {
+        case 'company':
+          return data.name;
+        case 'project':
+          return data.name;
+        case 'transaction':
+          return `${data.description || t('trash.transactionLabel')} - ${formatCurrency(data.amount)}`;
+        case 'material':
+          return data.name;
+        default:
+          return t('trash.unknown');
+      }
+    } catch {
+      return t('trash.unknown');
     }
   };
 
@@ -127,9 +135,9 @@ function Trash() {
       {/* Header */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Çöp Kutusu</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Silinen öğeler 30 gün içinde otomatik olarak kalıcı silinir
+          <h1 className="page-title">{t('trash.title')}</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+            {t('trash.subtitle')}
           </p>
         </div>
         {items.length > 0 && (
@@ -138,20 +146,19 @@ function Trash() {
             icon={FiTrash2}
             onClick={() => setConfirmDialog({ open: true, type: 'empty', item: null })}
           >
-            Çöp Kutusunu Boşalt
+            {t('trash.emptyTrash')}
           </Button>
         )}
       </div>
 
       {/* Warning */}
       {items.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
-          <FiAlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={20} />
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4 mb-6 flex items-start gap-3">
+          <FiAlertTriangle className="text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" size={20} />
           <div>
-            <p className="text-sm text-amber-800 font-medium">Dikkat</p>
-            <p className="text-sm text-amber-700">
-              Kalıcı olarak silinen öğeler geri getirilemez. İlişkili işlemler ve veriler de
-              silinecektir.
+            <p className="text-sm text-amber-800 dark:text-amber-200 font-medium">{t('trash.warning')}</p>
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              {t('trash.warningMessage')}
             </p>
           </div>
         </div>
@@ -160,24 +167,24 @@ function Trash() {
       {/* Trash List */}
       <Card>
         <CardHeader>
-          <h3 className="font-semibold">Silinen Öğeler ({items.length})</h3>
+          <h3 className="font-semibold">{t('trash.deletedItems', { count: items.length })}</h3>
         </CardHeader>
         <CardBody className="p-0">
           {loading ? (
-            <div className="p-8 text-center text-gray-500">Yükleniyor...</div>
+            <LoadingSpinner className="p-8" />
           ) : items.length === 0 ? (
             <EmptyState
               icon={FiTrash2}
-              title="Çöp kutusu boş"
-              description="Silinen öğeler burada görünecektir"
+              title={t('trash.empty')}
+              description={t('trash.emptyDesc')}
             />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow hover={false}>
-                  <TableHead>Tür</TableHead>
-                  <TableHead>Öğe</TableHead>
-                  <TableHead>Silinme Tarihi</TableHead>
+                  <TableHead>{t('trash.table.type')}</TableHead>
+                  <TableHead>{t('trash.table.item')}</TableHead>
+                  <TableHead>{t('trash.table.deletedAt')}</TableHead>
                   <TableHead> </TableHead>
                 </TableRow>
               </TableHeader>
@@ -195,20 +202,20 @@ function Trash() {
                     <TableCell>{formatDate(item.deleted_at)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2 justify-end">
-                        <button
+                        <Button
+                          variant="ghost-success"
+                          size="icon"
+                          icon={FiRefreshCw}
                           onClick={() => handleRestoreClick(item)}
-                          className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                          title="Geri Yükle"
-                        >
-                          <FiRefreshCw size={16} />
-                        </button>
-                        <button
+                          title={t('common.restore')}
+                        />
+                        <Button
+                          variant="ghost-danger"
+                          size="icon"
+                          icon={FiTrash2}
                           onClick={() => setConfirmDialog({ open: true, type: 'delete', item })}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Kalıcı Olarak Sil"
-                        >
-                          <FiTrash2 size={16} />
-                        </button>
+                          title={t('common.delete')}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>
@@ -224,9 +231,9 @@ function Trash() {
         isOpen={confirmDialog.open && confirmDialog.type === 'restore'}
         onClose={() => setConfirmDialog({ open: false, type: '', item: null })}
         onConfirm={handleRestoreConfirm}
-        title="Geri Yükle"
-        message={`"${confirmDialog.item ? getItemName(confirmDialog.item) : ''}" öğesini geri yüklemek istediğinizden emin misiniz?`}
-        confirmText="Geri Yükle"
+        title={t('trash.restoreTitle')}
+        message={t('trash.restoreMessage', { name: confirmDialog.item ? getItemName(confirmDialog.item) : '' })}
+        confirmText={t('trash.restoreConfirm')}
         type="success"
       />
 
@@ -235,9 +242,9 @@ function Trash() {
         isOpen={confirmDialog.open && confirmDialog.type === 'delete'}
         onClose={() => setConfirmDialog({ open: false, type: '', item: null })}
         onConfirm={handlePermanentDelete}
-        title="Kalıcı Olarak Sil"
-        message={`"${confirmDialog.item ? getItemName(confirmDialog.item) : ''}" öğesini kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`}
-        confirmText="Kalıcı Sil"
+        title={t('trash.permanentDeleteTitle')}
+        message={t('trash.permanentDeleteMessage', { name: confirmDialog.item ? getItemName(confirmDialog.item) : '' })}
+        confirmText={t('trash.permanentDeleteConfirm')}
         type="danger"
       />
 
@@ -246,9 +253,9 @@ function Trash() {
         isOpen={confirmDialog.open && confirmDialog.type === 'empty'}
         onClose={() => setConfirmDialog({ open: false, type: '', item: null })}
         onConfirm={handleEmptyTrash}
-        title="Çöp Kutusunu Boşalt"
-        message={`Çöp kutusundaki ${items.length} öğenin tamamını kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`}
-        confirmText="Tümünü Sil"
+        title={t('trash.emptyTrashTitle')}
+        message={t('trash.emptyTrashMessage', { count: items.length })}
+        confirmText={t('trash.emptyTrashConfirm')}
         type="danger"
       />
     </div>

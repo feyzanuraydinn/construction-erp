@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
 interface CacheEntry<T> {
   data: T;
@@ -47,20 +47,10 @@ function enforceCacheLimit(): void {
 }
 
 /**
- * Get current cache statistics
+ * Register a callback to be called when a cache key is invalidated.
+ * Returns a cleanup function that MUST be called on unmount.
  */
-export function getCacheStats(): { size: number; maxSize: number; keys: string[] } {
-  return {
-    size: globalCache.size,
-    maxSize: MAX_CACHE_SIZE,
-    keys: Array.from(globalCache.keys()),
-  };
-}
-
-/**
- * Register a callback to be called when a cache key is invalidated
- */
-export function onCacheInvalidate(key: string, callback: () => void): () => void {
+function onCacheInvalidate(key: string, callback: () => void): () => void {
   if (!invalidationCallbacks.has(key)) {
     invalidationCallbacks.set(key, new Set());
   }
@@ -68,7 +58,14 @@ export function onCacheInvalidate(key: string, callback: () => void): () => void
 
   // Return cleanup function
   return () => {
-    invalidationCallbacks.get(key)?.delete(callback);
+    const callbacks = invalidationCallbacks.get(key);
+    if (callbacks) {
+      callbacks.delete(callback);
+      // Clean up empty sets to prevent Map from growing unbounded
+      if (callbacks.size === 0) {
+        invalidationCallbacks.delete(key);
+      }
+    }
   };
 }
 
@@ -103,10 +100,13 @@ export function invalidateCachePattern(pattern: string): void {
  * Clear all cache entries
  */
 export function clearAllCache(): void {
-  globalCache.clear();
+  // Notify all listeners before clearing
   invalidationCallbacks.forEach((callbacks) => {
     callbacks.forEach((cb) => cb());
   });
+  globalCache.clear();
+  // Don't clear invalidationCallbacks here — active components still hold refs.
+  // They will be cleaned up when components unmount via their cleanup functions.
 }
 
 /**
@@ -231,7 +231,10 @@ export function useDataCache<T>(
 }
 
 /**
- * Hook for caching multiple related data fetches
+ * Hook for caching multiple related data fetches.
+ *
+ * Uses stable key serialization to avoid infinite re-render loops
+ * caused by unstable `fetchers` object references.
  */
 export function useMultiDataCache<T extends Record<string, unknown>>(
   keyPrefix: string,
@@ -243,7 +246,18 @@ export function useMultiDataCache<T extends Record<string, unknown>>(
   error: Error | null;
   refresh: () => Promise<void>;
 } {
-  const keys = Object.keys(fetchers) as (keyof T)[];
+  // Stabilize keys to avoid re-creating fetchAll on every render
+  const fetcherKeys = Object.keys(fetchers) as (keyof T)[];
+  const stableKeysStr = fetcherKeys.join(',');
+  // fetcherKeys is derived from stableKeysStr, so using stableKeysStr as dep is correct
+  const stableKeys = useMemo(() => stableKeysStr.split(',') as (keyof T)[], [stableKeysStr]);
+
+  // Keep fetchers in a ref to avoid dependency instability
+  const fetchersRef = useRef(fetchers);
+  fetchersRef.current = fetchers;
+
+  const ttl = options.ttl ?? 5 * 60 * 1000;
+
   const [data, setData] = useState<Partial<T>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -254,16 +268,15 @@ export function useMultiDataCache<T extends Record<string, unknown>>(
 
     try {
       const results = await Promise.all(
-        keys.map(async (key) => {
+        stableKeys.map(async (key) => {
           const cacheKey = `${keyPrefix}:${String(key)}`;
           const cached = globalCache.get(cacheKey) as CacheEntry<T[keyof T]> | undefined;
-          const ttl = options.ttl ?? 5 * 60 * 1000;
 
           if (cached && Date.now() - cached.timestamp < ttl) {
             return [key, cached.data] as const;
           }
 
-          const freshData = await fetchers[key]();
+          const freshData = await fetchersRef.current[key]();
           globalCache.set(cacheKey, {
             data: freshData,
             timestamp: Date.now(),
@@ -283,18 +296,18 @@ export function useMultiDataCache<T extends Record<string, unknown>>(
     } finally {
       setLoading(false);
     }
-  }, [keyPrefix, keys, fetchers, options.ttl]);
+  }, [keyPrefix, stableKeys, ttl]);
 
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
 
   const refresh = useCallback(async () => {
-    keys.forEach((key) => {
+    stableKeys.forEach((key) => {
       globalCache.delete(`${keyPrefix}:${String(key)}`);
     });
     await fetchAll();
-  }, [keyPrefix, keys, fetchAll]);
+  }, [keyPrefix, stableKeys, fetchAll]);
 
   return {
     data,

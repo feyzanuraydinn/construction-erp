@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import i18n from '../i18n';
+
+// Helper: get translated validation message
+function v(key: string): string {
+  return i18n.t(`validation.${key}`);
+}
 
 // ==================== HELPER SCHEMAS ====================
 
@@ -12,7 +18,7 @@ const optionalDateField = z
     return val;
   })
   .refine((val) => !val || /^\d{4}-\d{2}-\d{2}$/.test(val), {
-    message: 'Geçerli tarih formatı: YYYY-MM-DD',
+    message: v('dateFormat'),
   });
 
 // Optional number field that coerces string to number
@@ -34,7 +40,7 @@ const requiredPositiveNumberField = z
     return num;
   })
   .refine((val) => !isNaN(val) && val > 0, {
-    message: 'Geçerli pozitif bir sayı giriniz',
+    message: v('positiveNumber'),
   });
 
 // ==================== COMPANY SCHEMAS ====================
@@ -42,7 +48,7 @@ const requiredPositiveNumberField = z
 export const companySchema = z.object({
   type: z.enum(['person', 'company']),
   account_type: z.enum(['customer', 'supplier', 'subcontractor', 'investor']),
-  name: z.string().min(1, 'İsim zorunludur').max(255),
+  name: z.string().min(1, v('nameRequired')).max(255),
   tc_number: z
     .string()
     .optional()
@@ -52,7 +58,7 @@ export const companySchema = z.object({
       return val;
     })
     .refine((val) => !val || (val.length === 11 && /^\d+$/.test(val)), {
-      message: 'TC Kimlik numarası 11 haneli ve sadece rakamlardan oluşmalıdır',
+      message: v('tcNumber'),
     }),
   profession: z.string().max(255).optional().nullable(),
   tax_office: z.string().max(255).optional().nullable(),
@@ -69,7 +75,7 @@ export const companySchema = z.object({
       return val;
     })
     .refine((val) => !val || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val), {
-      message: 'Geçerli bir e-posta adresi giriniz',
+      message: v('emailFormat'),
     }),
   address: z.string().max(500).optional().nullable(),
   bank_name: z.string().max(100).optional().nullable(),
@@ -78,12 +84,13 @@ export const companySchema = z.object({
 });
 
 export type CompanyInput = z.infer<typeof companySchema>;
+export type CompanyFormInput = z.input<typeof companySchema>;
 
 // ==================== PROJECT SCHEMAS ====================
 
 export const projectSchema = z.object({
-  code: z.string().min(1, 'Proje kodu zorunludur').max(50),
-  name: z.string().min(1, 'Proje adı zorunludur').max(255),
+  code: z.string().min(1, v('projectCodeRequired')).max(50),
+  name: z.string().min(1, v('projectNameRequired')).max(255),
   ownership_type: z.enum(['own', 'client']),
   client_company_id: optionalNumberField,
   status: z.enum(['planned', 'active', 'completed', 'cancelled']).default('planned'),
@@ -119,6 +126,7 @@ export const projectSchema = z.object({
 });
 
 export type ProjectInput = z.infer<typeof projectSchema>;
+export type ProjectFormInput = z.input<typeof projectSchema>;
 
 export const projectPartySchema = z.object({
   project_id: requiredPositiveNumberField,
@@ -137,8 +145,8 @@ export const transactionSchema = z.object({
   project_id: optionalNumberField,
   type: z.enum(['invoice_out', 'payment_in', 'invoice_in', 'payment_out']),
   category_id: optionalNumberField,
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Geçerli tarih formatı: YYYY-MM-DD'),
-  description: z.string().min(1, 'Açıklama zorunludur').max(500),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, v('dateFormat')),
+  description: z.string().min(1, v('descriptionRequired')).max(500),
   amount: z
     .union([z.number(), z.string()])
     .transform((val) => {
@@ -146,7 +154,7 @@ export const transactionSchema = z.object({
       return num;
     })
     .refine((val) => !isNaN(val) && val > 0, {
-      message: 'Tutar sıfırdan büyük olmalıdır',
+      message: v('amountPositive'),
     }),
   currency: z.enum(['TRY', 'USD', 'EUR']).default('TRY'),
   exchange_rate: z
@@ -157,10 +165,12 @@ export const transactionSchema = z.object({
       return isNaN(num) || num <= 0 ? 1 : num;
     }),
   document_no: z.string().max(50).optional().nullable(),
+  linked_invoice_id: optionalNumberField,
   notes: z.string().max(1000).optional().nullable(),
 });
 
 export type TransactionInput = z.infer<typeof transactionSchema>;
+export type TransactionFormInput = z.input<typeof transactionSchema>;
 
 export const transactionFiltersSchema = z.object({
   scope: z.enum(['cari', 'project', 'company']).optional(),
@@ -178,10 +188,10 @@ export type TransactionFiltersInput = z.infer<typeof transactionFiltersSchema>;
 // ==================== MATERIAL SCHEMAS ====================
 
 export const materialSchema = z.object({
-  code: z.string().min(1, 'Malzeme kodu zorunludur').max(50),
-  name: z.string().min(1, 'Malzeme adı zorunludur').max(255),
+  code: z.string().min(1, v('materialCodeRequired')).max(50),
+  name: z.string().min(1, v('materialNameRequired')).max(255),
   category: z.string().max(100).optional().nullable(),
-  unit: z.string().min(1, 'Birim zorunludur').max(20),
+  unit: z.string().min(1, v('unitRequired')).max(20),
   min_stock: z
     .union([z.number(), z.string()])
     .default(0)
@@ -200,6 +210,7 @@ export const materialSchema = z.object({
 });
 
 export type MaterialInput = z.infer<typeof materialSchema>;
+export type MaterialFormInput = z.input<typeof materialSchema>;
 
 // ==================== STOCK MOVEMENT SCHEMAS ====================
 
@@ -213,7 +224,7 @@ export const stockMovementSchema = z.object({
       return num;
     })
     .refine((val) => !isNaN(val) && val > 0, {
-      message: 'Miktar sıfırdan büyük olmalıdır',
+      message: v('quantityPositive'),
     }),
   unit_price: z
     .union([z.number(), z.string(), z.null(), z.undefined()])
@@ -226,12 +237,13 @@ export const stockMovementSchema = z.object({
     }),
   project_id: optionalNumberField,
   company_id: optionalNumberField,
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Geçerli tarih formatı: YYYY-MM-DD'),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, v('dateFormat')),
   description: z.string().max(500).optional().nullable(),
   document_no: z.string().max(50).optional().nullable(),
 });
 
 export type StockMovementInput = z.infer<typeof stockMovementSchema>;
+export type StockMovementFormInput = z.input<typeof stockMovementSchema>;
 
 export const stockMovementFiltersSchema = z.object({
   material_id: optionalNumberField,
@@ -246,7 +258,7 @@ export type StockMovementFiltersInput = z.infer<typeof stockMovementFiltersSchem
 // ==================== CATEGORY SCHEMAS ====================
 
 export const categorySchema = z.object({
-  name: z.string().min(1, 'Kategori adı zorunludur').max(100),
+  name: z.string().min(1, v('categoryNameRequired')).max(100),
   type: z.enum(['invoice_out', 'invoice_in', 'payment']),
   color: z
     .string()
@@ -259,29 +271,11 @@ export type CategoryInput = z.infer<typeof categorySchema>;
 // ==================== GOOGLE DRIVE SCHEMAS ====================
 
 export const gdriveCredentialsSchema = z.object({
-  clientId: z.string().min(1, 'Client ID zorunludur'),
-  clientSecret: z.string().min(1, 'Client Secret zorunludur'),
+  clientId: z.string().min(1, v('clientIdRequired')),
+  clientSecret: z.string().min(1, v('clientSecretRequired')),
 });
 
 export type GDriveCredentialsInput = z.infer<typeof gdriveCredentialsSchema>;
-
-// ==================== EXPORT SCHEMAS ====================
-
-export const exportToExcelSchema = z.object({
-  type: z.string().min(1),
-  records: z.array(z.record(z.string(), z.unknown())),
-  filename: z.string().optional(),
-});
-
-export type ExportToExcelInput = z.infer<typeof exportToExcelSchema>;
-
-export const exportToPDFSchema = z.object({
-  type: z.string().min(1),
-  html: z.string().min(1),
-  filename: z.string().optional(),
-});
-
-export type ExportToPDFInput = z.infer<typeof exportToPDFSchema>;
 
 // ==================== VALIDATION HELPER ====================
 
@@ -302,7 +296,7 @@ export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown): Validat
         .join(', ');
       return { success: false, error: messages };
     }
-    return { success: false, error: 'Validasyon hatası' };
+    return { success: false, error: v('validationError') };
   }
 }
 

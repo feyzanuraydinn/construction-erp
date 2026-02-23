@@ -34,7 +34,11 @@ out/
 # Claude
 .claude/
 
-# Temp
+# Temp & output files
 *.tmp
-nul
+*.txt
+NUL
 tmpclaude-*
+
+# Coverage
+coverage/

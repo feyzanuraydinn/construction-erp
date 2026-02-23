@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { FiTrendingUp, FiTrendingDown, FiUsers, FiRefreshCw, FiCreditCard } from 'react-icons/fi';
 import { TbCurrencyLira } from 'react-icons/tb';
 import {
@@ -13,9 +14,13 @@ import {
   ModalHeader,
   ModalBody,
   ModalFooter,
+  Button,
+  LoadingSpinner,
 } from '../components/ui';
-import { useDataCache } from '../hooks';
+import { useDataCache, calculateDashboardFinancials } from '../hooks';
+import { useToast } from '../contexts/ToastContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import { getTransactionColor, getTransactionTextColor } from '../utils/transactionHelpers';
 import { TRANSACTION_TYPE_LABELS } from '../utils/constants';
 import type {
   DashboardStats,
@@ -26,14 +31,6 @@ import type {
 } from '../types';
 
 type DateFilter = 'all' | 'today' | 'week' | 'month' | 'year';
-
-const DATE_FILTERS: { value: DateFilter; label: string }[] = [
-  { value: 'year', label: 'Bu Yıl' },
-  { value: 'month', label: 'Bu Ay' },
-  { value: 'week', label: 'Bu Hafta' },
-  { value: 'today', label: 'Bugün' },
-  { value: 'all', label: 'Tüm Zamanlar' },
-];
 
 const getDateRange = (filter: DateFilter): { start: Date | null; end: Date } => {
   const now = new Date();
@@ -54,37 +51,6 @@ const getDateRange = (filter: DateFilter): { start: Date | null; end: Date } => 
       return { start: new Date(now.getFullYear(), 0, 1), end };
     default:
       return { start: null, end };
-  }
-};
-
-// İşlem tipi renk haritası
-const getTransactionColor = (type: TransactionType): string => {
-  switch (type) {
-    case 'invoice_out':
-      return 'bg-green-500';
-    case 'payment_in':
-      return 'bg-blue-500';
-    case 'invoice_in':
-      return 'bg-red-500';
-    case 'payment_out':
-      return 'bg-orange-500';
-    default:
-      return 'bg-gray-500';
-  }
-};
-
-const getTransactionTextColor = (type: TransactionType): string => {
-  switch (type) {
-    case 'invoice_out':
-      return 'text-green-600';
-    case 'payment_in':
-      return 'text-blue-600';
-    case 'invoice_in':
-      return 'text-red-600';
-    case 'payment_out':
-      return 'text-orange-600';
-    default:
-      return 'text-gray-600';
   }
 };
 
@@ -109,16 +75,24 @@ const CACHE_OPTIONS = { ttl: 5 * 60 * 1000, refreshInterval: 2 * 60 * 1000 };
 // Fetcher functions defined outside component to prevent re-creation
 const fetchStats = () => window.electronAPI.dashboard.getStats();
 const fetchTransactions = () => window.electronAPI.transaction.getAll({});
-const fetchDebtors = () => window.electronAPI.dashboard.getTopDebtors(5);
-const fetchCreditors = () => window.electronAPI.dashboard.getTopCreditors(5);
 const fetchProjects = () => window.electronAPI.project.getWithSummary();
 
 function Dashboard() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const toast = useToast();
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithDetails | null>(
     null
   );
   const [dateFilter, setDateFilter] = useState<DateFilter>('year');
+
+  const DATE_FILTERS: { value: DateFilter; label: string }[] = useMemo(() => [
+    { value: 'year', label: t('dashboard.dateFilters.year') },
+    { value: 'month', label: t('dashboard.dateFilters.month') },
+    { value: 'week', label: t('dashboard.dateFilters.week') },
+    { value: 'today', label: t('dashboard.dateFilters.today') },
+    { value: 'all', label: t('dashboard.dateFilters.all') },
+  ], [t]);
 
   // Use cached data hooks
   const {
@@ -139,17 +113,36 @@ function Dashboard() {
     CACHE_OPTIONS
   );
 
-  const {
-    data: topDebtors,
-    loading: debtorsLoading,
-    refresh: refreshDebtors,
-  } = useDataCache<DebtorCreditor[]>('dashboard:debtors', fetchDebtors, CACHE_OPTIONS);
+  // Borçlu/alacaklı listesi tarih filtresine göre güncellenir
+  const [topDebtors, setTopDebtors] = useState<DebtorCreditor[]>([]);
+  const [topCreditors, setTopCreditors] = useState<DebtorCreditor[]>([]);
+  const [debtorsLoading, setDebtorsLoading] = useState(true);
+  const [creditorsLoading, setCreditorsLoading] = useState(true);
 
-  const {
-    data: topCreditors,
-    loading: creditorsLoading,
-    refresh: refreshCreditors,
-  } = useDataCache<DebtorCreditor[]>('dashboard:creditors', fetchCreditors, CACHE_OPTIONS);
+  const fetchDebtorsCreditors = useCallback(async (filter: DateFilter) => {
+    setDebtorsLoading(true);
+    setCreditorsLoading(true);
+    try {
+      const { start } = getDateRange(filter);
+      const startDate = start ? start.toISOString().split('T')[0] : undefined;
+      const [debtors, creditors] = await Promise.all([
+        window.electronAPI.dashboard.getTopDebtors(5, startDate),
+        window.electronAPI.dashboard.getTopCreditors(5, startDate),
+      ]);
+      setTopDebtors(debtors || []);
+      setTopCreditors(creditors || []);
+    } catch (error) {
+      console.error('Debtors/creditors loading error:', error);
+      toast.error(t('common.loadError'));
+    } finally {
+      setDebtorsLoading(false);
+      setCreditorsLoading(false);
+    }
+  }, [toast, t]);
+
+  useEffect(() => {
+    fetchDebtorsCreditors(dateFilter);
+  }, [dateFilter, fetchDebtorsCreditors]);
 
   const {
     data: allProjects,
@@ -175,11 +168,10 @@ function Dashboard() {
     await Promise.all([
       refreshStats(),
       refreshTx(),
-      refreshDebtors(),
-      refreshCreditors(),
+      fetchDebtorsCreditors(dateFilter),
       refreshProjects(),
     ]);
-  }, [refreshStats, refreshTx, refreshDebtors, refreshCreditors, refreshProjects]);
+  }, [refreshStats, refreshTx, fetchDebtorsCreditors, dateFilter, refreshProjects]);
 
   const filteredData = useMemo(() => {
     const { start } = getDateRange(dateFilter);
@@ -187,29 +179,12 @@ function Dashboard() {
 
     const filtered = start ? transactions.filter((tx) => new Date(tx.date) >= start) : transactions;
 
-    const income = filtered
-      .filter((tx) => tx.type === 'invoice_out')
-      .reduce((sum, tx) => sum + (tx.amount_try || tx.amount), 0);
-
-    const expense = filtered
-      .filter((tx) => tx.type === 'invoice_in')
-      .reduce((sum, tx) => sum + (tx.amount_try || tx.amount), 0);
-
-    const collected = filtered
-      .filter((tx) => tx.type === 'payment_in')
-      .reduce((sum, tx) => sum + (tx.amount_try || tx.amount), 0);
-
-    const paid = filtered
-      .filter((tx) => tx.type === 'payment_out')
-      .reduce((sum, tx) => sum + (tx.amount_try || tx.amount), 0);
+    // Merkezi hesaplama fonksiyonu ile dashboard finansalları
+    const financials = calculateDashboardFinancials(filtered);
 
     return {
       transactions: filtered.slice(0, 8),
-      totalIncome: income,
-      totalExpense: expense,
-      netProfit: income - expense,
-      totalCollected: collected,
-      totalPaid: paid,
+      ...financials,
     };
   }, [allTransactions, dateFilter]);
 
@@ -230,8 +205,8 @@ function Dashboard() {
 
   if (loading) {
     return (
-      <div className="page-container flex items-center justify-center">
-        <div className="spinner w-12 h-12"></div>
+      <div className="page-container">
+        <LoadingSpinner />
       </div>
     );
   }
@@ -241,59 +216,57 @@ function Dashboard() {
       {/* Header */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Gösterge Paneli</h1>
-          <p className="text-gray-500 text-sm mt-1">Genel bakış ve özet bilgiler</p>
+          <h1 className="page-title">{t('dashboard.title')}</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{t('dashboard.subtitle')}</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center bg-white rounded-lg border border-gray-200 p-1">
+          <div className="flex items-center bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-1">
             {DATE_FILTERS.map((filter) => (
-              <button
+              <Button
                 key={filter.value}
+                variant={dateFilter === filter.value ? 'primary' : 'ghost'}
+                size="xs"
                 onClick={() => setDateFilter(filter.value)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  dateFilter === filter.value
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
               >
                 {filter.label}
-              </button>
+              </Button>
             ))}
           </div>
-          <button
+          <Button
+            variant="secondary"
+            icon={FiRefreshCw}
             onClick={loadDashboardData}
-            className={`btn btn-secondary ${isStale ? 'ring-2 ring-yellow-400' : ''}`}
-            title={isStale ? 'Veriler güncelleniyor...' : 'Verileri yenile'}
+            className={isStale ? 'ring-2 ring-yellow-400' : ''}
+            title={isStale ? t('dashboard.updating') : t('dashboard.refresh')}
           >
-            <FiRefreshCw size={18} className={isStale ? 'animate-spin' : ''} />
-            {isStale ? 'Güncelleniyor...' : 'Yenile'}
-          </button>
+            {isStale ? t('dashboard.updatingShort') : t('dashboard.refreshShort')}
+          </Button>
         </div>
       </div>
 
       {/* Stats Grid - Row 1: Gelir/Gider (Kar-Zarar) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <StatCard
-          title="Toplam Gelir"
+          title={t('dashboard.totalIncome')}
           value={formatCurrency(displayStats?.totalIncome)}
-          subtitle="Satış faturaları"
+          subtitle={t('dashboard.salesInvoices')}
           icon={FiTrendingUp}
           color="green"
         />
         <StatCard
-          title="Toplam Gider"
+          title={t('dashboard.totalExpense')}
           value={formatCurrency(displayStats?.totalExpense)}
-          subtitle="Alış faturaları"
+          subtitle={t('dashboard.purchaseInvoices')}
           icon={FiTrendingDown}
           color="red"
         />
         <StatCard
-          title="Net Kâr/Zarar"
+          title={t('dashboard.netProfit')}
           value={formatCurrency(displayStats?.netProfit)}
           subtitle={
             displayStats?.netProfit !== undefined && displayStats.netProfit >= 0
-              ? 'Kârlı'
-              : 'Zararlı'
+              ? t('dashboard.profitable')
+              : t('dashboard.loss')
           }
           icon={TbCurrencyLira}
           color={
@@ -306,30 +279,30 @@ function Dashboard() {
       {/* Stats Grid - Row 2: Nakit Akışı ve Cari Bakiyeler */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
-          title="Toplam Tahsilat"
+          title={t('dashboard.totalCollected')}
           value={formatCurrency(displayStats?.totalCollected)}
-          subtitle="Müşterilerden"
+          subtitle={t('dashboard.fromCustomers')}
           icon={FiCreditCard}
           color="blue"
         />
         <StatCard
-          title="Toplam Ödeme"
+          title={t('dashboard.totalPaid')}
           value={formatCurrency(displayStats?.totalPaid)}
-          subtitle="Tedarikçilere"
+          subtitle={t('dashboard.toSuppliers')}
           icon={FiCreditCard}
           color="orange"
         />
         <StatCard
-          title="Toplam Alacak"
+          title={t('dashboard.totalReceivables')}
           value={formatCurrency(stats?.totalReceivables)}
-          subtitle="Bize borçlular"
+          subtitle={t('dashboard.theyOweUs')}
           icon={FiUsers}
           color="green"
         />
         <StatCard
-          title="Toplam Borç"
+          title={t('dashboard.totalPayables')}
           value={formatCurrency(stats?.totalPayables)}
-          subtitle="Biz borçluyuz"
+          subtitle={t('dashboard.weOweThem')}
           icon={FiUsers}
           color="red"
         />
@@ -342,32 +315,30 @@ function Dashboard() {
           {/* Recent Transactions */}
           <Card>
             <CardHeader className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">Son İşlemler</h3>
-              <button
-                onClick={() => navigate('/transactions')}
-                className="text-sm text-blue-600 hover:text-blue-700"
-              >
-                Tümünü Gör
-              </button>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100">{t('dashboard.recentTransactions')}</h3>
+              <Button variant="ghost" size="xs" onClick={() => navigate('/transactions')}>
+                {t('dashboard.viewAll')}
+              </Button>
             </CardHeader>
             <CardBody className="p-0">
               {recentTransactions.length === 0 ? (
-                <div className="p-6 text-center text-gray-500">Henüz işlem bulunmuyor</div>
+                <div className="p-6 text-center text-gray-500 dark:text-gray-400">{t('dashboard.noTransactions')}</div>
               ) : (
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
                   {recentTransactions.map((tx) => (
-                    <div
+                    <button
                       key={tx.id}
-                      className="px-6 py-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer transition-colors"
+                      type="button"
+                      className="w-full text-left px-6 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
                       onClick={() => setSelectedTransaction(tx)}
                     >
                       <div className="flex items-center gap-3">
                         <div className={`w-2 h-2 rounded-full ${getTransactionColor(tx.type)}`} />
                         <div>
-                          <p className="text-sm font-medium text-gray-900">{tx.description}</p>
-                          <p className="text-xs text-gray-500">
-                            {TRANSACTION_TYPE_LABELS[tx.type]} •{' '}
-                            {tx.company_name || tx.project_name || 'Firma Genel'} •{' '}
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{tx.description}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {t(TRANSACTION_TYPE_LABELS[tx.type])} •{' '}
+                            {tx.company_name || tx.project_name || t('dashboard.companyGeneral')} •{' '}
                             {formatDate(tx.date)}
                           </p>
                         </div>
@@ -376,10 +347,10 @@ function Dashboard() {
                         {getTransactionPrefix(tx.type)}
                         {formatCurrency(tx.amount)}
                         {tx.currency !== 'TRY' && (
-                          <span className="text-xs text-gray-400 ml-1">({tx.currency})</span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">({tx.currency})</span>
                         )}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -389,49 +360,48 @@ function Dashboard() {
           {/* Active Projects */}
           <Card className="overflow-hidden">
             <CardHeader className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">Aktif Projeler</h3>
-              <button
-                onClick={() => navigate('/projects')}
-                className="text-sm text-blue-600 hover:text-blue-700"
-              >
-                Tümünü Gör
-              </button>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100">{t('dashboard.activeProjects')}</h3>
+              <Button variant="ghost" size="xs" onClick={() => navigate('/projects')}>
+                {t('dashboard.viewAll')}
+              </Button>
             </CardHeader>
             <CardBody className="p-0 overflow-hidden">
               {projects.length === 0 ? (
-                <div className="p-6 text-center text-gray-500">Aktif proje bulunmuyor</div>
+                <div className="p-6 text-center text-gray-500 dark:text-gray-400">{t('dashboard.noActiveProjects')}</div>
               ) : (
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
                   {projects.map((project) => {
+                    const totalExpense = project.total_expense || 0;
                     const budgetUsed = project.estimated_budget
-                      ? (project.total_expense / project.estimated_budget) * 100
+                      ? (totalExpense / project.estimated_budget) * 100
                       : 0;
                     return (
-                      <div
+                      <button
                         key={project.id}
-                        className="px-6 py-4 hover:bg-gray-50 cursor-pointer"
+                        type="button"
+                        className="w-full text-left px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                         onClick={() => navigate(`/projects/${project.id}`)}
                       >
                         <div className="flex items-center justify-between mb-2 gap-2">
                           <div className="min-w-0 flex-1">
-                            <p className="font-medium text-gray-900 truncate">{project.name}</p>
-                            <p className="text-xs text-gray-500">{project.code}</p>
+                            <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{project.name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{project.code}</p>
                           </div>
                           <Badge
                             variant={project.ownership_type === 'own' ? 'info' : 'purple'}
                             className="flex-shrink-0"
                           >
-                            {project.ownership_type === 'own' ? 'Kendi' : 'Müşteri'}
+                            {project.ownership_type === 'own' ? t('dashboard.own') : t('dashboard.client')}
                           </Badge>
                         </div>
                         <div className="flex items-center gap-4">
                           {project.estimated_budget ? (
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                                <span>Bütçe Kullanımı</span>
+                              <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                <span>{t('dashboard.budgetUsage')}</span>
                                 <span>{budgetUsed.toFixed(0)}%</span>
                               </div>
-                              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div className="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
                                 <div
                                   className={`h-full rounded-full transition-all ${
                                     budgetUsed > 90
@@ -448,11 +418,11 @@ function Dashboard() {
                             <div className="flex-1" />
                           )}
                           <div className="text-right flex-shrink-0">
-                            <BalanceBadge amount={project.profit_loss} size="sm" />
-                            <p className="text-xs text-gray-500 mt-1">Kar/Zarar</p>
+                            <BalanceBadge amount={(project.total_income || 0) - (project.total_expense || 0)} size="sm" />
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('dashboard.projectProfit')}</p>
                           </div>
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -466,28 +436,29 @@ function Dashboard() {
           {/* Top Debtors */}
           <Card>
             <CardHeader>
-              <h3 className="font-semibold text-gray-900">Bize Borçlu Cariler</h3>
-              <p className="text-xs text-gray-500">Bize borçlu olanlar</p>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100">{t('dashboard.debtors')}</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t('dashboard.debtorsSubtitle')}</p>
             </CardHeader>
             <CardBody className="p-0">
               {!topDebtors || topDebtors.length === 0 ? (
-                <div className="p-4 text-center text-gray-500 text-sm">Borçlu cari bulunmuyor</div>
+                <div className="p-4 text-center text-gray-500 dark:text-gray-400 text-sm">{t('dashboard.noDebtors')}</div>
               ) : (
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
                   {topDebtors.map((debtor, index) => (
-                    <div
+                    <button
                       key={debtor.id}
-                      className="px-4 py-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+                      type="button"
+                      className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                       onClick={() => navigate(`/companies/${debtor.id}`)}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="w-6 h-6 bg-green-100 text-green-700 rounded-full text-xs flex items-center justify-center font-medium">
+                        <span className="w-6 h-6 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full text-xs flex items-center justify-center font-medium">
                           {index + 1}
                         </span>
-                        <span className="text-sm text-gray-900">{debtor.name}</span>
+                        <span className="text-sm text-gray-900 dark:text-gray-100">{debtor.name}</span>
                       </div>
                       <BalanceBadge amount={debtor.balance} size="sm" showIcon={false} />
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -497,30 +468,31 @@ function Dashboard() {
           {/* Top Creditors */}
           <Card>
             <CardHeader>
-              <h3 className="font-semibold text-gray-900">Bizim Borçlu Olduklarımız</h3>
-              <p className="text-xs text-gray-500">Biz borçluyuz</p>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100">{t('dashboard.creditors')}</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t('dashboard.creditorsSubtitle')}</p>
             </CardHeader>
             <CardBody className="p-0">
               {!topCreditors || topCreditors.length === 0 ? (
-                <div className="p-4 text-center text-gray-500 text-sm">
-                  Alacaklı cari bulunmuyor
+                <div className="p-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                  {t('dashboard.noCreditors')}
                 </div>
               ) : (
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
                   {topCreditors.map((creditor, index) => (
-                    <div
+                    <button
                       key={creditor.id}
-                      className="px-4 py-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+                      type="button"
+                      className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                       onClick={() => navigate(`/companies/${creditor.id}`)}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="w-6 h-6 bg-red-100 text-red-700 rounded-full text-xs flex items-center justify-center font-medium">
+                        <span className="w-6 h-6 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full text-xs flex items-center justify-center font-medium">
                           {index + 1}
                         </span>
-                        <span className="text-sm text-gray-900">{creditor.name}</span>
+                        <span className="text-sm text-gray-900 dark:text-gray-100">{creditor.name}</span>
                       </div>
                       <BalanceBadge amount={creditor.balance} size="sm" showIcon={false} />
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -533,75 +505,71 @@ function Dashboard() {
       <Modal isOpen={!!selectedTransaction} onClose={() => setSelectedTransaction(null)} size="lg">
         {selectedTransaction && (
           <>
-            <ModalHeader onClose={() => setSelectedTransaction(null)}>İşlem Detayı</ModalHeader>
+            <ModalHeader onClose={() => setSelectedTransaction(null)}>{t('dashboard.transactionDetail')}</ModalHeader>
             <ModalBody>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block mb-1 text-sm font-medium text-gray-700">Tarih</label>
-                  <p className="py-2 text-gray-900">{formatDate(selectedTransaction.date)}</p>
+                  <label className="block mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">{t('dashboard.labels.date')}</label>
+                  <p className="py-2 text-gray-900 dark:text-gray-100">{formatDate(selectedTransaction.date)}</p>
                 </div>
                 <div>
-                  <label className="block mb-1 text-sm font-medium text-gray-700">Tür</label>
+                  <label className="block mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">{t('dashboard.labels.type')}</label>
                   <span
                     className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${getTransactionColor(selectedTransaction.type)} text-white`}
                   >
-                    {TRANSACTION_TYPE_LABELS[selectedTransaction.type]}
+                    {t(TRANSACTION_TYPE_LABELS[selectedTransaction.type])}
                   </span>
                 </div>
                 <div>
-                  <label className="block mb-1 text-sm font-medium text-gray-700">Kaynak</label>
-                  <p className="py-2 text-gray-900">
+                  <label className="block mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">{t('dashboard.labels.source')}</label>
+                  <p className="py-2 text-gray-900 dark:text-gray-100">
                     {selectedTransaction.company_name
-                      ? 'Cari'
+                      ? t('dashboard.labels.cari')
                       : selectedTransaction.project_name
-                        ? 'Proje'
-                        : 'Firma'}
+                        ? t('dashboard.labels.project')
+                        : t('dashboard.labels.company')}
                   </p>
                 </div>
                 {selectedTransaction.company_name && (
                   <div>
-                    <label className="block mb-1 text-sm font-medium text-gray-700">Cari</label>
-                    <p className="py-2 text-gray-900">{selectedTransaction.company_name}</p>
+                    <label className="block mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">{t('dashboard.labels.cari')}</label>
+                    <p className="py-2 text-gray-900 dark:text-gray-100">{selectedTransaction.company_name}</p>
                   </div>
                 )}
                 {selectedTransaction.project_name && (
                   <div>
-                    <label className="block mb-1 text-sm font-medium text-gray-700">Proje</label>
-                    <p className="py-2 text-gray-900">{selectedTransaction.project_name}</p>
+                    <label className="block mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">{t('dashboard.labels.project')}</label>
+                    <p className="py-2 text-gray-900 dark:text-gray-100">{selectedTransaction.project_name}</p>
                   </div>
                 )}
                 <div>
-                  <label className="block mb-1 text-sm font-medium text-gray-700">Tutar</label>
+                  <label className="block mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">{t('dashboard.labels.amount')}</label>
                   <p
                     className={`text-lg font-bold ${getTransactionTextColor(selectedTransaction.type)}`}
                   >
                     {getTransactionPrefix(selectedTransaction.type)}
                     {formatCurrency(selectedTransaction.amount)}
                     {selectedTransaction.currency !== 'TRY' && (
-                      <span className="text-xs text-gray-400 ml-1">
+                      <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">
                         ({selectedTransaction.currency})
                       </span>
                     )}
                   </p>
                 </div>
                 <div>
-                  <label className="block mb-1 text-sm font-medium text-gray-700">Kategori</label>
-                  <p className="py-2 text-gray-900">{selectedTransaction.category_name || '-'}</p>
+                  <label className="block mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">{t('dashboard.labels.category')}</label>
+                  <p className="py-2 text-gray-900 dark:text-gray-100">{selectedTransaction.category_name ? t(`categories.${selectedTransaction.category_name}`, selectedTransaction.category_name) : '-'}</p>
                 </div>
                 <div className="col-span-2">
-                  <label className="block mb-1 text-sm font-medium text-gray-700">Açıklama</label>
-                  <p className="py-2 text-gray-900">{selectedTransaction.description || '-'}</p>
+                  <label className="block mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">{t('dashboard.labels.description')}</label>
+                  <p className="py-2 text-gray-900 dark:text-gray-100">{selectedTransaction.description || '-'}</p>
                 </div>
               </div>
             </ModalBody>
             <ModalFooter>
-              <button
-                type="button"
-                onClick={() => setSelectedTransaction(null)}
-                className="btn btn-secondary"
-              >
-                Kapat
-              </button>
+              <Button variant="secondary" onClick={() => setSelectedTransaction(null)}>
+                {t('common.close')}
+              </Button>
             </ModalFooter>
           </>
         )}

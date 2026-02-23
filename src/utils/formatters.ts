@@ -1,4 +1,11 @@
+import i18n from '../i18n';
 import type { Currency } from '../types';
+
+/** i18n diline göre Intl locale döndürür */
+function getLocale(): string {
+  const lang = i18n.language;
+  return lang === 'tr' ? 'tr-TR' : 'en-US';
+}
 
 export function formatCurrency(
   amount: number | null | undefined,
@@ -6,7 +13,7 @@ export function formatCurrency(
 ): string {
   if (amount === null || amount === undefined) return '-';
 
-  const formatter = new Intl.NumberFormat('tr-TR', {
+  const formatter = new Intl.NumberFormat(getLocale(), {
     style: 'currency',
     currency: currency,
     minimumFractionDigits: 2,
@@ -45,7 +52,7 @@ export function formatCompactCurrency(
 export function formatNumber(number: number | null | undefined, decimals: number = 0): string {
   if (number === null || number === undefined) return '-';
 
-  return new Intl.NumberFormat('tr-TR', {
+  return new Intl.NumberFormat(getLocale(), {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(number);
@@ -55,23 +62,10 @@ export function formatDate(dateString: string | null | undefined): string {
   if (!dateString) return '-';
 
   const date = new Date(dateString);
-  return new Intl.DateTimeFormat('tr-TR', {
+  return new Intl.DateTimeFormat(getLocale(), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
-  }).format(date);
-}
-
-export function formatDateTime(dateString: string | null | undefined): string {
-  if (!dateString) return '-';
-
-  const date = new Date(dateString);
-  return new Intl.DateTimeFormat('tr-TR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
   }).format(date);
 }
 
@@ -81,20 +75,3 @@ export function formatDateForInput(dateString: string | null | undefined): strin
   return date.toISOString().split('T')[0];
 }
 
-export function formatPercentage(value: number, total: number | null | undefined): string {
-  if (!total || total === 0) return '0%';
-  const percentage = (value / total) * 100;
-  return `${percentage.toFixed(0)}%`;
-}
-
-export function getBalanceColor(balance: number): string {
-  if (balance > 0) return 'text-green-600';
-  if (balance < 0) return 'text-red-600';
-  return 'text-gray-600';
-}
-
-export function getBalanceText(balance: number): string {
-  if (balance > 0) return 'Alacak';
-  if (balance < 0) return 'Borç';
-  return 'Dengede';
-}

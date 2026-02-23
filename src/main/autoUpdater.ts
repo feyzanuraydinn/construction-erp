@@ -1,6 +1,7 @@
 import { autoUpdater } from 'electron-updater';
 import { BrowserWindow, ipcMain, dialog } from 'electron';
 import { mainLogger } from './logger';
+import { t } from './i18n';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -31,9 +32,9 @@ export function initAutoUpdater(window: BrowserWindow): void {
     dialog
       .showMessageBox(mainWindow!, {
         type: 'info',
-        title: 'Güncelleme Mevcut',
-        message: `Yeni versiyon ${info.version} mevcut.\n\nGüncellemek ister misiniz?`,
-        buttons: ['Şimdi İndir', 'Daha Sonra'],
+        title: t('main.updater.availableTitle'),
+        message: t('main.updater.availableMessage', { version: info.version }),
+        buttons: [t('main.updater.downloadNow'), t('main.updater.later')],
         defaultId: 0,
         cancelId: 1,
       })
@@ -73,9 +74,9 @@ export function initAutoUpdater(window: BrowserWindow): void {
     dialog
       .showMessageBox(mainWindow!, {
         type: 'info',
-        title: 'Güncelleme Hazır',
-        message: `Versiyon ${info.version} indirildi.\n\nGüncellemeyi yüklemek için uygulamayı yeniden başlatın.`,
-        buttons: ['Şimdi Yeniden Başlat', 'Daha Sonra'],
+        title: t('main.updater.readyTitle'),
+        message: t('main.updater.readyMessage', { version: info.version }),
+        buttons: [t('main.updater.restartNow'), t('main.updater.later')],
         defaultId: 0,
         cancelId: 1,
       })

@@ -74,11 +74,16 @@ export interface Project {
 
 export interface ProjectWithSummary extends Project {
   client_name?: string | null;
-  total_income: number;
-  total_expense: number;
-  profit_loss: number;
+  total_invoice_out: number;
+  total_invoice_in: number;
   total_collected: number;
   total_paid: number;
+  independent_payment_in: number;
+  independent_payment_out: number;
+  total_income: number;
+  total_expense: number;
+  transaction_count?: number;
+  party_count?: number;
 }
 
 export interface Category {
@@ -104,15 +109,10 @@ export interface Transaction {
   exchange_rate: number;
   amount_try: number;
   document_no?: string | null;
+  linked_invoice_id?: number | null;
   notes?: string | null;
   created_at: string;
   updated_at: string;
-  // Joined fields from views/queries
-  company_name?: string | null;
-  project_name?: string | null;
-  project_code?: string | null;
-  category_name?: string | null;
-  category_color?: string | null;
 }
 
 export interface TransactionWithDetails extends Transaction {
@@ -121,6 +121,7 @@ export interface TransactionWithDetails extends Transaction {
   project_code?: string | null;
   category_name?: string | null;
   category_color?: string | null;
+  allocated_amount?: number;
 }
 
 export interface Material {
@@ -223,101 +224,50 @@ export interface CategoryBreakdown {
   total: number;
 }
 
+export interface CashFlowData {
+  month: number;
+  collected: number;
+  paid: number;
+  netCash: number;
+  cumulative: number;
+}
+
+export interface AgingReceivable {
+  companyId: number;
+  companyName: string;
+  current: number;
+  days30: number;
+  days60: number;
+  days90plus: number;
+  total: number;
+}
+
 // ==================== FILTER TYPES ====================
+// Single source of truth — derived from Zod schemas in utils/schemas.ts.
+// Partial<> is used because callers only provide a subset of filter fields.
 
-export interface TransactionFilters {
-  scope?: TransactionScope;
-  type?: TransactionType;
-  company_id?: number;
-  project_id?: number;
-  start_date?: string;
-  end_date?: string;
-  search?: string;
-  limit?: number;
-}
+import type {
+  TransactionFiltersInput,
+  StockMovementFiltersInput,
+  CompanyFormInput,
+  ProjectFormInput,
+  TransactionFormInput,
+  MaterialFormInput,
+  StockMovementFormInput,
+} from '../utils/schemas';
 
-export interface StockMovementFilters {
-  material_id?: number;
-  movement_type?: MovementType;
-  project_id?: number;
-  start_date?: string;
-  end_date?: string;
-}
+export type TransactionFilters = Partial<TransactionFiltersInput>;
+export type StockMovementFilters = Partial<StockMovementFiltersInput>;
 
 // ==================== FORM DATA TYPES ====================
+// Derived from Zod schemas (z.input = pre-transform input types).
+// These match what the frontend sends to IPC before Zod validation.
 
-export interface CompanyFormData {
-  type: CompanyType;
-  account_type: AccountType;
-  name: string;
-  tc_number?: string;
-  profession?: string;
-  tax_office?: string;
-  tax_number?: string;
-  trade_registry_no?: string;
-  contact_person?: string;
-  phone?: string;
-  email?: string;
-  address?: string;
-  bank_name?: string;
-  iban?: string;
-  notes?: string;
-}
-
-export interface ProjectFormData {
-  code: string;
-  name: string;
-  ownership_type: OwnershipType;
-  client_company_id?: number | string;
-  status: ProjectStatus;
-  project_type?: ProjectType;
-  location?: string;
-  total_area?: number | string;
-  unit_count?: number | string;
-  estimated_budget?: number | string;
-  planned_start?: string;
-  planned_end?: string;
-  actual_start?: string;
-  actual_end?: string;
-  description?: string;
-}
-
-export interface TransactionFormData {
-  scope: TransactionScope;
-  company_id?: number | string;
-  project_id?: number | string;
-  type: TransactionType;
-  category_id?: number | string;
-  date: string;
-  description: string;
-  amount: number | string;
-  currency: Currency;
-  exchange_rate?: number | string;
-  document_no?: string;
-  notes?: string;
-}
-
-export interface MaterialFormData {
-  code: string;
-  name: string;
-  category?: string;
-  unit: string;
-  min_stock?: number | string;
-  current_stock?: number | string;
-  notes?: string;
-}
-
-export interface StockMovementFormData {
-  material_id: number | string;
-  movement_type: MovementType;
-  quantity: number | string;
-  unit_price?: number | string;
-  project_id?: number | string;
-  company_id?: number | string;
-  date: string;
-  description?: string;
-  document_no?: string;
-}
+export type CompanyFormData = CompanyFormInput;
+export type ProjectFormData = ProjectFormInput;
+export type TransactionFormData = TransactionFormInput;
+export type MaterialFormData = MaterialFormInput;
+export type StockMovementFormData = StockMovementFormInput;
 
 // ==================== UI TYPES ====================
 
@@ -334,8 +284,6 @@ export type BadgeVariant =
   | 'info'
   | 'purple'
   | 'default';
-export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
-export type ButtonSize = 'sm' | 'md' | 'lg';
 
 // ==================== EXCHANGE RATES ====================
 
@@ -358,4 +306,41 @@ export interface DriveOperationResult {
   success: boolean;
   fileId?: string;
   error?: string;
+}
+
+// ==================== PAYMENT ALLOCATION TYPES ====================
+
+export interface PaymentAllocation {
+  id: number;
+  payment_id: number;
+  invoice_id: number;
+  amount: number;
+  created_at: string;
+}
+
+export interface PaymentAllocationWithDetails extends PaymentAllocation {
+  invoice_description?: string;
+  invoice_amount?: number;
+  invoice_amount_try?: number;
+  invoice_date?: string;
+  invoice_document_no?: string | null;
+  invoice_type?: TransactionType;
+  payment_description?: string;
+  payment_amount?: number;
+  payment_amount_try?: number;
+  payment_date?: string;
+  payment_document_no?: string | null;
+}
+
+export interface InvoiceWithBalance {
+  id: number;
+  type: TransactionType;
+  description: string;
+  amount: number;
+  amount_try: number;
+  date: string;
+  document_no: string | null;
+  company_name?: string | null;
+  total_allocated: number;
+  remaining: number;
 }

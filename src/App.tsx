@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
-import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import './i18n';
 import {
   FiHome,
   FiUsers,
@@ -15,10 +17,11 @@ import {
   FiSearch,
 } from 'react-icons/fi';
 
-// Error Boundary ve Toast
-import ErrorBoundary from './components/ErrorBoundary';
+// Error Boundary, Toast, Theme
+import ErrorBoundary, { PageErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider, useToast } from './contexts/ToastContext';
-import { CommandPalette } from './components/ui';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { CommandPalette, LoadingSpinner } from './components/ui';
 
 // Logo Component
 interface LogoProps {
@@ -43,53 +46,58 @@ const Settings = lazy(() => import('./pages/Settings'));
 const Trash = lazy(() => import('./pages/Trash'));
 
 // Loading fallback component
-const PageLoader: React.FC = () => (
-  <div className="flex items-center justify-center h-full">
-    <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-  </div>
-);
+const PageLoader: React.FC = () => <LoadingSpinner className="h-full" />;
 
-interface MenuItem {
+interface MenuItemDef {
   path: string;
   icon: React.ComponentType<{ size?: number }>;
-  label: string;
+  labelKey: string;
 }
 
-const menuItems: MenuItem[] = [
-  { path: '/', icon: FiHome, label: 'Dashboard' },
-  { path: '/companies', icon: FiUsers, label: 'Cari Hesaplar' },
-  { path: '/projects', icon: FiFolder, label: 'Projeler' },
-  { path: '/stock', icon: FiPackage, label: 'Stok Yönetimi' },
-  { path: '/company-account', icon: FiBriefcase, label: 'Firma Hesabı' },
-  { path: '/transactions', icon: FiList, label: 'Tüm İşlemler' },
-  { path: '/analytics', icon: FiBarChart2, label: 'Analizler' },
+const menuItemDefs: MenuItemDef[] = [
+  { path: '/', icon: FiHome, labelKey: 'menu.dashboard' },
+  { path: '/companies', icon: FiUsers, labelKey: 'menu.companies' },
+  { path: '/projects', icon: FiFolder, labelKey: 'menu.projects' },
+  { path: '/stock', icon: FiPackage, labelKey: 'menu.stock' },
+  { path: '/company-account', icon: FiBriefcase, labelKey: 'menu.companyAccount' },
+  { path: '/transactions', icon: FiList, labelKey: 'menu.transactions' },
+  { path: '/analytics', icon: FiBarChart2, labelKey: 'menu.analytics' },
 ];
 
-const bottomMenuItems: MenuItem[] = [
-  { path: '/settings', icon: FiSettings, label: 'Ayarlar' },
-  { path: '/trash', icon: FiTrash2, label: 'Çöp Kutusu' },
+const bottomMenuItemDefs: MenuItemDef[] = [
+  { path: '/settings', icon: FiSettings, labelKey: 'menu.settings' },
+  { path: '/trash', icon: FiTrash2, labelKey: 'menu.trash' },
 ];
 
 // Inner App component that can use Toast context
 const AppContent: React.FC = () => {
+  const { t } = useTranslation();
   const toast = useToast();
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState<boolean>(false);
   const [isBackingUp, setIsBackingUp] = useState<boolean>(false);
+  const [appVersion, setAppVersion] = useState<string>('');
+
+  useEffect(() => {
+    window.electronAPI.app.getVersion().then(setAppVersion).catch(() => {});
+    // Sync renderer language to main process
+    const lang = localStorage.getItem('language') || 'tr';
+    window.electronAPI.app.setLanguage(lang).catch(() => {});
+  }, []);
 
   const handleBackup = useCallback(async () => {
     if (isBackingUp) return;
     setIsBackingUp(true);
     try {
       await window.electronAPI.backup.create();
-      toast.success('Veritabanı yedeği başarıyla oluşturuldu');
+      toast.success(t('app.backupSuccess'));
     } catch (error) {
-      toast.error('Yedek oluşturulamadı');
+      toast.error(t('app.backupError'));
       console.error('Backup error:', error);
     } finally {
       setIsBackingUp(false);
     }
-  }, [isBackingUp, toast]);
+  }, [isBackingUp, toast, t]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -110,7 +118,7 @@ const AppContent: React.FC = () => {
 
   return (
     <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <div className="flex h-screen bg-gray-100">
+      <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
         {/* Sidebar */}
         <aside
           className={`${
@@ -123,8 +131,8 @@ const AppContent: React.FC = () => {
               <Logo className="w-10 h-10 text-blue-500" />
               {!sidebarCollapsed && (
                 <div className="fade-in">
-                  <h1 className="font-bold text-lg">İnşaat ERP</h1>
-                  <p className="text-xs text-gray-400">v2.1.0</p>
+                  <h1 className="font-bold text-lg">{t('app.title')}</h1>
+                  <p className="text-xs text-gray-400">v{appVersion || '...'}</p>
                 </div>
               )}
             </div>
@@ -143,12 +151,12 @@ const AppContent: React.FC = () => {
             <button
               onClick={() => setCommandPaletteOpen(true)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors ${sidebarCollapsed ? 'justify-center' : ''}`}
-              title={sidebarCollapsed ? 'Ara (Ctrl+K)' : ''}
+              title={sidebarCollapsed ? t('app.searchShortcut') : ''}
             >
               <FiSearch size={20} />
               {!sidebarCollapsed && (
                 <>
-                  <span className="flex-1 text-left text-sm">Ara...</span>
+                  <span className="flex-1 text-left text-sm">{t('app.search')}</span>
                   <kbd className="text-xs px-1.5 py-0.5 bg-white/10 rounded">Ctrl+K</kbd>
                 </>
               )}
@@ -157,54 +165,55 @@ const AppContent: React.FC = () => {
 
           {/* Navigation */}
           <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-            {menuItems.map((item) => (
+            {menuItemDefs.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}
                 className={({ isActive }) =>
                   `sidebar-item ${isActive ? 'active bg-white/10' : 'text-gray-300 hover:text-white'}`
                 }
-                title={sidebarCollapsed ? item.label : ''}
+                title={sidebarCollapsed ? t(item.labelKey) : ''}
               >
                 <item.icon size={20} />
-                {!sidebarCollapsed && <span className="fade-in">{item.label}</span>}
+                {!sidebarCollapsed && <span className="fade-in">{t(item.labelKey)}</span>}
               </NavLink>
             ))}
           </nav>
 
           {/* Bottom Menu */}
           <div className="border-t border-white/10 py-4 px-3 space-y-1">
-            {bottomMenuItems.map((item) => (
+            {bottomMenuItemDefs.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}
                 className={({ isActive }) =>
                   `sidebar-item ${isActive ? 'active bg-white/10' : 'text-gray-300 hover:text-white'}`
                 }
-                title={sidebarCollapsed ? item.label : ''}
+                title={sidebarCollapsed ? t(item.labelKey) : ''}
               >
                 <item.icon size={20} />
-                {!sidebarCollapsed && <span className="fade-in">{item.label}</span>}
+                {!sidebarCollapsed && <span className="fade-in">{t(item.labelKey)}</span>}
               </NavLink>
             ))}
           </div>
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden bg-gray-100 dark:bg-gray-900">
           <Suspense fallback={<PageLoader />}>
             <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/companies" element={<Companies />} />
-              <Route path="/companies/:id" element={<CompanyDetail />} />
-              <Route path="/projects" element={<Projects />} />
-              <Route path="/projects/:id" element={<ProjectDetail />} />
-              <Route path="/stock" element={<Stock />} />
-              <Route path="/company-account" element={<CompanyAccount />} />
-              <Route path="/transactions" element={<Transactions />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/trash" element={<Trash />} />
+              <Route path="/" element={<PageErrorBoundary pageName="Dashboard"><Dashboard /></PageErrorBoundary>} />
+              <Route path="/companies" element={<PageErrorBoundary pageName="Companies"><Companies /></PageErrorBoundary>} />
+              <Route path="/companies/:id" element={<PageErrorBoundary pageName="CompanyDetail"><CompanyDetail /></PageErrorBoundary>} />
+              <Route path="/projects" element={<PageErrorBoundary pageName="Projects"><Projects /></PageErrorBoundary>} />
+              <Route path="/projects/:id" element={<PageErrorBoundary pageName="ProjectDetail"><ProjectDetail /></PageErrorBoundary>} />
+              <Route path="/stock" element={<PageErrorBoundary pageName="Stock"><Stock /></PageErrorBoundary>} />
+              <Route path="/company-account" element={<PageErrorBoundary pageName="CompanyAccount"><CompanyAccount /></PageErrorBoundary>} />
+              <Route path="/transactions" element={<PageErrorBoundary pageName="Transactions"><Transactions /></PageErrorBoundary>} />
+              <Route path="/analytics" element={<PageErrorBoundary pageName="Analytics"><Analytics /></PageErrorBoundary>} />
+              <Route path="/settings" element={<PageErrorBoundary pageName="Settings"><Settings /></PageErrorBoundary>} />
+              <Route path="/trash" element={<PageErrorBoundary pageName="Trash"><Trash /></PageErrorBoundary>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
         </main>
@@ -220,9 +229,11 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <ErrorBoundary>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 };

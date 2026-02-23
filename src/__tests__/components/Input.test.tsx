@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+// Initialize i18n before importing components that use useTranslation()
+import '../../i18n';
 import { Input, Select, Textarea } from '../../components/ui/Input';
 import { FiSearch, FiMail } from 'react-icons/fi';
 

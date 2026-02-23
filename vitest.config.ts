@@ -14,10 +14,18 @@ export default defineConfig({
       exclude: [
         'node_modules/',
         'src/__tests__/',
+        'src/main/',
+        'src/types/',
         'dist/',
         'dist-electron/',
         'build/',
       ],
+      thresholds: {
+        statements: 55,
+        branches: 55,
+        functions: 45,
+        lines: 55,
+      },
     },
   },
   resolve: {

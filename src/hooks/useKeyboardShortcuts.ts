@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface ShortcutHandlers {
   onNew?: () => void;
@@ -6,8 +6,12 @@ interface ShortcutHandlers {
 }
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent) => {
+  // Use ref to always access latest handlers without re-registering listener
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       // Check if we're typing in an input, textarea, or contenteditable
       const target = event.target as HTMLElement;
       const isTyping =
@@ -22,7 +26,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       ) {
         event.preventDefault();
         event.stopPropagation();
-        handlers.onNew?.();
+        handlersRef.current.onNew?.();
         return;
       }
 
@@ -30,17 +34,14 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       if (event.key === 'Escape') {
         // Don't prevent default for Escape when typing - let it work normally
         if (!isTyping || (target as HTMLInputElement).value === '') {
-          handlers.onEscape?.();
+          handlersRef.current.onEscape?.();
         }
         return;
       }
-    },
-    [handlers]
-  );
+    };
 
-  useEffect(() => {
     // Use capture phase to catch event before browser default actions
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
-  }, [handleKeyDown]);
+  }, []); // Empty deps - listener registered once, uses ref for latest handlers
 }

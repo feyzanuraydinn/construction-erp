@@ -186,6 +186,30 @@ export function usePagination({
 }
 
 /**
+ * Converts a usePagination return value into props for the <Pagination> component.
+ * Eliminates the 16-line prop spreading pattern repeated across every listing page.
+ */
+export function getPaginationProps(p: UsePaginationReturn) {
+  return {
+    currentPage: p.currentPage,
+    totalPages: p.totalPages,
+    totalItems: p.totalItems,
+    pageSize: p.pageSize,
+    startIndex: p.startIndex,
+    endIndex: p.endIndex,
+    pageNumbers: p.pageNumbers,
+    canPrevPage: p.canPrevPage,
+    canNextPage: p.canNextPage,
+    onPageChange: p.goToPage,
+    onPageSizeChange: p.setPageSize,
+    onFirstPage: p.goToFirstPage,
+    onLastPage: p.goToLastPage,
+    onPrevPage: p.goToPrevPage,
+    onNextPage: p.goToNextPage,
+  };
+}
+
+/**
  * Utility function to paginate an array client-side
  *
  * @param items - Array of items to paginate

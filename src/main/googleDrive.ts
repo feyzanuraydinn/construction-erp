@@ -1,10 +1,11 @@
-import { google } from 'googleapis';
+import { drive_v3 } from '@googleapis/drive';
 import { OAuth2Client } from 'google-auth-library';
 import { shell, app, safeStorage } from 'electron';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { t } from './i18n';
 
 // OAuth credentials - build sırasında veya config dosyasından yüklenir
 let CLIENT_ID = '';
@@ -94,9 +95,7 @@ class GoogleDriveService {
         )
       );
     } else {
-      // Fallback to unencrypted if safeStorage not available (rare)
-      console.warn('safeStorage not available, storing credentials unencrypted');
-      fs.writeFileSync(this.configPath, JSON.stringify({ clientId, clientSecret }, null, 2));
+      throw new Error(t('main.gdrive.encryptionUnavailable'));
     }
 
     this.initOAuth2Client();
@@ -107,7 +106,7 @@ class GoogleDriveService {
   }
 
   private initOAuth2Client(): void {
-    this.oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
+    this.oauth2Client = new OAuth2Client(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
 
     // Load saved token if exists
     try {
@@ -154,7 +153,8 @@ class GoogleDriveService {
         )
       );
     } else {
-      fs.writeFileSync(this.tokenPath, JSON.stringify(tokens, null, 2));
+      // Do not save tokens in plaintext — log warning and skip
+      console.warn('safeStorage not available, token will not be persisted. Re-authentication will be required on next launch.');
     }
   }
 
@@ -166,7 +166,7 @@ class GoogleDriveService {
 
   async startAuth(): Promise<{ success: boolean; error?: string }> {
     if (!this.oauth2Client) {
-      return { success: false, error: 'Google Drive yapılandırması eksik' };
+      return { success: false, error: t('main.gdrive.configMissing') };
     }
 
     return new Promise((resolve) => {
@@ -189,13 +189,13 @@ class GoogleDriveService {
           if (error) {
             const errorMsg =
               error === 'access_denied'
-                ? "Erişim reddedildi. Google Cloud Console'da test kullanıcısı olarak eklendiğinizden emin olun."
-                : `OAuth hatası: ${error}`;
+                ? t('main.gdrive.accessDenied')
+                : t('main.gdrive.oauthError', { error });
             res.end(`
               <html>
-                <head><title>Hata</title></head>
+                <head><title>${t('main.errorTitle')}</title></head>
                 <body style="font-family: Arial; text-align: center; padding: 50px;">
-                  <h1 style="color: #ef4444;">✕ Bağlantı Reddedildi</h1>
+                  <h1 style="color: #ef4444;">✕ ${t('main.gdrive.connectionDenied')}</h1>
                   <p>${errorMsg}</p>
                 </body>
               </html>
@@ -215,10 +215,10 @@ class GoogleDriveService {
 
               res.end(`
                 <html>
-                  <head><title>Bağlantı Başarılı</title></head>
+                  <head><title>${t('main.gdrive.successTitle')}</title></head>
                   <body style="font-family: Arial; text-align: center; padding: 50px;">
-                    <h1 style="color: #22c55e;">✓ Google Drive Bağlantısı Başarılı!</h1>
-                    <p>Bu pencereyi kapatabilirsiniz.</p>
+                    <h1 style="color: #22c55e;">✓ ${t('main.gdrive.connectionSuccess')}</h1>
+                    <p>${t('main.gdrive.closeWindow')}</p>
                     <script>setTimeout(() => window.close(), 2000);</script>
                   </body>
                 </html>
@@ -229,10 +229,10 @@ class GoogleDriveService {
             } catch (error) {
               res.end(`
                 <html>
-                  <head><title>Hata</title></head>
+                  <head><title>${t('main.errorTitle')}</title></head>
                   <body style="font-family: Arial; text-align: center; padding: 50px;">
-                    <h1 style="color: #ef4444;">✕ Bağlantı Hatası</h1>
-                    <p>${String(error)}</p>
+                    <h1 style="color: #ef4444;">✕ ${t('main.gdrive.connectionError')}</h1>
+                    <p>${String(error).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')}</p>
                   </body>
                 </html>
               `);
@@ -242,14 +242,14 @@ class GoogleDriveService {
           } else {
             res.end(`
               <html>
-                <head><title>Hata</title></head>
+                <head><title>${t('main.errorTitle')}</title></head>
                 <body style="font-family: Arial; text-align: center; padding: 50px;">
-                  <h1 style="color: #ef4444;">✕ Yetkilendirme Kodu Alınamadı</h1>
+                  <h1 style="color: #ef4444;">✕ ${t('main.gdrive.noAuthCode')}</h1>
                 </body>
               </html>
             `);
             server.close();
-            resolve({ success: false, error: 'Authorization code not received' });
+            resolve({ success: false, error: t('main.gdrive.noAuthCode') });
           }
         }
       });
@@ -258,14 +258,14 @@ class GoogleDriveService {
         if (err.code === 'EADDRINUSE') {
           resolve({
             success: false,
-            error: `Port ${REDIRECT_PORT} zaten kullanımda. Lütfen uygulamayı yeniden başlatın veya açık olan diğer uygulama pencerelerini kapatın.`,
+            error: t('main.gdrive.portInUse', { port: REDIRECT_PORT }),
           });
         } else {
-          resolve({ success: false, error: `Sunucu hatası: ${err.message}` });
+          resolve({ success: false, error: t('main.gdrive.serverError', { error: err.message }) });
         }
       });
 
-      server.listen(REDIRECT_PORT, () => {
+      server.listen(REDIRECT_PORT, '127.0.0.1', () => {
         // Open browser for authentication
         shell.openExternal(authUrl);
       });
@@ -273,7 +273,7 @@ class GoogleDriveService {
       // Timeout after 5 minutes
       setTimeout(() => {
         server.close();
-        resolve({ success: false, error: 'Zaman aşımı - Yetkilendirme tamamlanmadı' });
+        resolve({ success: false, error: t('main.gdrive.authTimeout') });
       }, 300000);
     });
   }
@@ -295,12 +295,12 @@ class GoogleDriveService {
     filePath: string
   ): Promise<{ success: boolean; fileId?: string; error?: string }> {
     if (!this.oauth2Client || !this.isConnected()) {
-      return { success: false, error: 'Google Drive bağlantısı yok' };
+      return { success: false, error: t('main.gdrive.notConnected') };
     }
 
     try {
-      const drive = google.drive({ version: 'v3', auth: this.oauth2Client });
-      const fileName = 'latest_backup.db'; // Her zaman aynı isim
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
+      const fileName = 'latest_backup.db';
 
       // Get or create backup folder
       const folderId = await this.getOrCreateBackupFolder();
@@ -337,7 +337,7 @@ class GoogleDriveService {
     if (!this.oauth2Client) return;
 
     try {
-      const drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
       const response = await drive.files.list({
         q: `'${folderId}' in parents and trashed=false`,
         spaces: 'drive',
@@ -358,13 +358,13 @@ class GoogleDriveService {
   private formatError(error: unknown): string {
     const errorStr = String(error);
     if (errorStr.includes('API has not been used') || errorStr.includes('it is disabled')) {
-      return "Google Drive API etkin değil. Google Cloud Console'da Drive API'yi etkinleştirin.";
+      return t('main.gdrive.apiNotEnabled');
     }
     if (errorStr.includes('invalid_grant')) {
-      return 'Oturum süresi doldu. Lütfen tekrar bağlanın.';
+      return t('main.gdrive.sessionExpired');
     }
     if (errorStr.includes('insufficient permissions')) {
-      return 'Yetersiz izin. Uygulamaya Drive erişimi verin.';
+      return t('main.gdrive.insufficientPermissions');
     }
     return errorStr;
   }
@@ -373,7 +373,7 @@ class GoogleDriveService {
     if (!this.oauth2Client) return null;
 
     try {
-      const drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
       const folderName = 'InsaatERP_Backups';
 
       // Search for existing folder
@@ -411,7 +411,7 @@ class GoogleDriveService {
     }
 
     try {
-      const drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
       const folderId = await this.getOrCreateBackupFolder();
 
       if (!folderId) return [];
@@ -447,11 +447,11 @@ class GoogleDriveService {
     destPath: string
   ): Promise<{ success: boolean; error?: string }> {
     if (!this.oauth2Client || !this.isConnected()) {
-      return { success: false, error: 'Google Drive bağlantısı yok' };
+      return { success: false, error: t('main.gdrive.notConnected') };
     }
 
     try {
-      const drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
 
       const response = await drive.files.get(
         {
@@ -477,11 +477,11 @@ class GoogleDriveService {
 
   async deleteBackup(fileId: string): Promise<{ success: boolean; error?: string }> {
     if (!this.oauth2Client || !this.isConnected()) {
-      return { success: false, error: 'Google Drive bağlantısı yok' };
+      return { success: false, error: t('main.gdrive.notConnected') };
     }
 
     try {
-      const drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
       await drive.files.delete({ fileId });
       return { success: true };
     } catch (error) {

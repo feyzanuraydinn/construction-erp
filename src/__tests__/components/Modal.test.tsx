@@ -218,14 +218,14 @@ describe('ModalBody Component', () => {
 
   it('should apply custom className', () => {
     render(<ModalBody className="custom-class">Content</ModalBody>);
-    const body = screen.getByText('Content').parentElement;
-    expect(body?.className).toContain('custom-class');
+    const body = screen.getByText('Content');
+    expect(body.className).toContain('custom-class');
   });
 
   it('should have overflow-y-auto class', () => {
     render(<ModalBody>Content</ModalBody>);
-    const body = screen.getByText('Content').parentElement;
-    expect(body?.className).toContain('overflow-y-auto');
+    const body = screen.getByText('Content');
+    expect(body.className).toContain('overflow-y-auto');
   });
 });
 
@@ -243,15 +243,15 @@ describe('ModalFooter Component', () => {
 
   it('should apply custom className', () => {
     render(<ModalFooter className="custom-footer">Buttons</ModalFooter>);
-    const footer = screen.getByText('Buttons').parentElement;
-    expect(footer?.className).toContain('custom-footer');
+    const footer = screen.getByText('Buttons');
+    expect(footer.className).toContain('custom-footer');
   });
 
   it('should have flex and justify-end classes', () => {
     render(<ModalFooter>Content</ModalFooter>);
-    const footer = screen.getByText('Content').parentElement;
-    expect(footer?.className).toContain('flex');
-    expect(footer?.className).toContain('justify-end');
+    const footer = screen.getByText('Content');
+    expect(footer.className).toContain('flex');
+    expect(footer.className).toContain('justify-end');
   });
 });
 

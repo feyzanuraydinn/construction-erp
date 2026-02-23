@@ -1,6 +1,8 @@
 import React, { Component, ErrorInfo, ReactNode, createContext, useContext } from 'react';
 import { FiAlertTriangle, FiRefreshCw, FiHome, FiDatabase, FiWifi, FiServer } from 'react-icons/fi';
+import { Button } from './ui/Button';
 import { uiLogger } from '../utils/logger';
+import i18n from '../i18n';
 
 /** Error severity levels */
 export type ErrorSeverity = 'low' | 'medium' | 'high' | 'critical';
@@ -29,7 +31,7 @@ export class AppRenderError extends Error {
       type: meta.type || 'unknown',
       severity: meta.severity || 'medium',
       recoverable: meta.recoverable ?? true,
-      userMessage: meta.userMessage || 'Beklenmeyen bir hata oluştu.',
+      userMessage: meta.userMessage || i18n.t('errorBoundary.unexpectedError'),
       technicalMessage: meta.technicalMessage,
       context: meta.context,
     };
@@ -102,7 +104,7 @@ class ErrorBoundary extends Component<Props, State> {
         type: 'database',
         severity: 'high',
         recoverable: true,
-        userMessage: 'Veritabanı işlemi sırasında bir hata oluştu.',
+        userMessage: i18n.t('errorBoundary.databaseMessage'),
       };
     }
 
@@ -112,7 +114,7 @@ class ErrorBoundary extends Component<Props, State> {
         type: 'network',
         severity: 'medium',
         recoverable: true,
-        userMessage: 'Bağlantı sorunu oluştu. Lütfen internet bağlantınızı kontrol edin.',
+        userMessage: i18n.t('errorBoundary.networkMessage'),
       };
     }
 
@@ -122,7 +124,7 @@ class ErrorBoundary extends Component<Props, State> {
         type: 'permission',
         severity: 'high',
         recoverable: false,
-        userMessage: 'Bu işlem için yetkiniz bulunmuyor.',
+        userMessage: i18n.t('errorBoundary.permissionMessage'),
       };
     }
 
@@ -132,7 +134,7 @@ class ErrorBoundary extends Component<Props, State> {
         type: 'validation',
         severity: 'low',
         recoverable: true,
-        userMessage: 'Girilen veriler geçersiz.',
+        userMessage: i18n.t('errorBoundary.validationMessage'),
       };
     }
 
@@ -141,7 +143,7 @@ class ErrorBoundary extends Component<Props, State> {
       type: 'unknown',
       severity: 'medium',
       recoverable: true,
-      userMessage: 'Beklenmeyen bir hata oluştu.',
+      userMessage: i18n.t('errorBoundary.unexpectedError'),
     };
   }
 
@@ -238,15 +240,15 @@ class ErrorBoundary extends Component<Props, State> {
 
     switch (meta?.type) {
       case 'database':
-        return 'Veritabanı Hatası';
+        return i18n.t('errorBoundary.databaseError');
       case 'network':
-        return 'Bağlantı Hatası';
+        return i18n.t('errorBoundary.networkError');
       case 'permission':
-        return 'Yetki Hatası';
+        return i18n.t('errorBoundary.permissionError');
       case 'validation':
-        return 'Doğrulama Hatası';
+        return i18n.t('errorBoundary.validationError');
       default:
-        return 'Bir Hata Oluştu';
+        return i18n.t('errorBoundary.generalError');
     }
   }
 
@@ -261,7 +263,7 @@ class ErrorBoundary extends Component<Props, State> {
       }
 
       const showDetails = process.env.NODE_ENV === 'development' || showDetailsInProduction;
-      const userMessage = errorMeta?.userMessage || 'Beklenmeyen bir hata ile karşılaştık.';
+      const userMessage = errorMeta?.userMessage || i18n.t('errorBoundary.unexpectedError');
       const isRecoverable = errorMeta?.recoverable ?? true;
 
       // Varsayılan hata ekranı
@@ -292,12 +294,12 @@ class ErrorBoundary extends Component<Props, State> {
                   }`}
                 >
                   {errorMeta.severity === 'critical'
-                    ? 'Kritik'
+                    ? i18n.t('errorBoundary.severityCritical')
                     : errorMeta.severity === 'high'
-                      ? 'Yüksek Öncelik'
+                      ? i18n.t('errorBoundary.severityHigh')
                       : errorMeta.severity === 'medium'
-                        ? 'Orta Öncelik'
-                        : 'Düşük Öncelik'}
+                        ? i18n.t('errorBoundary.severityMedium')
+                        : i18n.t('errorBoundary.severityLow')}
                 </span>
               </div>
             )}
@@ -309,7 +311,7 @@ class ErrorBoundary extends Component<Props, State> {
                 {errorInfo && (
                   <details className="text-xs text-gray-500">
                     <summary className="cursor-pointer hover:text-gray-700 mb-2">
-                      Stack Trace
+                      {i18n.t('errorBoundary.stackTrace')}
                     </summary>
                     <pre className="whitespace-pre-wrap overflow-auto max-h-40">
                       {errorInfo.componentStack}
@@ -319,7 +321,7 @@ class ErrorBoundary extends Component<Props, State> {
                 {errorMeta?.context && (
                   <details className="text-xs text-gray-500 mt-2">
                     <summary className="cursor-pointer hover:text-gray-700 mb-2">
-                      Error Context
+                      {i18n.t('errorBoundary.errorContext')}
                     </summary>
                     <pre className="whitespace-pre-wrap overflow-auto max-h-40">
                       {JSON.stringify(errorMeta.context, null, 2)}
@@ -331,30 +333,19 @@ class ErrorBoundary extends Component<Props, State> {
 
             {/* Butonlar */}
             <div className="flex gap-3 justify-center">
-              <button
-                onClick={this.handleGoHome}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                <FiHome size={18} />
-                Ana Sayfa
-              </button>
-              <button
-                onClick={this.handleReload}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <FiRefreshCw size={18} />
-                Sayfayı Yenile
-              </button>
+              <Button variant="secondary" icon={FiHome} onClick={this.handleGoHome}>
+                {i18n.t('errorBoundary.homePage')}
+              </Button>
+              <Button icon={FiRefreshCw} onClick={this.handleReload}>
+                {i18n.t('errorBoundary.refreshPage')}
+              </Button>
             </div>
 
-            {/* Tekrar dene butonu - sadece recoverable hatalar için */}
+            {/* Retry button - only for recoverable errors */}
             {isRecoverable && (
-              <button
-                onClick={this.handleReset}
-                className="mt-4 text-sm text-gray-500 hover:text-gray-700 underline"
-              >
-                Tekrar dene
-              </button>
+              <Button variant="ghost" size="sm" onClick={this.handleReset} className="mt-4 underline">
+                {i18n.t('errorBoundary.retry')}
+              </Button>
             )}
           </div>
         </div>
@@ -386,17 +377,14 @@ export function PageErrorBoundary({ children, pageName }: { children: ReactNode;
         <div className="flex flex-col items-center justify-center min-h-[400px] p-8">
           <FiAlertTriangle className="w-12 h-12 text-red-500 mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            Sayfa yüklenirken hata oluştu
+            {i18n.t('errorBoundary.pageLoadError')}
           </h2>
           <p className="text-gray-500 mb-4">
-            {pageName ? `${pageName} sayfası` : 'Bu sayfa'} yüklenemedi.
+            {i18n.t('errorBoundary.pageLoadFailed', { page: pageName || i18n.t('errorBoundary.thisPage') })}
           </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Sayfayı Yenile
-          </button>
+          <Button icon={FiRefreshCw} onClick={() => window.location.reload()}>
+            {i18n.t('errorBoundary.refreshPage')}
+          </Button>
         </div>
       }
     >
@@ -425,10 +413,10 @@ export function ComponentErrorBoundary({
           <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-center gap-2 text-red-700">
               <FiAlertTriangle className="w-5 h-5" />
-              <span className="font-medium">Bileşen yüklenemedi</span>
+              <span className="font-medium">{i18n.t('errorBoundary.componentLoadFailed')}</span>
             </div>
             <p className="mt-1 text-sm text-red-600">
-              {componentName || 'Bu bileşen'} görüntülenirken bir hata oluştu.
+              {i18n.t('errorBoundary.componentError', { component: componentName || i18n.t('errorBoundary.thisPage') })}
             </p>
           </div>
         )
