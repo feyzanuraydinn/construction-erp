@@ -49,8 +49,8 @@
 ### Geliştirme
 
 ```bash
-git clone https://github.com/feyzanuraydinn/insaat-erp.git
-cd insaat-erp
+git clone https://github.com/feyzanuraydinn/construction-erp.git
+cd construction-erp
 npm install
 npm run dev
 ```
