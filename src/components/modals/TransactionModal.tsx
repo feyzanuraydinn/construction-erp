@@ -9,6 +9,7 @@ import {
   Input,
   Select,
   Textarea,
+  ConfirmDialog,
 } from '../ui';
 import { formatCurrency, formatDate, formatDateForInput } from '../../utils/formatters';
 import { CURRENCIES } from '../../utils/constants';
@@ -174,6 +175,14 @@ export function TransactionModal({
   const [availableInvoices, setAvailableInvoices] = useState<InvoiceWithBalance[]>([]);
   const [allocations, setAllocations] = useState<AllocationEntry[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
+
+  // Tür değişikliği uyarı state'leri
+  const [typeChangeWarning, setTypeChangeWarning] = useState<{
+    show: boolean;
+    pendingType: TransactionType | null;
+    allocationCount: number;
+    allocationTotal: number;
+  }>({ show: false, pendingType: null, allocationCount: 0, allocationTotal: 0 });
 
   const isSimple = mode === 'simple';
   const enableCurrency = !isSimple;
@@ -369,7 +378,7 @@ export function TransactionModal({
     }
   };
 
-  const handleTypeChange = (value: TransactionType) => {
+  const applyTypeChange = (value: TransactionType) => {
     setFormData({
       ...formData,
       type: value,
@@ -377,6 +386,52 @@ export function TransactionModal({
       linked_invoice_id: '',
     });
     setAllocations([]);
+  };
+
+  const handleTypeChange = async (value: TransactionType) => {
+    if (!transaction) {
+      applyTypeChange(value);
+      return;
+    }
+
+    // Düzenleme modunda: bağlı eşleştirmeleri kontrol et
+    try {
+      const isPayment = transaction.type === 'payment_in' || transaction.type === 'payment_out';
+      const isInvoice = transaction.type === 'invoice_out' || transaction.type === 'invoice_in';
+
+      let linkedAllocations: { amount: number }[] = [];
+      if (isPayment) {
+        linkedAllocations = await window.electronAPI.transaction.getAllocationsForPayment(transaction.id);
+      } else if (isInvoice) {
+        linkedAllocations = await window.electronAPI.transaction.getAllocationsForInvoice(transaction.id);
+      }
+
+      if (linkedAllocations.length > 0) {
+        const total = linkedAllocations.reduce((sum, a) => sum + a.amount, 0);
+        setTypeChangeWarning({
+          show: true,
+          pendingType: value,
+          allocationCount: linkedAllocations.length,
+          allocationTotal: total,
+        });
+        return;
+      }
+    } catch {
+      // Sorgu başarısız olursa direkt devam et
+    }
+
+    applyTypeChange(value);
+  };
+
+  const confirmTypeChange = () => {
+    if (typeChangeWarning.pendingType) {
+      applyTypeChange(typeChangeWarning.pendingType);
+    }
+    setTypeChangeWarning({ show: false, pendingType: null, allocationCount: 0, allocationTotal: 0 });
+  };
+
+  const cancelTypeChange = () => {
+    setTypeChangeWarning({ show: false, pendingType: null, allocationCount: 0, allocationTotal: 0 });
   };
 
   const updateField = <K extends keyof TransactionModalFormState>(
@@ -433,6 +488,7 @@ export function TransactionModal({
   };
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={onClose} title={getTitle()} size={showAllocationPanel ? 'lg' : 'md'}>
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <ModalBody className="space-y-4">
@@ -698,5 +754,20 @@ export function TransactionModal({
         </ModalFooter>
       </form>
     </Modal>
+
+    <ConfirmDialog
+      isOpen={typeChangeWarning.show}
+      onClose={cancelTypeChange}
+      onConfirm={confirmTypeChange}
+      title={t('transactionModal.typeChangeWarningTitle')}
+      message={t('transactionModal.typeChangeWarningMessage', {
+        count: typeChangeWarning.allocationCount,
+        total: formatCurrency(typeChangeWarning.allocationTotal),
+      })}
+      type="warning"
+      confirmText={t('transactionModal.removeAllocations')}
+      cancelText={t('common.cancel')}
+    />
+    </>
   );
 }

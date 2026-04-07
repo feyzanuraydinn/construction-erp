@@ -68,6 +68,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('transaction:setAllocations', paymentId, allocations),
     getAllocationsForPayment: (paymentId: number) =>
       ipcRenderer.invoke('transaction:getAllocationsForPayment', paymentId),
+    getAllocationsForInvoice: (invoiceId: number) =>
+      ipcRenderer.invoke('transaction:getAllocationsForInvoice', invoiceId),
   },
 
   // Material operations

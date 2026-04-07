@@ -189,14 +189,16 @@ export function calculateDashboardFinancials(transactions: AnyTransaction[]): Da
 }
 
 /**
- * İşlem toplamlarını hesaplar (tüm payment'lar dahil).
+ * İşlem toplamlarını hesaplar.
  * Transactions listesi, CompanyAccount ve PrintView'da kullanılır.
  *
- * totalIncome = Satış faturaları + Tahsilatlar (gelen para)
- * totalExpense = Alış faturaları + Ödemeler (çıkan para)
+ * totalIncome = Satış faturaları (fatura bazlı gelir)
+ * totalExpense = Alış faturaları (fatura bazlı gider)
  * netProfit = Satış faturaları - Alış faturaları (fatura bazlı kâr/zarar)
  * netCashFlow = Tahsilatlar - Ödemeler (nakit akışı)
- * netBalance = totalIncome - totalExpense (genel net durum)
+ * netBalance = Alacak - Borç = (invoice_out - payment_in) - (invoice_in - payment_out)
+ *
+ * Ödemeler fatura borcunu/alacağını azaltır, gider/gelir olarak eklenmez.
  */
 export function calculateTransactionTotals(transactions: AnyTransaction[]): TransactionTotals {
   const totalInvoiceOut = sumByType(transactions, 'invoice_out');
@@ -204,16 +206,19 @@ export function calculateTransactionTotals(transactions: AnyTransaction[]): Tran
   const totalInvoiceIn = sumByType(transactions, 'invoice_in');
   const totalPaymentOut = sumByType(transactions, 'payment_out');
 
+  const receivable = totalInvoiceOut - totalPaymentIn;
+  const payable = totalInvoiceIn - totalPaymentOut;
+
   return {
     totalInvoiceOut,
     totalPaymentIn,
     totalInvoiceIn,
     totalPaymentOut,
-    totalIncome: totalInvoiceOut + totalPaymentIn,
-    totalExpense: totalInvoiceIn + totalPaymentOut,
+    totalIncome: totalInvoiceOut,
+    totalExpense: totalInvoiceIn,
     netProfit: totalInvoiceOut - totalInvoiceIn,
     netCashFlow: totalPaymentIn - totalPaymentOut,
-    netBalance: (totalInvoiceOut + totalPaymentIn) - (totalInvoiceIn + totalPaymentOut),
+    netBalance: receivable - payable,
   };
 }
 

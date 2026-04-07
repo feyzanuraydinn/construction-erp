@@ -1018,7 +1018,10 @@
     "remaining": "Kalan",
     "allocation": "Eşleştirme",
     "unallocated": "Bağımsız",
-    "fullMatch": "Tam eşleşme"
+    "fullMatch": "Tam eşleşme",
+    "typeChangeWarningTitle": "Bağlı Eşleştirmeler Mevcut",
+    "typeChangeWarningMessage": "Bu işleme bağlı {{count}} adet ödeme eşleştirmesi (toplam {{total}}) bulunmaktadır. Tür değiştirilirse bu eşleştirmeler kaldırılacaktır.",
+    "removeAllocations": "Bağları Kaldır ve Devam Et"
   },
 
   "categories": {

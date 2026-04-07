@@ -118,4 +118,10 @@ export function registerTransactionHandlers(getDbService: () => DatabaseService)
     if (!validation.success) throw new Error(validation.error);
     return getDbService().paymentAllocations.getForPayment(validation.data!);
   });
+
+  safeHandle('transaction:getAllocationsForInvoice', (_: IpcMainInvokeEvent, invoiceId: unknown) => {
+    const validation = validateId(invoiceId);
+    if (!validation.success) throw new Error(validation.error);
+    return getDbService().paymentAllocations.getForInvoice(validation.data!);
+  });
 }

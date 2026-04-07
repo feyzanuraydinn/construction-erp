@@ -57,8 +57,12 @@ describe('financials', () => {
       expect(result.totalPaymentIn).toBe(400);
       expect(result.totalInvoiceIn).toBe(200);
       expect(result.totalPaymentOut).toBe(100);
+      expect(result.totalIncome).toBe(800); // only invoices out
+      expect(result.totalExpense).toBe(200); // only invoices in
       expect(result.netProfit).toBe(600); // 800 - 200
       expect(result.netCashFlow).toBe(300); // 400 - 100
+      // netBalance = receivable - payable = (800 - 400) - (200 - 100) = 400 - 100 = 300
+      expect(result.netBalance).toBe(300);
     });
   });
 

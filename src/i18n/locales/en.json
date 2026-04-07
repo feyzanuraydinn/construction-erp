@@ -1018,7 +1018,10 @@
     "remaining": "Remaining",
     "allocation": "Allocation",
     "unallocated": "Unallocated",
-    "fullMatch": "Fully matched"
+    "fullMatch": "Fully matched",
+    "typeChangeWarningTitle": "Linked Allocations Exist",
+    "typeChangeWarningMessage": "This transaction has {{count}} linked payment allocation(s) (total {{total}}). Changing the type will remove these allocations.",
+    "removeAllocations": "Remove Allocations & Continue"
   },
 
   "categories": {

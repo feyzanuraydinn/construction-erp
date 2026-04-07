@@ -58,8 +58,8 @@ export const PrintHeader: React.FC<PrintHeaderProps> = ({ title, subtitle, date 
   return (
     <div className="mb-6 pb-4 border-b-2 border-gray-800">
       <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-      {subtitle && <p className="text-gray-600 mt-1">{subtitle}</p>}
-      <p className="text-sm text-gray-500 mt-2">
+      {subtitle && <p className="text-gray-800 mt-1">{subtitle}</p>}
+      <p className="text-sm text-gray-900 mt-2">
         {t('print.reportDate')} {formatDate(date || new Date().toISOString())}
       </p>
     </div>
@@ -82,7 +82,7 @@ export const PrintStats: React.FC<PrintStatsProps> = ({ stats }) => {
     <div className="grid grid-cols-4 gap-4 mb-6">
       {stats.map((stat, index) => (
         <div key={index} className="bg-gray-50 p-3 rounded border">
-          <p className="text-xs text-gray-500 mb-1">{stat.label}</p>
+          <p className="text-xs text-gray-900 mb-1">{stat.label}</p>
           <p className={`text-lg font-bold ${stat.color || 'text-gray-900'}`}>{stat.value}</p>
         </div>
       ))}
@@ -106,8 +106,7 @@ export const PrintTransactionTable: React.FC<PrintTransactionTableProps> = ({
     totalPaymentIn,
     totalInvoiceIn,
     totalPaymentOut,
-    totalIncome,
-    totalExpense,
+    netBalance,
   } = calculateTransactionTotals(transactions);
 
   return (
@@ -200,9 +199,9 @@ export const PrintTransactionTable: React.FC<PrintTransactionTableProps> = ({
               {t('print.net')}
             </td>
             <td
-              className={`border border-gray-300 px-2 py-1.5 text-right ${totalIncome - totalExpense >= 0 ? 'text-green-700' : 'text-red-700'}`}
+              className={`border border-gray-300 px-2 py-1.5 text-right ${netBalance >= 0 ? 'text-green-700' : 'text-red-700'}`}
             >
-              {formatCurrency(totalIncome - totalExpense)}
+              {formatCurrency(netBalance)}
             </td>
           </tr>
         </tfoot>
@@ -259,30 +258,30 @@ export const ProjectPrintView = forwardRef<HTMLDivElement, ProjectPrintViewProps
         {/* Project Info */}
         <div className="mb-6 grid grid-cols-2 gap-4">
           <div>
-            <h3 className="text-sm font-semibold text-gray-600 mb-2">{t('print.projectInfo')}</h3>
+            <h3 className="text-sm font-semibold text-gray-800 mb-2">{t('print.projectInfo')}</h3>
             <table className="text-sm">
               <tbody>
                 {project.location && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.location')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.location')}</td>
                     <td>{project.location}</td>
                   </tr>
                 )}
                 {project.total_area && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.area')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.area')}</td>
                     <td>{project.total_area} m²</td>
                   </tr>
                 )}
                 {project.unit_count && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.unitCount')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.unitCount')}</td>
                     <td>{project.unit_count}</td>
                   </tr>
                 )}
                 {project.estimated_budget && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.estimatedBudget')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.estimatedBudget')}</td>
                     <td>{formatCurrency(project.estimated_budget)}</td>
                   </tr>
                 )}
@@ -290,24 +289,24 @@ export const ProjectPrintView = forwardRef<HTMLDivElement, ProjectPrintViewProps
             </table>
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-gray-600 mb-2">{t('print.dates')}</h3>
+            <h3 className="text-sm font-semibold text-gray-800 mb-2">{t('print.dates')}</h3>
             <table className="text-sm">
               <tbody>
                 {project.planned_start && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.plannedStart')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.plannedStart')}</td>
                     <td>{formatDate(project.planned_start)}</td>
                   </tr>
                 )}
                 {project.planned_end && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.plannedEnd')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.plannedEnd')}</td>
                     <td>{formatDate(project.planned_end)}</td>
                   </tr>
                 )}
                 {project.actual_start && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.actualStart')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.actualStart')}</td>
                     <td>{formatDate(project.actual_start)}</td>
                   </tr>
                 )}
@@ -338,7 +337,7 @@ export const ProjectPrintView = forwardRef<HTMLDivElement, ProjectPrintViewProps
             {
               label: t('print.estimatedProfit'),
               value: estimatedProfit !== null ? formatCurrency(estimatedProfit) : '-',
-              color: estimatedProfit === null ? 'text-gray-500' : estimatedProfit >= 0 ? 'text-green-700' : 'text-red-700',
+              color: estimatedProfit === null ? 'text-gray-900' : estimatedProfit >= 0 ? 'text-green-700' : 'text-red-700',
             },
             {
               label: t('print.budgetUsage'),
@@ -413,7 +412,7 @@ export const ProjectPrintView = forwardRef<HTMLDivElement, ProjectPrintViewProps
         <PrintTransactionTable transactions={transactions} showCompany={true} />
 
         {/* Footer */}
-        <div className="mt-8 pt-4 border-t text-xs text-gray-500 text-center">
+        <div className="mt-8 pt-4 border-t text-xs text-gray-900 text-center">
           {t('print.footerReport', { date: formatDate(new Date().toISOString()) })}
         </div>
       </div>
@@ -438,6 +437,7 @@ export const CompanyPrintView = forwardRef<HTMLDivElement, CompanyPrintViewProps
     const {
       totalIncome,
       totalExpense,
+      netBalance,
     } = calculateTransactionTotals(transactions);
 
     const filterParts = buildFilterDescription(filters, categories, t);
@@ -457,24 +457,24 @@ export const CompanyPrintView = forwardRef<HTMLDivElement, CompanyPrintViewProps
         {/* Company Info */}
         <div className="mb-6 grid grid-cols-2 gap-4">
           <div>
-            <h3 className="text-sm font-semibold text-gray-600 mb-2">{t('print.contactInfo')}</h3>
+            <h3 className="text-sm font-semibold text-gray-800 mb-2">{t('print.contactInfo')}</h3>
             <table className="text-sm">
               <tbody>
                 {company.phone && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.phoneLine')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.phoneLine')}</td>
                     <td>{company.phone}</td>
                   </tr>
                 )}
                 {company.email && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.emailLine')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.emailLine')}</td>
                     <td>{company.email}</td>
                   </tr>
                 )}
                 {company.address && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.addressLine')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.addressLine')}</td>
                     <td>{company.address}</td>
                   </tr>
                 )}
@@ -482,18 +482,18 @@ export const CompanyPrintView = forwardRef<HTMLDivElement, CompanyPrintViewProps
             </table>
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-gray-600 mb-2">{t('print.taxInfo')}</h3>
+            <h3 className="text-sm font-semibold text-gray-800 mb-2">{t('print.taxInfo')}</h3>
             <table className="text-sm">
               <tbody>
                 {company.tax_office && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.taxOffice')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.taxOffice')}</td>
                     <td>{company.tax_office}</td>
                   </tr>
                 )}
                 {company.tax_number && (
                   <tr>
-                    <td className="pr-4 py-1 text-gray-500">{t('print.taxNumber')}</td>
+                    <td className="pr-4 py-1 text-gray-900">{t('print.taxNumber')}</td>
                     <td>{company.tax_number}</td>
                   </tr>
                 )}
@@ -517,8 +517,8 @@ export const CompanyPrintView = forwardRef<HTMLDivElement, CompanyPrintViewProps
             { label: t('print.periodExpense'), value: formatCurrency(totalExpense), color: 'text-red-700' },
             {
               label: t('print.periodNet'),
-              value: formatCurrency(totalIncome - totalExpense),
-              color: totalIncome - totalExpense >= 0 ? 'text-green-700' : 'text-red-700',
+              value: formatCurrency(netBalance),
+              color: netBalance >= 0 ? 'text-green-700' : 'text-red-700',
             },
             { label: t('print.transactionCount'), value: transactions.length.toString() },
           ]}
@@ -528,7 +528,7 @@ export const CompanyPrintView = forwardRef<HTMLDivElement, CompanyPrintViewProps
         <PrintTransactionTable transactions={transactions} showCompany={false} />
 
         {/* Footer */}
-        <div className="mt-8 pt-4 border-t text-xs text-gray-500 text-center">
+        <div className="mt-8 pt-4 border-t text-xs text-gray-900 text-center">
           {t('print.footerReport', { date: formatDate(new Date().toISOString()) })}
         </div>
       </div>
@@ -555,14 +555,15 @@ export const CompanyAccountPrintView = forwardRef<HTMLDivElement, CompanyAccount
       totalPaymentOut,
       totalIncome,
       totalExpense,
+      netBalance,
     } = calculateTransactionTotals(transactions);
 
     const filterParts = buildFilterDescription(filters, categories, t);
     const hasFilters = filterParts.length > 0;
 
-    // Group by category for summary (invoice_in and payment_out are expenses)
+    // Group by category for summary (only invoices are expenses, payments reduce debt)
     const expenseByCategory = transactions
-      .filter((t) => t.type === 'invoice_in' || t.type === 'payment_out')
+      .filter((t) => t.type === 'invoice_in')
       .reduce<Record<string, number>>((acc, t) => {
         const catName = t.category_name || 'Other';
         acc[catName] = (acc[catName] || 0) + (t.amount_try || t.amount);
@@ -592,8 +593,8 @@ export const CompanyAccountPrintView = forwardRef<HTMLDivElement, CompanyAccount
             { label: t('print.totalExpense'), value: formatCurrency(totalExpense), color: 'text-red-700' },
             {
               label: t('print.netStatus'),
-              value: formatCurrency(totalIncome - totalExpense),
-              color: totalIncome - totalExpense >= 0 ? 'text-green-700' : 'text-red-700',
+              value: formatCurrency(netBalance),
+              color: netBalance >= 0 ? 'text-green-700' : 'text-red-700',
             },
             { label: t('print.transactionCount'), value: transactions.length.toString() },
           ]}
@@ -703,9 +704,9 @@ export const CompanyAccountPrintView = forwardRef<HTMLDivElement, CompanyAccount
                   {t('print.net')}
                 </td>
                 <td
-                  className={`border border-gray-300 px-2 py-1.5 text-right ${totalIncome - totalExpense >= 0 ? 'text-green-700' : 'text-red-700'}`}
+                  className={`border border-gray-300 px-2 py-1.5 text-right ${netBalance >= 0 ? 'text-green-700' : 'text-red-700'}`}
                 >
-                  {formatCurrency(totalIncome - totalExpense)}
+                  {formatCurrency(netBalance)}
                 </td>
               </tr>
             </tfoot>
@@ -713,7 +714,7 @@ export const CompanyAccountPrintView = forwardRef<HTMLDivElement, CompanyAccount
         </div>
 
         {/* Footer */}
-        <div className="mt-8 pt-4 border-t text-xs text-gray-500 text-center">
+        <div className="mt-8 pt-4 border-t text-xs text-gray-900 text-center">
           {t('print.footerReport', { date: formatDate(new Date().toISOString()) })}
         </div>
       </div>

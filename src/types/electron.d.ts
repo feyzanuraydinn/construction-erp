@@ -80,6 +80,7 @@ export interface ElectronAPI {
     getInvoicesWithBalance: (entityId: number, entityType: 'project' | 'company', invoiceType: 'invoice_out' | 'invoice_in') => Promise<InvoiceWithBalance[]>;
     setAllocations: (paymentId: number, allocations: { invoiceId: number; amount: number }[]) => Promise<{ success: boolean }>;
     getAllocationsForPayment: (paymentId: number) => Promise<PaymentAllocationWithDetails[]>;
+    getAllocationsForInvoice: (invoiceId: number) => Promise<PaymentAllocationWithDetails[]>;
   };
 
   material: {

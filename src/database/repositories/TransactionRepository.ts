@@ -106,6 +106,15 @@ export class TransactionRepository extends BaseRepository<TransactionWithDetails
       }
     }
     if (fields.length === 0) return this.getById(id);
+
+    // Tür değiştiğinde bağlı eşleştirmeleri temizle (orphan önleme)
+    if ('type' in data) {
+      const existing = this.queryOne<TransactionWithDetails>('SELECT * FROM transactions WHERE id = ?', [id]);
+      if (existing && existing.type !== data.type) {
+        this.run('DELETE FROM payment_allocations WHERE payment_id = ? OR invoice_id = ?', [id, id]);
+      }
+    }
+
     fields.push("updated_at = CURRENT_TIMESTAMP");
     values.push(id);
     this.run(`UPDATE transactions SET ${fields.join(', ')} WHERE id = ?`, values);
