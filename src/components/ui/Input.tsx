@@ -104,7 +104,7 @@ export const Select = memo(function Select({
         <option value="">{displayPlaceholder}</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
-            {option.label}
+            {t(option.label, option.label)}
           </option>
         ))}
       </select>

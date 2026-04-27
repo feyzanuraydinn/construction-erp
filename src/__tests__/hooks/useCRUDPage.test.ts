@@ -32,7 +32,9 @@ vi.mock('../../contexts/ToastContext', () => ({
 // Mock export utils
 vi.mock('../../utils/exportUtils', () => ({
   formatRecordsForExport: vi.fn().mockReturnValue([]),
-  exportToCSV: vi.fn().mockResolvedValue('/path/to/export.csv'),
+  exportToCSV: vi.fn().mockResolvedValue('/path/to/export.xlsx'),
+  exportToExcel: vi.fn().mockResolvedValue('/path/to/export.xlsx'),
+  shareExcel: vi.fn().mockResolvedValue('/path/to/export.xlsx'),
 }));
 
 // Mock useKeyboardShortcuts to prevent event listener issues

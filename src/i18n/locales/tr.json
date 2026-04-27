@@ -1,11 +1,17 @@
 {
   "app": {
-    "title": "İnşaat ERP",
+    "title": "Construction ERP",
     "search": "Ara...",
     "searchShortcut": "Ara (Ctrl+K)",
     "backupSuccess": "Veritabanı yedeği başarıyla oluşturuldu",
     "backupError": "Yedek oluşturulamadı",
-    "loading": "Yükleniyor..."
+    "loading": "Yükleniyor...",
+    "closeConfirmTitle": "Çıkış Onayı",
+    "closeConfirmMessage": "Çıkmak istediğinize emin misiniz?",
+    "closeConfirmDetail": "Çıkmadan önce verileriniz yerel yedek dosyasına kaydedilecek ve buluta yüklenecek.",
+    "closeConfirmDetailPending": "Kaydedilmemiş değişiklikleriniz var. Çıkmadan önce yerel yedek alınacak ve buluta yüklenecek.",
+    "closeConfirmYes": "Evet, Kapat",
+    "closeInProgress": "Veriler yedekleniyor ve buluta yükleniyor..."
   },
 
   "menu": {
@@ -27,9 +33,12 @@
     "edit": "Düzenle",
     "update": "Güncelle",
     "close": "Kapat",
+    "closing": "Kapatılıyor...",
+    "warning": "Uyarı",
     "add": "Ekle",
     "export": "Dışa Aktar",
     "exportToExcel": "Excel'e Aktar",
+    "share": "Paylaş",
     "import": "İçe Aktar",
     "refresh": "Yenile",
     "refreshing": "Güncelleniyor...",
@@ -352,6 +361,7 @@
     "bulkDeleteSuccess": "{{count}} cari hesap başarıyla silindi",
     "bulkDeletePartial": "{{success}} silindi, {{error}} silinemedi",
     "table": {
+      "code": "Kod",
       "type": "Tür",
       "accountType": "Cari Tipi",
       "name": "Ad/Ünvan",
@@ -523,6 +533,11 @@
       "documentNo": "Belge No",
       "documentPlaceholder": "Irsaliye/Fatura",
       "description": "Açıklama"
+    },
+    "detail": {
+      "title": "Malzeme Detayı",
+      "createdAt": "Oluşturulma Tarihi",
+      "updatedAt": "Son Güncelleme"
     }
   },
 
@@ -792,6 +807,8 @@
       "phone": "Telefon",
       "email": "E-posta",
       "address": "Adres",
+      "receivable": "Alacak",
+      "payable": "Borç",
       "balance": "Bakiye",
       "projectName": "Proje Adı",
       "status": "Durum",
@@ -802,6 +819,41 @@
       "totalExpense": "Toplam Gider",
       "totalCollected": "Toplam Tahsilat",
       "totalPaid": "Toplam Ödenen"
+    },
+    "filenames": {
+      "companies": "cari_hesaplar",
+      "transactions": "tum_islemler",
+      "companyTransactions": "islemler",
+      "companyAccount": "firma_hesabi",
+      "projects": "projeler",
+      "projectTransactions": "proje_islemler"
+    },
+    "preview": {
+      "title": "Dışa Aktarma Önizleme",
+      "filterHint": "Filtreleyerek dışa aktarabilirsiniz",
+      "recordCount": "{{count}} kayıt",
+      "showing": "{{shown}} / {{total}} kayıt gösteriliyor",
+      "selectAll": "Tümünü Seç",
+      "deselectAll": "Tümünü Kaldır",
+      "selectedCount": "{{selected}} / {{total}} kayıt seçili"
+    },
+    "share": {
+      "button": "Paylaş",
+      "success": "Paylaşım penceresi açıldı",
+      "error": "Paylaşım hatası"
+    },
+    "summary": {
+      "header": "Genel Özet",
+      "invoiceOut": "Satış Faturaları Toplamı",
+      "paymentIn": "Tahsilat Toplamı",
+      "invoiceIn": "Alış Faturaları Toplamı",
+      "paymentOut": "Ödeme Toplamı",
+      "receivable": "Net Alacak",
+      "payable": "Net Borç",
+      "netBalance": "Net Bakiye",
+      "totalReceivable": "Toplam Alacak",
+      "totalPayable": "Toplam Borç",
+      "accountCount": "Hesap Sayısı"
     }
   },
 
@@ -908,6 +960,8 @@
   },
 
   "projectDetail": {
+    "transactionsTab": "İşlemler",
+    "partiesTab": "Paydaşlar",
     "notFound": {
       "title": "Proje bulunamadı",
       "description": "Aradığınız proje mevcut değil",
@@ -1220,5 +1274,42 @@
       "invalidInvoiceType": "Geçersiz fatura tipi",
       "allocationsMustBeArray": "Eşleştirmeler dizi olmalıdır"
     }
+  },
+  "sync": {
+    "synced": "Senkron",
+    "uploading": "Yükleniyor",
+    "downloading": "İndiriliyor",
+    "pending": "Bekliyor",
+    "conflict": "Çakışma",
+    "error": "Hata",
+    "offline": "Çevrimdışı",
+    "disconnected": "Bağlı değil",
+    "lastSyncLabel": "En son: {{value}}",
+    "lastSyncFullLabel": "En son başarılı senkron: {{value}}",
+    "errorLabel": "Hata: {{error}}",
+    "syncNow": "Şimdi Senkronla",
+    "neverSynced": "henüz yok",
+    "justNow": "az önce",
+    "minutesAgo": "{{n}} dk önce",
+    "hoursAgo": "{{n}} saat önce",
+    "conflictTitle": "Senkronizasyon Çakışması",
+    "conflictSubtitle": "Hem bu cihazda hem de başka bir cihazda değişiklik var.",
+    "conflictExplain": "Son senkronizasyondan ({{lastSync}}) beri:",
+    "conflictItem1": "Bu cihazda değişiklikler yapıldı.",
+    "conflictItem2": "Buluttaki dosya da {{remoteTime}} tarihinde güncellenmiş (başka bir cihazdan).",
+    "conflictWarning": "Seçiminiz, diğer versiyondaki değişiklikleri kaybedecek. Emin değilseniz önce \"Sonra Karar Ver\" seçin ve buluttaki dosyayı elle inceleyin.",
+    "useLocal": "Bu cihazdakini kullan",
+    "useLocalHint": "Bu cihazdaki veriyi buluta yükle",
+    "useLocalUploading": "(yükleniyor...)",
+    "useRemote": "Buluttakini kullan",
+    "useRemoteHint": "Buluttaki veriyi indir, bu cihazdakinin üzerine yaz",
+    "useRemoteDownloading": "(indiriliyor...)",
+    "decideLater": "Sonra Karar Ver",
+    "decideLaterHint": "Şimdilik offline çalış, sonra ayarlardan senkronla",
+    "useLocalSuccess": "Bu cihazdaki veriler buluta yüklendi.",
+    "useRemoteSuccess": "Buluttaki veriler indirildi.",
+    "resolveError": "İşlem başarısız.",
+    "unexpectedError": "Beklenmeyen hata: {{error}}",
+    "neverInTr": "hiç"
   }
 }

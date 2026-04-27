@@ -17,7 +17,8 @@ A full-featured desktop ERP application for construction companies. Manage curre
 
 ### Additional Features
 - **Data Export** - Excel (XLSX) and PDF export for all data tables
-- **Cloud Backup** - Google Drive integration with encrypted backup/restore and auto-sync
+- **Cloud Sync** - Google Drive integration with auto-sync (5-min interval + on-close), persisted mtime-based change detection (survives app restarts), conflict resolution dialog (use-local / use-remote / decide-later), weekly snapshot rotation, encrypted credentials via Electron `safeStorage`. Local backup file mirrors the cloud copy after every successful sync.
+- **In-App Close Confirmation** - React-based modal asks before quit; on confirm, runs local backup + cloud upload (10s timeout) before exiting.
 - **Trash & Recovery** - Soft delete for all entities with one-click recovery
 - **Multi-language** - Full Turkish and English support across the entire app (including main process dialogs)
 - **Dark Mode** - Light, dark, and system-follow theme options
@@ -86,7 +87,7 @@ npm run build
 ```
 src/
 ├── main/                    # Electron main process
-│   ├── ipc/                 # 12 IPC handler modules
+│   ├── ipc/                 # 13 IPC handler modules
 │   │   ├── safeHandle.ts    # Error-sanitizing IPC wrapper
 │   │   ├── appHandlers.ts
 │   │   ├── companyHandlers.ts
@@ -98,9 +99,11 @@ src/
 │   │   ├── backupHandlers.ts
 │   │   ├── categoryHandlers.ts
 │   │   ├── dashboardHandlers.ts
-│   │   └── trashHandlers.ts
+│   │   ├── trashHandlers.ts
+│   │   └── syncHandlers.ts  # Cloud sync orchestration
 │   ├── i18n.ts              # Main process i18n (shared locale files)
-│   ├── googleDrive.ts       # Google Drive OAuth2 & sync
+│   ├── googleDrive.ts       # Google Drive OAuth2 & sync API
+│   ├── SyncService.ts       # Sync orchestrator (interval, dirty/mtime detection, conflict, snapshots, beforeQuit)
 │   ├── autoUpdater.ts       # Auto-update manager
 │   ├── preload.ts           # Context bridge (renderer ↔ main)
 │   └── main.ts              # App entry point
@@ -122,7 +125,11 @@ src/
 ├── components/
 │   ├── ui/                  # 15 UI primitives
 │   ├── modals/              # 6 CRUD modals
-│   └── shared/              # Sidebar, Layout, PrintView
+│   ├── shared/              # Sidebar, Layout, PrintView
+│   ├── SyncStatusIndicator.tsx  # Sidebar sync-status pill with popover
+│   ├── SyncConflictModal.tsx    # Conflict resolution dialog
+│   ├── CloseConfirmModal.tsx    # In-app close confirmation
+│   └── ErrorBoundary.tsx
 ├── database/
 │   ├── DatabaseService.ts   # SQLite init, migrations
 │   └── repositories/        # 8 specialized repositories
@@ -146,7 +153,7 @@ src/
 │   ├── usePrint.ts
 │   ├── useKeyboardShortcuts.ts
 │   └── useDebounce.ts
-├── contexts/                # Toast, Theme
+├── contexts/                # Toast, Theme, Sync
 ├── i18n/
 │   └── locales/             # tr.json, en.json (~1200 keys each)
 ├── utils/

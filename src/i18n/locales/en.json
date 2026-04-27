@@ -5,7 +5,13 @@
     "searchShortcut": "Search (Ctrl+K)",
     "backupSuccess": "Database backup created successfully",
     "backupError": "Failed to create backup",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "closeConfirmTitle": "Confirm Close",
+    "closeConfirmMessage": "Are you sure you want to close?",
+    "closeConfirmDetail": "Before closing, your data will be saved to the local backup and uploaded to the cloud.",
+    "closeConfirmDetailPending": "You have unsaved changes. Before closing, a local backup will be created and uploaded to the cloud.",
+    "closeConfirmYes": "Yes, Close",
+    "closeInProgress": "Backing up and uploading to cloud..."
   },
 
   "menu": {
@@ -27,9 +33,12 @@
     "edit": "Edit",
     "update": "Update",
     "close": "Close",
+    "closing": "Closing...",
+    "warning": "Warning",
     "add": "Add",
     "export": "Export",
     "exportToExcel": "Export to Excel",
+    "share": "Share",
     "import": "Import",
     "refresh": "Refresh",
     "refreshing": "Refreshing...",
@@ -352,6 +361,7 @@
     "bulkDeleteSuccess": "{{count}} accounts deleted successfully",
     "bulkDeletePartial": "{{success}} deleted, {{error}} failed",
     "table": {
+      "code": "Code",
       "type": "Type",
       "accountType": "Account Type",
       "name": "Name/Title",
@@ -523,6 +533,11 @@
       "documentNo": "Document No",
       "documentPlaceholder": "Waybill/Invoice",
       "description": "Description"
+    },
+    "detail": {
+      "title": "Material Detail",
+      "createdAt": "Created At",
+      "updatedAt": "Last Updated"
     }
   },
 
@@ -792,6 +807,8 @@
       "phone": "Phone",
       "email": "Email",
       "address": "Address",
+      "receivable": "Receivable",
+      "payable": "Payable",
       "balance": "Balance",
       "projectName": "Project Name",
       "status": "Status",
@@ -802,6 +819,41 @@
       "totalExpense": "Total Expense",
       "totalCollected": "Total Collected",
       "totalPaid": "Total Paid"
+    },
+    "filenames": {
+      "companies": "accounts",
+      "transactions": "all_transactions",
+      "companyTransactions": "transactions",
+      "companyAccount": "company_account",
+      "projects": "projects",
+      "projectTransactions": "project_transactions"
+    },
+    "preview": {
+      "title": "Export Preview",
+      "filterHint": "You can filter before exporting",
+      "recordCount": "{{count}} records",
+      "showing": "Showing {{shown}} of {{total}}",
+      "selectAll": "Select All",
+      "deselectAll": "Deselect All",
+      "selectedCount": "{{selected}} / {{total}} records selected"
+    },
+    "share": {
+      "button": "Share",
+      "success": "Share dialog opened",
+      "error": "Share error"
+    },
+    "summary": {
+      "header": "Summary",
+      "invoiceOut": "Total Sales Invoices",
+      "paymentIn": "Total Collections",
+      "invoiceIn": "Total Purchase Invoices",
+      "paymentOut": "Total Payments",
+      "receivable": "Net Receivable",
+      "payable": "Net Payable",
+      "netBalance": "Net Balance",
+      "totalReceivable": "Total Receivable",
+      "totalPayable": "Total Payable",
+      "accountCount": "Account Count"
     }
   },
 
@@ -908,6 +960,8 @@
   },
 
   "projectDetail": {
+    "transactionsTab": "Transactions",
+    "partiesTab": "Stakeholders",
     "notFound": {
       "title": "Project not found",
       "description": "The project you are looking for does not exist",
@@ -1220,5 +1274,42 @@
       "invalidInvoiceType": "Invalid invoice type",
       "allocationsMustBeArray": "Allocations must be an array"
     }
+  },
+  "sync": {
+    "synced": "Synced",
+    "uploading": "Uploading",
+    "downloading": "Downloading",
+    "pending": "Pending",
+    "conflict": "Conflict",
+    "error": "Error",
+    "offline": "Offline",
+    "disconnected": "Disconnected",
+    "lastSyncLabel": "Last: {{value}}",
+    "lastSyncFullLabel": "Last successful sync: {{value}}",
+    "errorLabel": "Error: {{error}}",
+    "syncNow": "Sync Now",
+    "neverSynced": "never",
+    "justNow": "just now",
+    "minutesAgo": "{{n}} min ago",
+    "hoursAgo": "{{n}} h ago",
+    "conflictTitle": "Sync Conflict",
+    "conflictSubtitle": "Changes detected on both this device and the cloud.",
+    "conflictExplain": "Since the last sync ({{lastSync}}):",
+    "conflictItem1": "Changes were made on this device.",
+    "conflictItem2": "Cloud file was also updated at {{remoteTime}} (from another device).",
+    "conflictWarning": "Your choice will discard the other version's changes. If unsure, choose \"Decide Later\" and inspect the cloud file manually first.",
+    "useLocal": "Use this device's version",
+    "useLocalHint": "Upload this device's data to the cloud",
+    "useLocalUploading": "(uploading...)",
+    "useRemote": "Use cloud version",
+    "useRemoteHint": "Download cloud data, overwrite this device",
+    "useRemoteDownloading": "(downloading...)",
+    "decideLater": "Decide Later",
+    "decideLaterHint": "Work offline now, sync from settings later",
+    "useLocalSuccess": "This device's data uploaded to cloud.",
+    "useRemoteSuccess": "Cloud data downloaded.",
+    "resolveError": "Operation failed.",
+    "unexpectedError": "Unexpected error: {{error}}",
+    "neverInTr": "never"
   }
 }

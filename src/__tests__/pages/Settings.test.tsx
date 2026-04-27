@@ -231,7 +231,7 @@ describe('Settings', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('İnşaat ERP')).toBeInTheDocument();
+      expect(screen.getByText('Construction ERP')).toBeInTheDocument();
     });
   });
 

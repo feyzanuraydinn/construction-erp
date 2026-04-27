@@ -388,17 +388,17 @@ function Settings() {
               </Button>
             </div>
           </CardHeader>
-          <CardBody className="h-[160px]">
-            <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+          <CardBody className="h-[160px] flex flex-col">
+            <p className="mb-3 text-sm text-gray-600 dark:text-gray-400 flex-shrink-0">
               {t('settings.backupDescription')}
             </p>
             {backupInfo === null ? (
-              <LoadingSpinner className="py-6" />
+              <LoadingSpinner className="py-2" />
             ) : !backupInfo.exists ? (
-              <div className="py-6 text-center text-gray-500 dark:text-gray-400 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                <FiDatabase size={32} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">{t('settings.noBackup')}</p>
-                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{t('settings.createFirstBackup')}</p>
+              <div className="flex-1 min-h-0 flex flex-col items-center justify-center text-center text-gray-500 dark:text-gray-400 rounded-lg bg-gray-50 dark:bg-gray-700/50 px-4 py-2">
+                <FiDatabase size={20} className="mb-1 opacity-50" />
+                <p className="text-xs">{t('settings.noBackup')}</p>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">{t('settings.createFirstBackup')}</p>
               </div>
             ) : (
               <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-700/50">

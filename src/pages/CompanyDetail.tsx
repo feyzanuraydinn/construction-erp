@@ -14,8 +14,9 @@ import {
   FiEye,
   FiEdit2,
   FiDownload,
+  FiShare2,
 } from 'react-icons/fi';
-import { PrintPreviewModal, TransactionModal } from '../components/modals';
+import { PrintPreviewModal, TransactionModal, ExportPreviewModal } from '../components/modals';
 import { TransactionDetailView, CompanyPrintView } from '../components/shared';
 import { useToast } from '../contexts/ToastContext';
 import {
@@ -82,10 +83,12 @@ function CompanyDetail() {
     handleBulkDelete,
     handleSaveTransaction,
     handleExport,
+    handleShare,
+    exportPreviewData,
   } = useTransactionList({
     transactions,
     loadData,
-    exportPrefix: 'cari-islemler',
+    exportPrefix: company ? `${company.name}_${t('export.filenames.companyTransactions')}` : t('export.filenames.companyTransactions'),
   });
 
   useEffect(() => {
@@ -190,7 +193,8 @@ function CompanyDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" icon={FiDownload} onClick={handleExport}>{t('common.exportToExcel')}</Button>
+          <Button variant="secondary" icon={FiDownload} onClick={() => dispatch({ type: 'OPEN_EXPORT_PREVIEW' })}>{t('common.exportToExcel')}</Button>
+          <Button variant="secondary" icon={FiShare2} onClick={handleShare}>{t('common.share')}</Button>
           <Button variant="secondary" icon={FiPrinter} onClick={handlePrint}>{t('common.print')}</Button>
           <Button icon={FiPlus} onClick={() => dispatch({ type: 'OPEN_NEW_TRANSACTION' })}>
             {t('shared.newTransaction')}
@@ -362,7 +366,7 @@ function CompanyDetail() {
                   {ui.selectedIds.size > 0 && (
                     <>
                       <Divider />
-                      <Button variant="ghost-danger" size="sm" icon={FiTrash2} onClick={() => dispatch({ type: 'OPEN_BULK_DELETE' })}>{t('shared.bulkDeleteCount', { count: ui.selectedIds.size })}</Button>
+                      <Button variant="ghost-danger" size="sm" icon={FiTrash2} onClick={() => dispatch({ type: 'OPEN_BULK_DELETE' })}>{t('shared.bulkDelete.buttonLabel', { count: ui.selectedIds.size })}</Button>
                     </>
                   )}
                 </div>
@@ -652,6 +656,49 @@ function CompanyDetail() {
           categories={categories}
         />
       </PrintPreviewModal>
+
+      <ExportPreviewModal
+        isOpen={ui.exportPreviewOpen}
+        onClose={() => dispatch({ type: 'CLOSE_EXPORT_PREVIEW' })}
+        data={exportPreviewData}
+        onExport={handleExport}
+        mode="filter"
+      >
+        <Select
+          options={TRANSACTION_TYPES.map((o) => ({ ...o, label: t(o.label) }))}
+          value={ui.exportFilters.type}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+            dispatch({ type: 'SET_EXPORT_FILTER', filters: { type: e.target.value } })
+          }
+          placeholder={t('shared.printOptions.transactionType')}
+          className="w-40"
+        />
+        <Select
+          options={categories.map((c) => ({ value: c.id, label: t(`categories.${c.name}`, c.name) }))}
+          value={ui.exportFilters.category_id}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+            dispatch({ type: 'SET_EXPORT_FILTER', filters: { category_id: e.target.value } })
+          }
+          placeholder={t('shared.printOptions.category')}
+          className="w-40"
+        />
+        <Input
+          type="date"
+          value={ui.exportFilters.startDate}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            dispatch({ type: 'SET_EXPORT_FILTER', filters: { startDate: e.target.value } })
+          }
+          className="w-36"
+        />
+        <Input
+          type="date"
+          value={ui.exportFilters.endDate}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            dispatch({ type: 'SET_EXPORT_FILTER', filters: { endDate: e.target.value } })
+          }
+          className="w-36"
+        />
+      </ExportPreviewModal>
     </div>
   );
 }

@@ -5,22 +5,22 @@ import {
   dialog,
   shell,
   session,
+  ipcMain,
 } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { DatabaseService } from '../database/DatabaseService';
 import { googleDriveService } from './googleDrive';
+import { syncService } from './SyncService';
 import { initAutoUpdater, checkForUpdates } from './autoUpdater';
 import { mainLogger } from './logger';
 import { registerAllHandlers } from './ipc';
-import { UI, TIMING } from '../utils/constants';
+import { UI } from '../utils/constants';
 import { t } from './i18n';
 
 let mainWindow: BrowserWindow | null = null;
 let dbService: DatabaseService;
 let isQuitting = false;
-let autoBackupInterval: NodeJS.Timeout | null = null;
-let lastBackupTime: Date | null = null;
 
 const isDev = !app.isPackaged;
 
@@ -50,108 +50,24 @@ async function checkInternetConnection(): Promise<boolean> {
   }
 }
 
-// Otomatik yedekleme ve cloud sync fonksiyonu
-async function autoBackupAndSync(): Promise<void> {
-  const backupDir = path.join(app.getPath('userData'), 'backups');
-
-  // Local yedek al
-  dbService.createBackup(backupDir);
-  lastBackupTime = new Date();
-  dbService.clearDirty(); // Yedek alındı, dirty flag'i temizle
-
-  // İnternet varsa cloud'a yükle
-  if (googleDriveService.hasCredentials() && googleDriveService.isConnected()) {
-    const hasInternet = await checkInternetConnection();
-    if (hasInternet) {
-      try {
-        const backupPath = path.join(backupDir, 'latest_backup.db');
-        await googleDriveService.uploadBackup(backupPath);
-        mainLogger.info('Backup synced to cloud', 'CloudSync');
-      } catch (error) {
-        mainLogger.error('Cloud sync error', 'CloudSync', error);
-      }
-    } else {
-      mainLogger.info('No internet connection, backup saved locally only', 'CloudSync');
-    }
-  }
-}
-
 // Yedeklenmemiş değişiklik var mı kontrol et
 function hasUnbackedChanges(): boolean {
+  if (!dbService) return false;
   return dbService.isDirty();
 }
 
-// Otomatik yedekleme başlat
-function startAutoBackup(): void {
-  if (autoBackupInterval) {
-    clearInterval(autoBackupInterval);
-  }
-
-  autoBackupInterval = setInterval(async () => {
-    // Sadece değişiklik varsa yedekle
-    if (dbService.isDirty()) {
-      mainLogger.info('Auto backup: Changes detected, backing up...', 'AutoBackup');
-      await autoBackupAndSync();
-    } else {
-      mainLogger.debug('Auto backup: No changes, skipping', 'AutoBackup');
-    }
-  }, TIMING.AUTO_BACKUP_INTERVAL);
-
-  mainLogger.info(`Auto backup started (interval: ${TIMING.AUTO_BACKUP_INTERVAL / 1000}s)`, 'AutoBackup');
-}
-
-// Otomatik yedekleme durdur
-function stopAutoBackup(): void {
-  if (autoBackupInterval) {
-    clearInterval(autoBackupInterval);
-    autoBackupInterval = null;
-    mainLogger.info('Auto backup stopped', 'AutoBackup');
-  }
-}
-
-// Uygulama başlangıcında sync kontrolü
-async function startupSync(): Promise<void> {
-  if (!googleDriveService.hasCredentials() || !googleDriveService.isConnected()) {
-    return;
-  }
-
-  const hasInternet = await checkInternetConnection();
-  if (!hasInternet) {
-    mainLogger.info('Startup sync: No internet connection', 'CloudSync');
-    return;
-  }
-
-  const backupDir = path.join(app.getPath('userData'), 'backups');
-  const localBackupPath = path.join(backupDir, 'latest_backup.db');
-
-  // Check if local backup exists
-  if (!fs.existsSync(localBackupPath)) {
-    mainLogger.info('Startup sync: No local backup found', 'CloudSync');
-    return;
-  }
-
+// Yerel yedek al (kapanış sırasında çağrılır)
+function localBackup(): void {
+  if (!dbService) return;
   try {
-    const cloudBackup = await googleDriveService.getLatestBackup();
-    const localStats = fs.statSync(localBackupPath);
-    const localDate = localStats.mtime;
-
-    if (cloudBackup) {
-      const cloudDate = new Date(cloudBackup.modifiedTime);
-
-      // Upload to cloud if local is newer
-      if (localDate > cloudDate) {
-        mainLogger.info('Startup sync: Local backup is newer, uploading to cloud...', 'CloudSync');
-        await googleDriveService.uploadBackup(localBackupPath);
-      } else {
-        mainLogger.info('Startup sync: Cloud backup is up to date', 'CloudSync');
-      }
-    } else {
-      // No cloud backup exists, upload local
-      mainLogger.info('Startup sync: No cloud backup found, uploading...', 'CloudSync');
-      await googleDriveService.uploadBackup(localBackupPath);
+    const backupDir = path.join(app.getPath('userData'), 'backups');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
     }
+    dbService.createBackup(backupDir);
+    mainLogger.debug('Local backup completed', 'Backup');
   } catch (error) {
-    mainLogger.error('Startup sync error', 'CloudSync', error);
+    mainLogger.error('Local backup failed', 'Backup', error);
   }
 }
 
@@ -211,50 +127,15 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../../build/index.html'));
   }
 
-  // Kapatma onayı - sadece yedeklenmemiş değişiklik varsa sor
-  mainWindow.on('close', async (e) => {
+  // Always intercept close: ask the renderer to show its in-app confirm modal,
+  // then on confirm do a local backup + cloud upload before actually quitting.
+  mainWindow.on('close', (e) => {
     if (isQuitting) return;
-
-    // Otomatik yedeklemeyi durdur
-    stopAutoBackup();
-
-    // Yedeklenmemiş değişiklik yoksa direkt kapat
-    if (!hasUnbackedChanges()) {
-      mainLogger.info('Closing: No unbacked changes', 'Main');
-      isQuitting = true;
-      return;
-    }
-
     e.preventDefault();
-
-    const result = await dialog.showMessageBox(mainWindow!, {
-      type: 'question',
-      buttons: [
-        t('main.closeDialog.backupAndClose'),
-        t('main.closeDialog.closeWithout'),
-        t('main.closeDialog.cancel'),
-      ],
-      defaultId: 0,
-      cancelId: 2,
-      title: t('main.closeDialog.title'),
-      message: t('main.closeDialog.message'),
-      detail: t('main.closeDialog.detail'),
-    });
-
-    if (result.response === 0) {
-      // Yedekle ve Kapat
-      mainLogger.info('Closing: Backing up before close', 'Main');
-      await autoBackupAndSync();
-      isQuitting = true;
-      mainWindow?.close();
-    } else if (result.response === 1) {
-      // Yedeklemeden Kapat
-      mainLogger.info('Closing: User chose not to backup', 'Main');
-      isQuitting = true;
-      mainWindow?.close();
-    } else {
-      // İptal - otomatik yedeklemeyi yeniden başlat
-      startAutoBackup();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:close-requested', {
+        hasPendingChanges: hasUnbackedChanges(),
+      });
     }
   });
 
@@ -309,24 +190,52 @@ app.whenReady().then(async () => {
   // Register all IPC handlers
   registerAllHandlers(
     () => dbService,
-    (s) => { dbService = s; },
+    (s) => {
+      dbService = s;
+      syncService.updateDbService(s);
+    },
     () => mainWindow,
     checkInternetConnection
   );
+
+  // Renderer says "user chose to actually close" — do the heavy lifting
+  // (local backup + cloud upload) here, then quit for real.
+  ipcMain.handle('app:close-confirmed', async () => {
+    localBackup();
+    try {
+      const cloudResult = await syncService.beforeQuit();
+      if (!cloudResult.canQuit && cloudResult.error && cloudResult.error !== 'timeout') {
+        mainLogger.warn(`Cloud upload on close failed: ${cloudResult.error}`, 'Sync');
+      }
+    } catch (err) {
+      mainLogger.error('Cloud upload on close error', 'Sync', err);
+    }
+    isQuitting = true;
+    mainWindow?.close();
+    return { success: true };
+  });
+
+  // Renderer says "user cancelled close" — nothing to do, the close was
+  // already preventDefault()'d.
+  ipcMain.handle('app:close-cancelled', () => {
+    return { success: true };
+  });
 
   createWindow();
 
   mainLogger.info('Application initialized', 'Main');
 
-  // Otomatik yedeklemeyi başlat (5 dakikada bir)
-  startAutoBackup();
-
-  // Arka planda başlangıç sync kontrolü yap
-  startupSync().catch((err) => mainLogger.error('Startup sync error:', err));
+  // Initialize sync service after window created. Handles 5-min interval,
+  // ping check, dirty detection, upload/download/conflict, weekly snapshot,
+  // and beforeQuit — replaces the old autoBackupAndSync + startupSync logic.
+  if (mainWindow && dbService) {
+    syncService.init(dbService, mainWindow, app.getPath('userData'));
+    syncService.start();
+  }
 });
 
 app.on('window-all-closed', () => {
-  stopAutoBackup();
+  syncService.stop();
   if (dbService) dbService.close();
   if (process.platform !== 'darwin') {
     app.quit();

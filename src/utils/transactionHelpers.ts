@@ -37,15 +37,15 @@ export function getTransactionColor(type: TransactionType): string {
 export function getTransactionTextColor(type: TransactionType): string {
   switch (type) {
     case 'invoice_out':
-      return 'text-green-600';
+      return 'text-green-600 dark:text-green-400';
     case 'payment_in':
-      return 'text-blue-600';
+      return 'text-blue-600 dark:text-blue-400';
     case 'invoice_in':
-      return 'text-red-600';
+      return 'text-red-600 dark:text-red-400';
     case 'payment_out':
-      return 'text-orange-600';
+      return 'text-orange-600 dark:text-orange-400';
     default:
-      return 'text-gray-600';
+      return 'text-gray-600 dark:text-gray-400';
   }
 }
 
@@ -92,12 +92,12 @@ export function getSimpleTransactionTextColor(type: TransactionType): string {
   switch (type) {
     case 'invoice_out':
     case 'payment_in':
-      return 'text-green-600';
+      return 'text-green-600 dark:text-green-400';
     case 'invoice_in':
     case 'payment_out':
-      return 'text-red-600';
+      return 'text-red-600 dark:text-red-400';
     default:
-      return 'text-gray-600';
+      return 'text-gray-600 dark:text-gray-400';
   }
 }
 

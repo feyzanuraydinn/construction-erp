@@ -136,10 +136,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Export operations
   export: {
-    toExcel: (data: { type: string; records: unknown[]; filename?: string }) =>
+    toExcel: (data: { type: string; records: unknown[]; filename?: string; metadata?: { summaryStartIndex?: number; amountColumnLabel?: string; balanceColumnLabel?: string } }) =>
       ipcRenderer.invoke('export:toExcel', data),
     toPDF: (data: { type: string; html: string; filename?: string }) =>
       ipcRenderer.invoke('export:toPDF', data),
+    share: (data: { type: string; records: unknown[]; filename?: string; metadata?: { summaryStartIndex?: number; amountColumnLabel?: string; balanceColumnLabel?: string } }) =>
+      ipcRenderer.invoke('export:share', data),
   },
 
   // Exchange rate operations
@@ -167,5 +169,39 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     print: () => ipcRenderer.invoke('app:print'),
     setLanguage: (locale: string) => ipcRenderer.invoke('app:setLanguage', locale),
+    confirmClose: () => ipcRenderer.invoke('app:close-confirmed'),
+    cancelClose: () => ipcRenderer.invoke('app:close-cancelled'),
+    onCloseRequested: (callback: (payload: { hasPendingChanges: boolean }) => void) => {
+      const handler = (_: unknown, p: { hasPendingChanges: boolean }) => callback(p);
+      ipcRenderer.on('app:close-requested', handler);
+      return () => ipcRenderer.removeListener('app:close-requested', handler);
+    },
+  },
+
+  // Sync operations
+  sync: {
+    getStatus: () => ipcRenderer.invoke('sync:getStatus'),
+    getMeta: () => ipcRenderer.invoke('sync:getMeta'),
+    setAutoSyncEnabled: (enabled: boolean) => ipcRenderer.invoke('sync:setAutoSyncEnabled', enabled),
+    check: () => ipcRenderer.invoke('sync:check'),
+    upload: () => ipcRenderer.invoke('sync:upload'),
+    download: () => ipcRenderer.invoke('sync:download'),
+    resolveConflict: (choice: 'use-local' | 'use-remote' | 'cancel') =>
+      ipcRenderer.invoke('sync:resolveConflict', choice),
+    onStatus: (callback: (status: unknown) => void) => {
+      const listener = (_: unknown, payload: unknown) => callback(payload);
+      ipcRenderer.on('sync:status', listener);
+      return () => ipcRenderer.removeListener('sync:status', listener);
+    },
+    onConflict: (callback: (payload: unknown) => void) => {
+      const listener = (_: unknown, payload: unknown) => callback(payload);
+      ipcRenderer.on('sync:conflict', listener);
+      return () => ipcRenderer.removeListener('sync:conflict', listener);
+    },
+    onReloadRequired: (callback: () => void) => {
+      const listener = () => callback();
+      ipcRenderer.on('sync:reload-required', listener);
+      return () => ipcRenderer.removeListener('sync:reload-required', listener);
+    },
   },
 });

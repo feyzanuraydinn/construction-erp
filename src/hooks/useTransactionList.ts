@@ -2,7 +2,7 @@ import { useState, useReducer, useEffect, useMemo, useCallback, useRef } from 'r
 import { useToast } from '../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
 import { useKeyboardShortcuts, usePagination, paginateArray, invalidateCachePattern } from './index';
-import { exportToCSV, formatRecordsForExport, transactionColumns } from '../utils/exportUtils';
+import { exportToCSV, shareExcel, formatRecordsForExport, getTransactionColumns, buildTransactionSummary } from '../utils/exportUtils';
 import type { TransactionWithDetails, PaymentAllocationWithDetails } from '../types';
 
 // ==================== SHARED PRINT FILTERS ====================
@@ -39,6 +39,9 @@ export interface TransactionListUIState {
   // Bulk selection
   selectedIds: Set<number>;
   bulkDeleteConfirm: boolean;
+  // Export preview
+  exportPreviewOpen: boolean;
+  exportFilters: PrintFilters;
 }
 
 export type TransactionListAction =
@@ -61,7 +64,10 @@ export type TransactionListAction =
   | { type: 'SELECT_ALL'; ids: number[] }
   | { type: 'CLEAR_SELECTION' }
   | { type: 'OPEN_BULK_DELETE' }
-  | { type: 'CANCEL_BULK_DELETE' };
+  | { type: 'CANCEL_BULK_DELETE' }
+  | { type: 'OPEN_EXPORT_PREVIEW' }
+  | { type: 'CLOSE_EXPORT_PREVIEW' }
+  | { type: 'SET_EXPORT_FILTER'; filters: Partial<PrintFilters> };
 
 const initialUIState: TransactionListUIState = {
   filterType: '',
@@ -80,6 +86,8 @@ const initialUIState: TransactionListUIState = {
   printFilters: { type: '', category_id: '', startDate: '', endDate: '' },
   selectedIds: new Set(),
   bulkDeleteConfirm: false,
+  exportPreviewOpen: false,
+  exportFilters: { type: '', category_id: '', startDate: '', endDate: '' },
 };
 
 export function transactionListReducer(
@@ -148,6 +156,12 @@ export function transactionListReducer(
       return { ...state, bulkDeleteConfirm: true };
     case 'CANCEL_BULK_DELETE':
       return { ...state, bulkDeleteConfirm: false };
+    case 'OPEN_EXPORT_PREVIEW':
+      return { ...state, exportPreviewOpen: true, exportFilters: { type: '', category_id: '', startDate: '', endDate: '' } };
+    case 'CLOSE_EXPORT_PREVIEW':
+      return { ...state, exportPreviewOpen: false };
+    case 'SET_EXPORT_FILTER':
+      return { ...state, exportFilters: { ...state.exportFilters, ...action.filters } };
     default:
       return state;
   }
@@ -298,16 +312,49 @@ export function useTransactionList({
     [toast, t, loadData]
   );
 
+  // Transactions filtered by export filters
+  const exportFilteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      if (ui.exportFilters.type && tx.type !== ui.exportFilters.type) return false;
+      if (ui.exportFilters.category_id && tx.category_id !== parseInt(ui.exportFilters.category_id)) return false;
+      if (ui.exportFilters.startDate && tx.date < ui.exportFilters.startDate) return false;
+      if (ui.exportFilters.endDate && tx.date > ui.exportFilters.endDate) return false;
+      return true;
+    });
+  }, [transactions, ui.exportFilters]);
+
+  const exportPreviewData = useMemo(() => {
+    const columns = getTransactionColumns(t);
+    return formatRecordsForExport(exportFilteredTransactions, columns);
+  }, [exportFilteredTransactions, t]);
+
   const handleExport = useCallback(async () => {
     try {
-      const formatted = formatRecordsForExport(transactions, transactionColumns);
+      const columns = getTransactionColumns(t);
+      const formatted = formatRecordsForExport(exportFilteredTransactions, columns);
+      const { rows: summaryRows, metadata } = buildTransactionSummary(exportFilteredTransactions, t, formatted.length);
+      formatted.push(...summaryRows);
       const filename = `${exportPrefix}_${new Date().toISOString().split('T')[0]}`;
-      await exportToCSV(exportPrefix, formatted, filename);
+      await exportToCSV(exportPrefix, formatted, filename, metadata);
     } catch (error) {
       console.error('Export error:', error);
       toast.error(t('common.exportError'));
     }
-  }, [transactions, exportPrefix, toast, t]);
+  }, [exportFilteredTransactions, exportPrefix, toast, t]);
+
+  const handleShare = useCallback(async () => {
+    try {
+      const columns = getTransactionColumns(t);
+      const formatted = formatRecordsForExport(exportFilteredTransactions, columns);
+      const { rows: summaryRows, metadata } = buildTransactionSummary(exportFilteredTransactions, t, formatted.length);
+      formatted.push(...summaryRows);
+      const filename = `${exportPrefix}_${new Date().toISOString().split('T')[0]}`;
+      await shareExcel(exportPrefix, formatted, filename, metadata);
+    } catch (error) {
+      console.error('Share error:', error);
+      toast.error(t('export.share.error'));
+    }
+  }, [exportFilteredTransactions, exportPrefix, toast, t]);
 
   const handlePrint = useCallback(() => {
     dispatch({ type: 'OPEN_PRINT_PREVIEW' });
@@ -323,6 +370,8 @@ export function useTransactionList({
     filteredTransactions,
     paginatedTransactions,
     pagination,
+    // Export preview data
+    exportPreviewData,
     // Handlers
     handleDeleteTransaction,
     handleSelectAll,
@@ -330,6 +379,7 @@ export function useTransactionList({
     handleBulkDelete,
     handleSaveTransaction,
     handleExport,
+    handleShare,
     handlePrint,
   };
 }

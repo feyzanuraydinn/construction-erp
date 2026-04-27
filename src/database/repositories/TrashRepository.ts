@@ -41,9 +41,9 @@ export class TrashRepository {
       switch (item.type) {
         case 'company': {
           this.run(
-            `INSERT INTO companies (id, type, account_type, name, tc_number, profession, tax_office, tax_number, trade_registry_no, contact_person, phone, email, address, bank_name, iban, notes, is_active, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-            [data.id, data.type, data.account_type, data.name, data.tc_number, data.profession, data.tax_office, data.tax_number, data.trade_registry_no, data.contact_person, data.phone, data.email, data.address, data.bank_name, data.iban, data.notes, data.created_at, data.updated_at]
+            `INSERT INTO companies (id, code, type, account_type, name, tc_number, profession, tax_office, tax_number, trade_registry_no, contact_person, phone, email, address, bank_name, iban, notes, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+            [data.id, data.code, data.type, data.account_type, data.name, data.tc_number, data.profession, data.tax_office, data.tax_number, data.trade_registry_no, data.contact_person, data.phone, data.email, data.address, data.bank_name, data.iban, data.notes, data.created_at, data.updated_at]
           );
           break;
         }

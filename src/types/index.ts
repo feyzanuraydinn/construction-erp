@@ -20,6 +20,7 @@ export type MovementType = 'in' | 'out' | 'adjustment' | 'waste';
 
 export interface Company {
   id: number;
+  code?: string | null;
   type: CompanyType;
   account_type: AccountType;
   name: string;

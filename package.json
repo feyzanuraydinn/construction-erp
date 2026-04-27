@@ -1,5 +1,5 @@
 {
-  "name": "insaat-erp",
+  "name": "construction-erp",
   "version": "3.0.0",
   "description": "Construction ERP - Accounts, Project & Stock Management",
   "main": "dist-electron/main/main.js",
@@ -37,7 +37,7 @@
       "public/icon.ico"
     ],
     "asarUnpack": [
-      "node_modules/xlsx/**/*"
+      "node_modules/exceljs/**/*"
     ],
     "extraMetadata": {
       "main": "dist-electron/main/main.js"
@@ -72,6 +72,10 @@
       {
         "from": "public/icon.ico",
         "to": "icon.ico"
+      },
+      {
+        "from": "resources/ShareHelper.exe",
+        "to": "ShareHelper.exe"
       }
     ]
   },
@@ -87,6 +91,7 @@
     "@googleapis/drive": "^20.1.0",
     "@hookform/resolvers": "^5.2.2",
     "electron-updater": "^6.7.3",
+    "exceljs": "^4.4.0",
     "i18next": "^25.8.11",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -96,7 +101,6 @@
     "react-router-dom": "^6.21.0",
     "recharts": "^2.10.0",
     "sql.js": "^1.13.0",
-    "xlsx": "^0.18.5",
     "zod": "^4.3.5"
   },
   "devDependencies": {

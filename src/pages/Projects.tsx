@@ -11,6 +11,7 @@ import {
   FiHome,
   FiUser,
   FiDownload,
+  FiShare2,
 } from 'react-icons/fi';
 import {
   Card,
@@ -35,10 +36,10 @@ import {
   SelectAllCheckbox,
   RowCheckbox,
 } from '../components/ui';
-import { ProjectModal } from '../components/modals';
+import { ProjectModal, ExportPreviewModal } from '../components/modals';
 import { formatCurrency } from '../utils/formatters';
 import { PROJECT_STATUSES, OWNERSHIP_TYPES } from '../utils/constants';
-import { projectColumns } from '../utils/exportUtils';
+import { getProjectColumns } from '../utils/exportUtils';
 import type {
   ProjectWithSummary,
   Company,
@@ -80,8 +81,8 @@ function Projects() {
         return matchesSearch && matchesStatus && matchesOwnership;
       }),
     exportConfig: {
-      filename: 'projeler',
-      columns: projectColumns,
+      filename: t('export.filenames.projects'),
+      columns: getProjectColumns(t),
     },
   });
 
@@ -105,10 +106,18 @@ function Projects() {
           <Button
             variant="secondary"
             icon={FiDownload}
-            onClick={() => crud.handleExport()}
+            onClick={() => crud.prepareExportPreview()}
             title={t('common.exportToExcel')}
           >
             {t('common.exportToExcel')}
+          </Button>
+          <Button
+            variant="secondary"
+            icon={FiShare2}
+            onClick={() => crud.handleShare()}
+            title={t('common.share')}
+          >
+            {t('common.share')}
           </Button>
           <Button icon={FiPlus} onClick={() => crud.setModalOpen(true)}>
             {t('projects.newProject')}
@@ -333,6 +342,15 @@ function Projects() {
         message={t('projects.bulkDeleteMessage', { count: crud.selectedIds.size })}
         type="danger"
         confirmText={t('projects.bulkDeleteConfirm', { count: crud.selectedIds.size })}
+      />
+
+      {/* Export Preview */}
+      <ExportPreviewModal
+        isOpen={crud.exportPreviewOpen}
+        onClose={() => crud.setExportPreviewOpen(false)}
+        data={crud.exportPreviewData}
+        onExport={(selectedIndices) => crud.handleExport(selectedIndices)}
+        mode="selection"
       />
     </div>
   );

@@ -91,7 +91,7 @@ export function registerBackupHandlers(
       if (!fs.existsSync(dbDir)) {
         fs.mkdirSync(dbDir, { recursive: true });
       }
-      const dbPath = path.join(dbDir, 'insaat-erp.db');
+      const dbPath = path.join(dbDir, 'construction-erp.db');
       fs.copyFileSync(backupPath, dbPath);
 
       // Reinitialize database

@@ -17,7 +17,7 @@ import { useSelection } from './useSelection';
 import { useBulkDelete } from './useBulkDelete';
 import { useExport } from './useExport';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
-import type { ExportColumn } from '../utils/exportUtils';
+import { formatRecordsForExport, type ExportColumn, type ExportMetadata } from '../utils/exportUtils';
 
 // ==================== TYPES ====================
 
@@ -48,6 +48,7 @@ export interface UseCRUDPageOptions<T, F extends Record<string, string>> {
   exportConfig?: {
     filename: string;
     columns: ExportColumn[];
+    summaryBuilder?: (records: T[]) => { rows: Record<string, string>[]; metadata: ExportMetadata };
   };
 }
 
@@ -94,7 +95,12 @@ export interface UseCRUDPageReturn<T, F extends Record<string, string>> {
   handleBulkDelete: () => Promise<void>;
 
   // Export
-  handleExport: () => void;
+  handleExport: (selectedIndices?: number[]) => void;
+  handleShare: () => void;
+  exportPreviewOpen: boolean;
+  setExportPreviewOpen: (open: boolean) => void;
+  exportPreviewData: Record<string, string>[];
+  prepareExportPreview: () => void;
 }
 
 // ==================== HOOK ====================
@@ -162,7 +168,9 @@ export function useCRUDPage<T extends { id: number }, F extends Record<string, s
     entityKey,
     onSuccess: () => { clearSelection(); loadData(); },
   });
-  const { handleExport: exportAction } = useExport();
+  const { handleExport: exportAction, handleShare: shareAction } = useExport();
+  const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
+  const [exportPreviewData, setExportPreviewData] = useState<Record<string, string>[]>([]);
 
   // ---- Keyboard shortcuts ----
   useKeyboardShortcuts({
@@ -237,10 +245,30 @@ export function useCRUDPage<T extends { id: number }, F extends Record<string, s
     await bulkDeleteAction(selectedIds);
   }, [bulkDeleteAction, selectedIds]);
 
-  const handleExport = useCallback(() => {
+  const prepareExportPreview = useCallback(() => {
     if (!exportConfig) return;
-    exportAction(exportConfig.filename, filteredData, exportConfig.columns);
+    const formatted = formatRecordsForExport(filteredData, exportConfig.columns);
+    setExportPreviewData(formatted);
+    setExportPreviewOpen(true);
+  }, [exportConfig, filteredData]);
+
+  const handleExport = useCallback((selectedIndices?: number[]) => {
+    if (!exportConfig) return;
+    // If selectedIndices provided, filter exportPreviewData by those indices
+    const dataToExport = selectedIndices
+      ? selectedIndices.map((i) => filteredData[i]).filter(Boolean)
+      : filteredData;
+    const summary = exportConfig.summaryBuilder ? exportConfig.summaryBuilder(dataToExport) : undefined;
+    const filename = `${exportConfig.filename}_${new Date().toISOString().split('T')[0]}`;
+    exportAction(filename, dataToExport, exportConfig.columns, summary?.rows, summary?.metadata);
   }, [exportConfig, exportAction, filteredData]);
+
+  const handleShare = useCallback(() => {
+    if (!exportConfig) return;
+    const summary = exportConfig.summaryBuilder ? exportConfig.summaryBuilder(filteredData) : undefined;
+    const filename = `${exportConfig.filename}_${new Date().toISOString().split('T')[0]}`;
+    shareAction(filename, filteredData, exportConfig.columns, summary?.rows, summary?.metadata);
+  }, [exportConfig, shareAction, filteredData]);
 
   // ---- Filter helper ----
   const setFilter = useCallback(<K extends keyof F>(key: K, value: F[K]) => {
@@ -274,5 +302,10 @@ export function useCRUDPage<T extends { id: number }, F extends Record<string, s
     setBulkDeleteConfirm,
     handleBulkDelete,
     handleExport,
+    handleShare,
+    exportPreviewOpen,
+    setExportPreviewOpen,
+    exportPreviewData,
+    prepareExportPreview,
   };
 }

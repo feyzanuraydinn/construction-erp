@@ -23,6 +23,8 @@ const initialState: TransactionListUIState = {
   printFilters: { type: '', category_id: '', startDate: '', endDate: '' },
   selectedIds: new Set(),
   bulkDeleteConfirm: false,
+  exportPreviewOpen: false,
+  exportFilters: { type: '', category_id: '', startDate: '', endDate: '' },
 };
 
 const mockTransaction = {

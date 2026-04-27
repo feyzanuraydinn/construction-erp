@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FiList, FiEdit2, FiTrash2, FiDownload } from 'react-icons/fi';
+import { FiList, FiEdit2, FiTrash2, FiDownload, FiShare2 } from 'react-icons/fi';
 import {
   useDebounce,
   usePagination,
@@ -27,6 +27,8 @@ import {
   ConfirmDialog,
   Pagination,
   Button,
+  Input,
+  Select,
   LoadingSpinner,
   Divider,
   SelectAllCheckbox,
@@ -40,7 +42,9 @@ import {
   isPositiveTransaction,
 } from '../utils/transactionHelpers';
 import { TRANSACTION_TYPE_LABELS } from '../utils/constants';
-import { transactionColumns } from '../utils/exportUtils';
+import { getTransactionColumns, buildTransactionSummary, formatRecordsForExport, exportToExcel, shareExcel } from '../utils/exportUtils';
+import { TRANSACTION_TYPES, TRANSACTION_SCOPES } from '../utils/constants';
+import { ExportPreviewModal } from '../components/modals';
 import {
   TransactionStats,
   TransactionFiltersPanel,
@@ -104,7 +108,9 @@ function Transactions() {
       loadData();
     },
   });
-  const { handleExport: exportAction } = useExport();
+  const { handleExport: exportAction, handleShare: shareAction } = useExport();
+  const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
+  const [exportFilters, setExportFilters] = useState({ scope: '', type: '', company_id: '', project_id: '', start_date: '', end_date: '' });
 
   useEffect(() => {
     loadData();
@@ -239,6 +245,24 @@ function Transactions() {
     filters.end_date,
   ]);
 
+  // Export-filtered transactions
+  const exportFilteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      if (exportFilters.scope && tx.scope !== exportFilters.scope) return false;
+      if (exportFilters.type && tx.type !== exportFilters.type) return false;
+      if (exportFilters.company_id && tx.company_id !== parseInt(exportFilters.company_id)) return false;
+      if (exportFilters.project_id && tx.project_id !== parseInt(exportFilters.project_id)) return false;
+      if (exportFilters.start_date && tx.date < exportFilters.start_date) return false;
+      if (exportFilters.end_date && tx.date > exportFilters.end_date) return false;
+      return true;
+    });
+  }, [transactions, exportFilters]);
+
+  const exportPreviewData = useMemo(() => {
+    const cols = getTransactionColumns(t);
+    return formatRecordsForExport(exportFilteredTransactions, cols);
+  }, [exportFilteredTransactions, t]);
+
   // Pagination
   const pagination = usePagination({
     totalItems: filteredTransactions.length,
@@ -302,8 +326,18 @@ function Transactions() {
               <Divider />
             </>
           )}
-          <Button variant="secondary" icon={FiDownload} onClick={() => exportAction('islemler', filteredTransactions, transactionColumns)} title={t('common.exportToExcel')}>
+          <Button variant="secondary" icon={FiDownload} onClick={() => { setExportFilters({ scope: '', type: '', company_id: '', project_id: '', start_date: '', end_date: '' }); setExportPreviewOpen(true); }} title={t('common.exportToExcel')}>
             {t('common.exportToExcel')}
+          </Button>
+          <Button variant="secondary" icon={FiShare2} onClick={() => {
+            const cols = getTransactionColumns(t);
+            const formatted = formatRecordsForExport(filteredTransactions, cols);
+            const { rows: summaryRows, metadata } = buildTransactionSummary(filteredTransactions, t, formatted.length);
+            formatted.push(...summaryRows);
+            const filename = `${t('export.filenames.transactions')}_${new Date().toISOString().split('T')[0]}`;
+            shareExcel(filename, formatted, filename, metadata);
+          }} title={t('common.share')}>
+            {t('common.share')}
           </Button>
         </div>
       </div>
@@ -503,6 +537,66 @@ function Transactions() {
         confirmText={t('transactions.bulkDeleteConfirm')}
         cancelText={t('common.cancel')}
       />
+
+      {/* Export Preview */}
+      <ExportPreviewModal
+        isOpen={exportPreviewOpen}
+        onClose={() => setExportPreviewOpen(false)}
+        data={exportPreviewData}
+        onExport={() => {
+          const cols = getTransactionColumns(t);
+          const formatted = formatRecordsForExport(exportFilteredTransactions, cols);
+          const { rows: summaryRows, metadata } = buildTransactionSummary(exportFilteredTransactions, t, formatted.length);
+          formatted.push(...summaryRows);
+          const filename = `${t('export.filenames.transactions')}_${new Date().toISOString().split('T')[0]}`;
+          exportToExcel(filename, formatted, filename, metadata);
+        }}
+        mode="filter"
+      >
+        <Select
+          options={TRANSACTION_SCOPES.map((o) => ({ ...o, label: t(o.label) }))}
+          value={exportFilters.scope}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+            setExportFilters((prev) => ({ ...prev, scope: e.target.value }))
+          }
+          placeholder={t('transactions.filterSource')}
+          className="w-32"
+        />
+        <Select
+          options={TRANSACTION_TYPES.map((o) => ({ ...o, label: t(o.label) }))}
+          value={exportFilters.type}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+            setExportFilters((prev) => ({ ...prev, type: e.target.value }))
+          }
+          placeholder={t('shared.printOptions.transactionType')}
+          className="w-40"
+        />
+        <Select
+          options={companies.map((c) => ({ value: c.id, label: c.name }))}
+          value={exportFilters.company_id}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+            setExportFilters((prev) => ({ ...prev, company_id: e.target.value }))
+          }
+          placeholder={t('transactions.filterCompany')}
+          className="w-40"
+        />
+        <Input
+          type="date"
+          value={exportFilters.start_date}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            setExportFilters((prev) => ({ ...prev, start_date: e.target.value }))
+          }
+          className="w-36"
+        />
+        <Input
+          type="date"
+          value={exportFilters.end_date}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            setExportFilters((prev) => ({ ...prev, end_date: e.target.value }))
+          }
+          className="w-36"
+        />
+      </ExportPreviewModal>
     </div>
   );
 }

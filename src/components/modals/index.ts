@@ -14,3 +14,4 @@ export { TransactionModal } from './TransactionModal';
 export type { TransactionModalProps } from './TransactionModal';
 
 export { PrintPreviewModal } from './PrintPreviewModal';
+export { ExportPreviewModal } from './ExportPreviewModal';

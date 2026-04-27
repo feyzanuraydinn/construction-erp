@@ -140,7 +140,7 @@ export class DatabaseService {
       fs.mkdirSync(dbDir, { recursive: true });
     }
 
-    this.dbPath = path.join(dbDir, 'insaat-erp.db');
+    this.dbPath = path.join(dbDir, 'construction-erp.db');
 
     const SQL = await initSqlJs();
 
@@ -183,9 +183,20 @@ export class DatabaseService {
       const data = this.db.export();
       const buffer = Buffer.from(data);
       fs.writeFileSync(this.dbPath, buffer);
+      // NOTE: do NOT clear `dirty` here. `dirty` means "there are local changes
+      // that have not been pushed to the cloud yet" — only sync.doUpload (and
+      // download, which replaces local state with remote) should clear it via
+      // clearDirty().
       this.dirty = true;
       dbLogger.debug('Database saved to disk', 'DatabaseService');
     }
+  }
+
+  /**
+   * Path to the on-disk database file (for sync upload). May be null before init().
+   */
+  getDbPath(): string | null {
+    return this.dbPath;
   }
 
   /**
@@ -614,6 +625,20 @@ export class DatabaseService {
         FROM transactions
         WHERE linked_invoice_id IS NOT NULL;
     `);
+
+    // ---- Migration 3: Add company code column ----
+    applyMigration(3, 'add_company_code', `
+      ALTER TABLE companies ADD COLUMN code TEXT;
+    `);
+
+    // Backfill existing companies with auto-generated codes and add unique index
+    if (getVersion() === 3) {
+      const hasNullCodes = this.db!.exec(`SELECT COUNT(*) as c FROM companies WHERE code IS NULL`);
+      if (hasNullCodes.length > 0 && (hasNullCodes[0].values[0][0] as number) > 0) {
+        this.db!.exec(`UPDATE companies SET code = 'CRH-' || printf('%03d', id) WHERE code IS NULL`);
+      }
+      this.db!.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_code ON companies(code)`);
+    }
   }
 
   private initializeDefaultCategories(): void {

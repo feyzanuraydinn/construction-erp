@@ -18,6 +18,7 @@ interface TableRowProps {
 interface TableCellProps {
   children: ReactNode;
   className?: string;
+  colSpan?: number;
   onClick?: (e: MouseEvent<HTMLTableCellElement>) => void;
 }
 
@@ -73,10 +74,12 @@ export const TableHead = memo(function TableHead({ children, className = '' }: T
 export const TableCell = memo(function TableCell({
   children,
   className = '',
+  colSpan,
   onClick,
 }: TableCellProps) {
+  const hasCustomColor = /\btext-(?!sm|xs|lg|xl|right|left|center)/.test(className);
   return (
-    <td className={`px-4 py-3 text-sm text-gray-700 dark:text-gray-300 ${className}`} onClick={onClick}>
+    <td className={`px-4 py-3 text-sm ${hasCustomColor ? '' : 'text-gray-700 dark:text-gray-300'} ${className}`} colSpan={colSpan} onClick={onClick}>
       {children}
     </td>
   );

@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../contexts/ToastContext';
-import { formatRecordsForExport, exportToCSV, type ExportColumn } from '../utils/exportUtils';
+import { formatRecordsForExport, exportToExcel, shareExcel, type ExportColumn, type ExportMetadata } from '../utils/exportUtils';
 
 export function useExport() {
   const { t } = useTranslation();
@@ -10,11 +10,16 @@ export function useExport() {
   const handleExport = useCallback(async <T,>(
     filename: string,
     data: T[],
-    columns: ExportColumn[]
+    columns: ExportColumn[],
+    summaryRows?: Record<string, string>[],
+    metadata?: ExportMetadata
   ) => {
     try {
       const exportData = formatRecordsForExport(data, columns);
-      const result = await exportToCSV(filename, exportData);
+      if (summaryRows && summaryRows.length > 0) {
+        exportData.push(...summaryRows);
+      }
+      const result = await exportToExcel(filename, exportData, filename, metadata);
       if (result) {
         toast.success(t('common.exportSuccess'));
       }
@@ -23,5 +28,25 @@ export function useExport() {
     }
   }, [t, toast]);
 
-  return { handleExport };
+  const handleShare = useCallback(async <T,>(
+    filename: string,
+    data: T[],
+    columns: ExportColumn[],
+    summaryRows?: Record<string, string>[],
+    metadata?: ExportMetadata
+  ) => {
+    try {
+      const exportData = formatRecordsForExport(data, columns);
+      if (summaryRows && summaryRows.length > 0) {
+        exportData.push(...summaryRows);
+      }
+      await shareExcel(filename, exportData, filename, metadata);
+      toast.success(t('export.share.success'));
+    } catch (error) {
+      console.error('Share error:', error);
+      toast.error(t('export.share.error'));
+    }
+  }, [t, toast]);
+
+  return { handleExport, handleShare };
 }

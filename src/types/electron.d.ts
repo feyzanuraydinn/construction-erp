@@ -136,8 +136,9 @@ export interface ElectronAPI {
   };
 
   export: {
-    toExcel: (data: { type: string; records: unknown[]; filename?: string }) => Promise<string>;
+    toExcel: (data: { type: string; records: unknown[]; filename?: string; metadata?: { summaryStartIndex?: number; amountColumnLabel?: string; balanceColumnLabel?: string; receivableColumnLabel?: string; payableColumnLabel?: string; typeColumnLabel?: string; expenseTypeValues?: string[]; redSummaryLabels?: string[]; greenSummaryLabels?: string[]; highlightSummaryLabels?: string[] } }) => Promise<string>;
     toPDF: (data: { type: string; html: string; filename?: string }) => Promise<string>;
+    share: (data: { type: string; records: unknown[]; filename?: string; metadata?: { summaryStartIndex?: number; amountColumnLabel?: string; balanceColumnLabel?: string; receivableColumnLabel?: string; payableColumnLabel?: string; typeColumnLabel?: string; expenseTypeValues?: string[]; redSummaryLabels?: string[]; greenSummaryLabels?: string[]; highlightSummaryLabels?: string[] } }) => Promise<{ success: boolean }>;
   };
 
   exchange: {
@@ -160,7 +161,61 @@ export interface ElectronAPI {
     getVersion: () => Promise<string>;
     print: () => Promise<{ success: boolean; error?: string }>;
     setLanguage: (locale: string) => Promise<void>;
+    confirmClose: () => Promise<{ success: boolean }>;
+    cancelClose: () => Promise<{ success: boolean }>;
+    onCloseRequested: (callback: (payload: { hasPendingChanges: boolean }) => void) => () => void;
   };
+
+  sync: SyncAPI;
+}
+
+export type SyncStatusValue =
+  | 'disconnected'
+  | 'offline'
+  | 'synced'
+  | 'uploading'
+  | 'downloading'
+  | 'pending'
+  | 'conflict'
+  | 'error';
+
+export interface SyncStatusPayload {
+  status: SyncStatusValue;
+  message?: string;
+  lastSyncSuccess?: string | null;
+  nextCheckSeconds?: number | null;
+  error?: string;
+}
+
+export interface SyncConflictPayload {
+  remoteModifiedTime: string;
+  remoteSize: string;
+  lastSyncSuccess: string | null;
+}
+
+export interface SyncMetaPayload {
+  remoteFileId: string | null;
+  remoteModTimeAtLastSync: string | null;
+  localSizeAtLastSync: number | null;
+  localMtimeAtLastSync: string | null;
+  lastSyncSuccess: string | null;
+  autoSyncEnabled: boolean;
+  lastSnapshotDate: string | null;
+}
+
+export interface SyncAPI {
+  getStatus: () => Promise<SyncStatusPayload>;
+  getMeta: () => Promise<SyncMetaPayload>;
+  setAutoSyncEnabled: (enabled: boolean) => Promise<{ success: boolean }>;
+  check: () => Promise<{ success: boolean }>;
+  upload: () => Promise<{ success: boolean; error?: string }>;
+  download: () => Promise<{ success: boolean; error?: string }>;
+  resolveConflict: (
+    choice: 'use-local' | 'use-remote' | 'cancel'
+  ) => Promise<{ success: boolean; error?: string }>;
+  onStatus: (callback: (payload: SyncStatusPayload) => void) => () => void;
+  onConflict: (callback: (payload: SyncConflictPayload) => void) => () => void;
+  onReloadRequired: (callback: () => void) => () => void;
 }
 
 declare global {

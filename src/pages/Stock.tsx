@@ -33,6 +33,7 @@ import {
   RowCheckbox,
 } from '../components/ui';
 import { MaterialModal, MovementModal } from '../components/modals';
+import { MaterialDetailView } from '../components/shared/MaterialDetailView';
 import { useToast } from '../contexts/ToastContext';
 import { useDebounce, useKeyboardShortcuts, usePagination, paginateArray, useSelection, useBulkDelete, getPaginationProps } from '../hooks';
 import { formatCurrency, formatDate, formatNumber } from '../utils/formatters';
@@ -57,6 +58,7 @@ function Stock() {
   const [movementModalOpen, setMovementModalOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Material | null>(null);
+  const [detailMaterial, setDetailMaterial] = useState<Material | null>(null);
 
   // Bulk selection & delete hooks for materials
   const { selectedIds: selectedMaterialIds, handleSelectAll: handleSelectAllMaterials, handleSelectOne: handleSelectOneMaterial, clearSelection: clearMaterialSelection } = useSelection();
@@ -321,8 +323,9 @@ function Stock() {
                         <TableRow
                           key={material.id}
                           selected={selectedMaterialIds.has(material.id)}
+                          onClick={() => setDetailMaterial(material)}
                         >
-                          <TableCell>
+                          <TableCell onClick={(e: React.MouseEvent) => e.stopPropagation()}>
                             <RowCheckbox
                               id={material.id}
                               selectedIds={selectedMaterialIds}
@@ -357,7 +360,10 @@ function Stock() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center justify-center gap-1">
+                            <div
+                              className="flex items-center justify-center gap-1"
+                              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                            >
                               <Button
                                 variant="ghost-warning"
                                 size="icon"
@@ -535,6 +541,16 @@ function Stock() {
         message={t('stock.bulkDeleteMovementMessage', { count: selectedMovementIds.size })}
         type="danger"
         confirmText={t('stock.bulkDeleteMovementConfirm', { count: selectedMovementIds.size })}
+      />
+
+      {/* Material Detail Modal */}
+      <MaterialDetailView
+        material={detailMaterial}
+        onClose={() => setDetailMaterial(null)}
+        onEdit={(material) => {
+          setEditingMaterial(material);
+          setMaterialModalOpen(true);
+        }}
       />
     </div>
   );

@@ -11,6 +11,7 @@ import { registerBackupHandlers } from './backupHandlers';
 import { registerExportHandlers } from './exportHandlers';
 import { registerGdriveHandlers } from './gdriveHandlers';
 import { registerAppHandlers } from './appHandlers';
+import { registerSyncHandlers } from './syncHandlers';
 
 /**
  * Register all IPC handlers
@@ -40,4 +41,5 @@ export function registerAllHandlers(
   registerExportHandlers(getMainWindow);
   registerGdriveHandlers(getDbService);
   registerAppHandlers(getDbService);
+  registerSyncHandlers();
 }

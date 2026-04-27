@@ -93,14 +93,7 @@ export const TransactionDetailModal = memo(function TransactionDetailModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
       <ModalHeader>
-        <div className="flex items-center justify-between">
-          <span>{editMode ? t('transactions.editTransaction') : t('transactions.transactionDetail')}</span>
-          {!editMode && (
-            <Button variant="ghost" size="xs" icon={FiEdit2} onClick={onEdit}>
-              {t('common.edit')}
-            </Button>
-          )}
-        </div>
+        {editMode ? t('transactions.editTransaction') : t('transactions.transactionDetail')}
       </ModalHeader>
       <ModalBody>
         <div className="grid grid-cols-2 gap-4">
@@ -314,6 +307,11 @@ export const TransactionDetailModal = memo(function TransactionDetailModal({
             <Button variant="secondary" onClick={onClose}>
               {editMode ? t('common.cancel') : t('common.close')}
             </Button>
+            {!editMode && (
+              <Button icon={FiEdit2} onClick={onEdit}>
+                {t('common.edit')}
+              </Button>
+            )}
             {editMode && (
               <Button onClick={onSave}>
                 {t('common.save')}

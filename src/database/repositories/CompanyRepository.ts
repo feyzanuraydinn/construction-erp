@@ -32,11 +32,25 @@ export class CompanyRepository extends BaseRepository<Company> {
     `);
   }
 
+  generateCode(): string {
+    const prefix = 'CRH-';
+    const last = this.queryOne<{ code: string }>(
+      `SELECT code FROM companies WHERE code LIKE ? ORDER BY code DESC LIMIT 1`,
+      [`${prefix}%`]
+    );
+    if (last) {
+      const num = parseInt(last.code.replace(prefix, ''), 10) + 1;
+      return `${prefix}${String(num).padStart(3, '0')}`;
+    }
+    return `${prefix}001`;
+  }
+
   create(data: CompanyInput): Company {
+    const code = this.generateCode();
     const result = this.run(
-      `INSERT INTO companies (type, account_type, name, tc_number, profession, tax_office, tax_number, trade_registry_no, contact_person, phone, email, address, bank_name, iban, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [data.type, data.account_type, data.name, data.tc_number || null, data.profession || null, data.tax_office || null, data.tax_number || null, data.trade_registry_no || null, data.contact_person || null, data.phone || null, data.email || null, data.address || null, data.bank_name || null, data.iban || null, data.notes || null]
+      `INSERT INTO companies (code, type, account_type, name, tc_number, profession, tax_office, tax_number, trade_registry_no, contact_person, phone, email, address, bank_name, iban, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [code, data.type, data.account_type, data.name, data.tc_number || null, data.profession || null, data.tax_office || null, data.tax_number || null, data.trade_registry_no || null, data.contact_person || null, data.phone || null, data.email || null, data.address || null, data.bank_name || null, data.iban || null, data.notes || null]
     );
     return this.getById(result.lastInsertRowid)!;
   }

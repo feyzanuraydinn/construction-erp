@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCRUDPage, getPaginationProps } from '../hooks';
-import { FiPlus, FiSearch, FiEdit2, FiTrash2, FiUsers, FiDownload } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiEdit2, FiTrash2, FiUsers, FiDownload, FiShare2 } from 'react-icons/fi';
 import {
   Card,
   CardBody,
@@ -26,10 +26,10 @@ import {
   SelectAllCheckbox,
   RowCheckbox,
 } from '../components/ui';
-import { CompanyModal } from '../components/modals';
+import { CompanyModal, ExportPreviewModal } from '../components/modals';
 import { formatCurrency } from '../utils/formatters';
 import { COMPANY_TYPES, ACCOUNT_TYPES } from '../utils/constants';
-import { companyColumns } from '../utils/exportUtils';
+import { getCompanyColumns, buildCompanySummary } from '../utils/exportUtils';
 import type { CompanyWithBalance } from '../types';
 
 function Companies() {
@@ -38,6 +38,8 @@ function Companies() {
 
   // Companies-specific state for related entity counts on delete
   const [deleteRelated, setDeleteRelated] = useState<{ transactionCount: number; projectCount: number } | null>(null);
+
+  const i18nCompanyColumns = useMemo(() => getCompanyColumns(t), [t]);
 
   const crud = useCRUDPage<CompanyWithBalance, { type: string; accountType: string }>({
     loadFn: async () => {
@@ -61,8 +63,9 @@ function Companies() {
       return matchesSearch && matchesType && matchesAccountType;
     }),
     exportConfig: {
-      filename: 'cari_hesaplar',
-      columns: companyColumns,
+      filename: t('export.filenames.companies'),
+      columns: i18nCompanyColumns,
+      summaryBuilder: (records) => buildCompanySummary(records, t, records.length),
     },
   });
 
@@ -121,10 +124,18 @@ function Companies() {
           <Button
             variant="secondary"
             icon={FiDownload}
-            onClick={() => crud.handleExport()}
+            onClick={() => crud.prepareExportPreview()}
             title={t('common.exportToExcel')}
           >
             {t('common.exportToExcel')}
+          </Button>
+          <Button
+            variant="secondary"
+            icon={FiShare2}
+            onClick={() => crud.handleShare()}
+            title={t('common.share')}
+          >
+            {t('common.share')}
           </Button>
           <Button icon={FiPlus} onClick={() => crud.setModalOpen(true)}>
             {t('companies.newCompany')}
@@ -193,6 +204,7 @@ function Companies() {
                       onSelectAll={crud.handleSelectAll}
                     />
                   </TableHead>
+                  <TableHead>{t('companies.table.code')}</TableHead>
                   <TableHead>{t('companies.table.type')}</TableHead>
                   <TableHead>{t('companies.table.accountType')}</TableHead>
                   <TableHead>{t('companies.table.name')}</TableHead>
@@ -216,6 +228,9 @@ function Companies() {
                         selectedIds={crud.selectedIds}
                         onSelectOne={crud.handleSelectOne}
                       />
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs font-mono text-gray-500 dark:text-gray-400">{company.code}</span>
                     </TableCell>
                     <TableCell>
                       <TypeBadge type={company.type} />
@@ -310,6 +325,15 @@ function Companies() {
         message={t('companies.bulkDeleteMessage', { count: crud.selectedIds.size })}
         type="danger"
         confirmText={t('companies.bulkDeleteConfirm', { count: crud.selectedIds.size })}
+      />
+
+      {/* Export Preview */}
+      <ExportPreviewModal
+        isOpen={crud.exportPreviewOpen}
+        onClose={() => crud.setExportPreviewOpen(false)}
+        data={crud.exportPreviewData}
+        onExport={(selectedIndices) => crud.handleExport(selectedIndices)}
+        mode="selection"
       />
     </div>
   );

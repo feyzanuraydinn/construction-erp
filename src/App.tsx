@@ -21,6 +21,10 @@ import {
 import ErrorBoundary, { PageErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider, useToast } from './contexts/ToastContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { SyncProvider } from './contexts/SyncContext';
+import { SyncStatusIndicator } from './components/SyncStatusIndicator';
+import { SyncConflictModal } from './components/SyncConflictModal';
+import { CloseConfirmModal } from './components/CloseConfirmModal';
 import { CommandPalette, LoadingSpinner } from './components/ui';
 
 // Logo Component
@@ -195,6 +199,7 @@ const AppContent: React.FC = () => {
                 {!sidebarCollapsed && <span className="fade-in">{t(item.labelKey)}</span>}
               </NavLink>
             ))}
+            <SyncStatusIndicator collapsed={sidebarCollapsed} />
           </div>
         </aside>
 
@@ -220,6 +225,10 @@ const AppContent: React.FC = () => {
 
         {/* Command Palette */}
         <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+
+        {/* Global modals — mounted at top level so they appear over any page */}
+        <SyncConflictModal />
+        <CloseConfirmModal />
       </div>
     </HashRouter>
   );
@@ -231,7 +240,9 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <ThemeProvider>
         <ToastProvider>
-          <AppContent />
+          <SyncProvider>
+            <AppContent />
+          </SyncProvider>
         </ToastProvider>
       </ThemeProvider>
     </ErrorBoundary>

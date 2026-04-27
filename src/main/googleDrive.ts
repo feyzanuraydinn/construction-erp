@@ -1,10 +1,9 @@
 import { drive_v3 } from '@googleapis/drive';
 import { OAuth2Client } from 'google-auth-library';
-import { shell, app, safeStorage } from 'electron';
+import { shell, safeStorage } from 'electron';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { t } from './i18n';
 
 // OAuth credentials - build sırasında veya config dosyasından yüklenir
@@ -13,6 +12,9 @@ let CLIENT_SECRET = '';
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 const REDIRECT_PORT = 8089;
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/oauth2callback`;
+const BACKUP_FOLDER_NAME = 'ConstructionERP_Backups';
+const LATEST_FILE_NAME = 'latest_backup.db';
+const SNAPSHOT_PREFIX = 'snapshot-';
 
 interface DriveFile {
   id: string;
@@ -374,7 +376,7 @@ class GoogleDriveService {
 
     try {
       const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-      const folderName = 'InsaatERP_Backups';
+      const folderName = 'ConstructionERP_Backups';
 
       // Search for existing folder
       const searchResponse = await drive.files.list({
@@ -487,6 +489,241 @@ class GoogleDriveService {
     } catch (error) {
       console.error('Delete error:', error);
       return { success: false, error: this.formatError(error) };
+    }
+  }
+
+  // ---- Sync-related methods (used by SyncService) ----
+
+  /** Finds the latest_backup.db file in the dedicated backup folder */
+  async getLatestFile(): Promise<DriveFile | null> {
+    if (!this.oauth2Client || !this.isConnected()) return null;
+
+    try {
+      const folderId = await this.getOrCreateNamedBackupFolder();
+      if (!folderId) return null;
+
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
+      const response = await drive.files.list({
+        q: `'${folderId}' in parents and name='${LATEST_FILE_NAME}' and trashed=false`,
+        spaces: 'drive',
+        fields: 'files(id, name, size, createdTime, modifiedTime)',
+        pageSize: 1,
+      });
+
+      const files = response.data.files || [];
+      if (files.length === 0) return null;
+      const f = files[0];
+      return {
+        id: f.id || '',
+        name: f.name || '',
+        size: f.size || '0',
+        createdTime: f.createdTime || '',
+        modifiedTime: f.modifiedTime || '',
+      };
+    } catch (error) {
+      console.error('getLatestFile error:', error);
+      return null;
+    }
+  }
+
+  /** Uploads the given file as latest_backup.db (replaces if exists) */
+  async uploadLatest(
+    filePath: string
+  ): Promise<{ success: boolean; fileId?: string; modifiedTime?: string; error?: string }> {
+    if (!this.oauth2Client || !this.isConnected()) {
+      return { success: false, error: t('main.gdrive.notConnected') };
+    }
+
+    try {
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
+      const folderId = await this.getOrCreateNamedBackupFolder();
+      if (!folderId) return { success: false, error: 'Yedek klasörü oluşturulamadı.' };
+
+      const existing = await this.getLatestFile();
+
+      const media = {
+        mimeType: 'application/octet-stream',
+        body: fs.createReadStream(filePath),
+      };
+
+      if (existing) {
+        const response = await drive.files.update({
+          fileId: existing.id,
+          media,
+          fields: 'id, modifiedTime',
+        });
+        return {
+          success: true,
+          fileId: response.data.id || undefined,
+          modifiedTime: response.data.modifiedTime || undefined,
+        };
+      } else {
+        const response = await drive.files.create({
+          requestBody: { name: LATEST_FILE_NAME, parents: [folderId] },
+          media,
+          fields: 'id, modifiedTime',
+        });
+        return {
+          success: true,
+          fileId: response.data.id || undefined,
+          modifiedTime: response.data.modifiedTime || undefined,
+        };
+      }
+    } catch (error) {
+      console.error('uploadLatest error:', error);
+      return { success: false, error: this.formatError(error) };
+    }
+  }
+
+  /** Uploads a timestamped snapshot file */
+  async uploadSnapshot(filePath: string): Promise<{ success: boolean; error?: string }> {
+    if (!this.oauth2Client || !this.isConnected()) {
+      return { success: false, error: t('main.gdrive.notConnected') };
+    }
+    try {
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
+      const folderId = await this.getOrCreateNamedBackupFolder();
+      if (!folderId) return { success: false, error: 'Yedek klasörü oluşturulamadı.' };
+
+      const ts = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const name = `${SNAPSHOT_PREFIX}${ts}.db`;
+
+      const existingResp = await drive.files.list({
+        q: `'${folderId}' in parents and name='${name}' and trashed=false`,
+        spaces: 'drive',
+        fields: 'files(id)',
+        pageSize: 1,
+      });
+      if (existingResp.data.files && existingResp.data.files.length > 0) {
+        return { success: true };
+      }
+
+      await drive.files.create({
+        requestBody: { name, parents: [folderId] },
+        media: { mimeType: 'application/octet-stream', body: fs.createReadStream(filePath) },
+        fields: 'id',
+      });
+      return { success: true };
+    } catch (error) {
+      console.error('uploadSnapshot error:', error);
+      return { success: false, error: this.formatError(error) };
+    }
+  }
+
+  async listSnapshots(): Promise<DriveFile[]> {
+    if (!this.oauth2Client || !this.isConnected()) return [];
+    try {
+      const folderId = await this.getOrCreateNamedBackupFolder();
+      if (!folderId) return [];
+
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
+      const response = await drive.files.list({
+        q: `'${folderId}' in parents and name contains '${SNAPSHOT_PREFIX}' and trashed=false`,
+        spaces: 'drive',
+        fields: 'files(id, name, size, createdTime, modifiedTime)',
+        orderBy: 'name desc',
+        pageSize: 50,
+      });
+      return (response.data.files || []).map((f) => ({
+        id: f.id || '',
+        name: f.name || '',
+        size: f.size || '0',
+        createdTime: f.createdTime || '',
+        modifiedTime: f.modifiedTime || '',
+      }));
+    } catch (error) {
+      console.error('listSnapshots error:', error);
+      return [];
+    }
+  }
+
+  /** Keeps only the newest `keep` snapshots, deletes older ones */
+  async rotateSnapshots(keep: number): Promise<void> {
+    if (!this.oauth2Client || !this.isConnected()) return;
+    try {
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
+      const snapshots = await this.listSnapshots();
+      const toDelete = snapshots.slice(keep);
+      for (const snap of toDelete) {
+        if (snap.id) {
+          try {
+            await drive.files.delete({ fileId: snap.id });
+          } catch {
+            // ignore individual delete failures
+          }
+        }
+      }
+    } catch (error) {
+      console.error('rotateSnapshots error:', error);
+    }
+  }
+
+  /** Generic file download by ID to a destination path */
+  async downloadFile(
+    fileId: string,
+    destPath: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!this.oauth2Client || !this.isConnected()) {
+      return { success: false, error: t('main.gdrive.notConnected') };
+    }
+    try {
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
+      const response = await drive.files.get(
+        { fileId, alt: 'media' },
+        { responseType: 'stream' }
+      );
+      const dest = fs.createWriteStream(destPath);
+      return new Promise((resolve) => {
+        (response.data as NodeJS.ReadableStream)
+          .pipe(dest)
+          .on('finish', () => resolve({ success: true }))
+          .on('error', (err: Error) => resolve({ success: false, error: err.message }));
+      });
+    } catch (error) {
+      console.error('downloadFile error:', error);
+      return { success: false, error: this.formatError(error) };
+    }
+  }
+
+  /** Ping Drive API to check reachability */
+  async ping(): Promise<boolean> {
+    if (!this.oauth2Client || !this.isConnected()) return false;
+    try {
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
+      await drive.about.get({ fields: 'user' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Get-or-create the canonical SyncService backup folder. Distinct from the
+   *  legacy listBackups folder helper to avoid disturbing existing behavior. */
+  private async getOrCreateNamedBackupFolder(): Promise<string | null> {
+    if (!this.oauth2Client) return null;
+    try {
+      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
+      const searchResponse = await drive.files.list({
+        q: `name='${BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+        spaces: 'drive',
+        fields: 'files(id, name)',
+      });
+
+      if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+        return searchResponse.data.files[0].id || null;
+      }
+
+      const createResponse = await drive.files.create({
+        requestBody: {
+          name: BACKUP_FOLDER_NAME,
+          mimeType: 'application/vnd.google-apps.folder',
+        },
+        fields: 'id',
+      });
+      return createResponse.data.id || null;
+    } catch (error) {
+      console.error('Folder error:', error);
+      return null;
     }
   }
 }

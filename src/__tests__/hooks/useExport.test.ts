@@ -28,7 +28,9 @@ vi.mock('../../contexts/ToastContext', () => ({
 // Mock export utils
 vi.mock('../../utils/exportUtils', () => ({
   formatRecordsForExport: vi.fn().mockReturnValue([{ col1: 'val1' }]),
-  exportToCSV: vi.fn().mockResolvedValue('/path/to/file.csv'),
+  exportToExcel: vi.fn().mockResolvedValue('/path/to/file.xlsx'),
+  exportToCSV: vi.fn().mockResolvedValue('/path/to/file.xlsx'),
+  shareExcel: vi.fn().mockResolvedValue('/path/to/file.xlsx'),
 }));
 
 describe('useExport', () => {
@@ -42,8 +44,8 @@ describe('useExport', () => {
     expect(typeof result.current.handleExport).toBe('function');
   });
 
-  it('should call formatRecordsForExport and exportToCSV on export', async () => {
-    const { formatRecordsForExport, exportToCSV } = await import('../../utils/exportUtils');
+  it('should call formatRecordsForExport and exportToExcel on export', async () => {
+    const { formatRecordsForExport, exportToExcel } = await import('../../utils/exportUtils');
     const { result } = renderHook(() => useExport());
 
     const testData = [{ id: 1, name: 'Test' }];
@@ -54,7 +56,7 @@ describe('useExport', () => {
     });
 
     expect(formatRecordsForExport).toHaveBeenCalledWith(testData, testColumns);
-    expect(exportToCSV).toHaveBeenCalledWith('test-export', [{ col1: 'val1' }]);
+    expect(exportToExcel).toHaveBeenCalledWith('test-export', [{ col1: 'val1' }], 'test-export', undefined);
   });
 
   it('should show success toast on successful export', async () => {
@@ -68,8 +70,8 @@ describe('useExport', () => {
   });
 
   it('should show error toast when export fails', async () => {
-    const { exportToCSV } = await import('../../utils/exportUtils');
-    vi.mocked(exportToCSV).mockRejectedValueOnce(new Error('Export failed'));
+    const { exportToExcel } = await import('../../utils/exportUtils');
+    vi.mocked(exportToExcel).mockRejectedValueOnce(new Error('Export failed'));
 
     const { result } = renderHook(() => useExport());
 
@@ -80,9 +82,9 @@ describe('useExport', () => {
     expect(mockToast.error).toHaveBeenCalledWith('common.exportError');
   });
 
-  it('should not show success toast when exportToCSV returns falsy', async () => {
-    const { exportToCSV } = await import('../../utils/exportUtils');
-    vi.mocked(exportToCSV).mockResolvedValueOnce('');
+  it('should not show success toast when exportToExcel returns falsy', async () => {
+    const { exportToExcel } = await import('../../utils/exportUtils');
+    vi.mocked(exportToExcel).mockResolvedValueOnce('');
 
     const { result } = renderHook(() => useExport());
 

@@ -1,4 +1,4 @@
-# İnşaat ERP Sistemi
+# Construction ERP Sistemi
 
 İnşaat firmaları için geliştirilmiş kapsamlı masaüstü ERP uygulaması. Cari hesapları, projeleri, stok ve finansal işlemleri tek bir arayüzden yönetin.
 
@@ -17,7 +17,8 @@
 
 ### Ek Özellikler
 - **Veri Dışa Aktarım** - Tüm tablolar için Excel (XLSX) ve PDF dışa aktarım
-- **Bulut Yedekleme** - Google Drive entegrasyonu, şifreli yedekleme/geri yükleme ve otomatik senkronizasyon
+- **Bulut Senkronizasyon** - Google Drive entegrasyonu, otomatik senkron (5 dakikada bir + kapanışta), kalıcı mtime tabanlı değişiklik tespiti (yeniden başlatmayı tolere eder), çakışma çözümü diyaloğu (yereli kullan / buluttakini kullan / sonra karar ver), haftalık snapshot rotasyonu, Electron `safeStorage` ile şifrelenmiş kimlik bilgileri. Yerel yedek dosyası başarılı her senkron sonrası bulut kopyasıyla eşitlenir.
+- **Uygulama İçi Çıkış Onayı** - Çıkmadan önce React modal soruyor; onaylanırsa yerel yedek + bulut yüklemesi (10 sn timeout) yapılıyor.
 - **Çöp Kutusu** - Tüm varlıklar için yumuşak silme ve tek tıkla geri getirme
 - **Çoklu Dil** - Uygulama genelinde tam Türkçe ve İngilizce desteği (ana süreç diyalogları dahil)
 - **Karanlık Mod** - Açık, koyu ve sisteme uyumlu tema seçenekleri
@@ -86,7 +87,7 @@ npm run build
 ```
 src/
 ├── main/                    # Electron ana süreci
-│   ├── ipc/                 # 12 IPC işleyici modülü
+│   ├── ipc/                 # 13 IPC işleyici modülü
 │   │   ├── safeHandle.ts    # Hata sanitize eden IPC sarmalayıcı
 │   │   ├── appHandlers.ts
 │   │   ├── companyHandlers.ts
@@ -98,9 +99,11 @@ src/
 │   │   ├── backupHandlers.ts
 │   │   ├── categoryHandlers.ts
 │   │   ├── dashboardHandlers.ts
-│   │   └── trashHandlers.ts
+│   │   ├── trashHandlers.ts
+│   │   └── syncHandlers.ts  # Bulut senkron orkestrasyonu
 │   ├── i18n.ts              # Ana süreç çoklu dil (ortak locale dosyaları)
-│   ├── googleDrive.ts       # Google Drive OAuth2 & senkronizasyon
+│   ├── googleDrive.ts       # Google Drive OAuth2 & senkron API
+│   ├── SyncService.ts       # Senkron orkestratörü (interval, dirty/mtime tespiti, çakışma, snapshot'lar, beforeQuit)
 │   ├── autoUpdater.ts       # Otomatik güncelleme yöneticisi
 │   ├── preload.ts           # Context köprüsü (renderer ↔ main)
 │   └── main.ts              # Uygulama giriş noktası
@@ -122,7 +125,11 @@ src/
 ├── components/
 │   ├── ui/                  # 15 UI temel bileşen
 │   ├── modals/              # 6 CRUD modal
-│   └── shared/              # Sidebar, Layout, PrintView
+│   ├── shared/              # Sidebar, Layout, PrintView
+│   ├── SyncStatusIndicator.tsx  # Sidebar senkron durum göstergesi (popover'lı)
+│   ├── SyncConflictModal.tsx    # Çakışma çözüm diyaloğu
+│   ├── CloseConfirmModal.tsx    # Uygulama içi çıkış onayı
+│   └── ErrorBoundary.tsx
 ├── database/
 │   ├── DatabaseService.ts   # SQLite başlatma, migrasyonlar
 │   └── repositories/        # 8 özelleşmiş repository
@@ -146,7 +153,7 @@ src/
 │   ├── usePrint.ts
 │   ├── useKeyboardShortcuts.ts
 │   └── useDebounce.ts
-├── contexts/                # Toast, Theme
+├── contexts/                # Toast, Theme, Sync
 ├── i18n/
 │   └── locales/             # tr.json, en.json (her biri ~1200 anahtar)
 ├── utils/
