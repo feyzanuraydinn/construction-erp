@@ -1,0 +1,71 @@
+{
+  "id": "construction-erp",
+  "slug": "construction-erp",
+  "preview": "construction-erp.webp",
+  "technologies": ["Electron", "React", "TypeScript", "MongoDB", "Node.js"],
+  "isMobile": false,
+  "content": {
+    "name": {
+      "tr": "İnşaat ERP",
+      "en": "Construction ERP"
+    },
+    "subtitle": {
+      "tr": "İnşaat Sektörü için Kurumsal Kaynak Planlama",
+      "en": "Enterprise Resource Planning for Construction"
+    },
+    "cardDescription": {
+      "tr": "İnşaat şirketleri için projeleri, kaynakları, envanteri ve finansları verimli bir şekilde yönetmek üzere tasarlanmış kapsamlı bir masaüstü ERP sistemi.",
+      "en": "A comprehensive desktop ERP system designed for construction companies to manage projects, resources, inventory, and finances efficiently."
+    },
+    "description": {
+      "tr": "İnşaat şirketleri için projeleri, kaynakları, envanteri ve finansları verimli bir şekilde yönetmek üzere tasarlanmış kapsamlı bir masaüstü ERP sistemi. Çapraz platform uyumluluğu için Electron ve React ile geliştirildi.",
+      "en": "A comprehensive desktop ERP system designed for construction companies to manage projects, resources, inventory, and finances efficiently. Built with Electron and React for cross-platform compatibility."
+    },
+    "cardAlt": {
+      "tr": "İnşaat ERP Sistemi ekran görüntüsü",
+      "en": "Construction ERP System screenshot"
+    },
+    "heroAlt": {
+      "tr": "İnşaat ERP Sistemi hero görseli",
+      "en": "Construction ERP System hero image"
+    },
+    "status": {
+      "tr": "Yayında",
+      "en": "Released"
+    },
+    "roles": [
+      {
+        "icon": "code",
+        "title": { "tr": "Full Stack Geliştirme", "en": "Full Stack Development" },
+        "desc": {
+          "tr": "React, Electron ve Node.js kullanılarak ön yüzden arka yüze tüm uygulama geliştirildi",
+          "en": "Built the entire application from frontend to backend using React, Electron, and Node.js"
+        }
+      },
+      {
+        "icon": "database",
+        "title": { "tr": "Veritabanı Tasarımı", "en": "Database Design" },
+        "desc": {
+          "tr": "Verimli veri yönetimi için MongoDB veritabanı şeması tasarlanıp uygulandı",
+          "en": "Designed and implemented MongoDB database schema for efficient data management"
+        }
+      },
+      {
+        "icon": "chart",
+        "title": { "tr": "Analitik Paneli", "en": "Analytics Dashboard" },
+        "desc": {
+          "tr": "İş içgörüleri için grafikler ve analitikler içeren gerçek zamanlı gösterge paneli oluşturuldu",
+          "en": "Created real-time dashboard with charts and analytics for business insights"
+        }
+      },
+      {
+        "icon": "users",
+        "title": { "tr": "Kullanıcı Yönetimi", "en": "User Management" },
+        "desc": {
+          "tr": "Rol tabanlı erişim kontrolü ve çalışan yönetimi modülü uygulandı",
+          "en": "Implemented role-based access control and employee management module"
+        }
+      }
+    ]
+  }
+}
