@@ -2,8 +2,6 @@
 
 A full-featured desktop ERP application for construction companies. Manage current accounts, projects, stock, and financial transactions from a single interface.
 
-![Application Preview](construction-erp.gif)
-
 **[Türkçe README](README.tr.md)**
 
 ## Features
