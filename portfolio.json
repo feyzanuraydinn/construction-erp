@@ -4,6 +4,7 @@
   "preview": "construction-erp.webp",
   "technologies": ["Electron", "React", "TypeScript", "MongoDB", "Node.js"],
   "isMobile": false,
+  "featured": true,
   "content": {
     "name": {
       "tr": "İnşaat ERP",
