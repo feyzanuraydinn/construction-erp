@@ -2,14 +2,14 @@ import { IpcMainInvokeEvent } from 'electron';
 import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import type { DatabaseService } from '../../database/DatabaseService';
 import { googleDriveService } from '../googleDrive';
+import { syncService } from '../SyncService';
 import { gdriveCredentialsSchema, validateInput } from '../../utils/schemas';
 import { validateBackupPath } from '../../utils/security';
 import { safeHandle } from './safeHandle';
 import { t } from '../i18n';
 
-export function registerGdriveHandlers(getDbService: () => DatabaseService): void {
+export function registerGdriveHandlers(): void {
   safeHandle('gdrive:hasCredentials', () => googleDriveService.hasCredentials());
   safeHandle('gdrive:isConnected', () => googleDriveService.isConnected());
 
@@ -36,10 +36,11 @@ export function registerGdriveHandlers(getDbService: () => DatabaseService): voi
     return googleDriveService.listBackups();
   });
 
+  // Uploads the live database as the cloud copy (latest_backup.db). Goes
+  // through the sync service so the sync state stays consistent, a local
+  // backup is written afterwards, and the weekly snapshots are left alone.
   safeHandle('gdrive:uploadBackup', async () => {
-    const backupDir = path.join(app.getPath('userData'), 'backups');
-    const backupPath = getDbService().createBackup(backupDir);
-    return googleDriveService.uploadBackup(backupPath);
+    return syncService.manualUpload();
   });
 
   safeHandle(

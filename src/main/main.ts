@@ -37,19 +37,6 @@ const isDev = !app.isPackaged;
 // Remove default menu bar (File, Edit, View, etc.)
 Menu.setApplicationMenu(null);
 
-// İnternet bağlantısı kontrolü
-async function checkInternetConnection(): Promise<boolean> {
-  try {
-    const response = await fetch('https://www.google.com/favicon.ico', {
-      method: 'HEAD',
-      cache: 'no-store',
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 // Yedeklenmemiş değişiklik var mı kontrol et
 function hasUnbackedChanges(): boolean {
   if (!dbService) return false;
@@ -144,7 +131,7 @@ function createWindow(): void {
   });
 }
 
-app.whenReady().then(async () => {
+async function startApp(): Promise<void> {
   // Initialize logger
   mainLogger.init();
   mainLogger.info('Application starting...', 'Main');
@@ -190,12 +177,7 @@ app.whenReady().then(async () => {
   // Register all IPC handlers
   registerAllHandlers(
     () => dbService,
-    (s) => {
-      dbService = s;
-      syncService.updateDbService(s);
-    },
-    () => mainWindow,
-    checkInternetConnection
+    () => mainWindow
   );
 
   // Renderer says "user chose to actually close" — do the heavy lifting
@@ -232,7 +214,30 @@ app.whenReady().then(async () => {
     syncService.init(dbService, mainWindow, app.getPath('userData'));
     syncService.start();
   }
-});
+}
+
+// Only one instance may run. Each instance keeps the whole database in memory
+// and rewrites the file on every save, so a second instance would silently
+// overwrite the first one's changes (and vice versa).
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  app
+    .whenReady()
+    .then(startApp)
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      mainLogger.error('Application failed to start', 'Main', error);
+      dialog.showErrorBox(t('main.errorTitle'), t('main.unexpectedError', { error: message }));
+      app.quit();
+    });
+}
 
 app.on('window-all-closed', () => {
   syncService.stop();

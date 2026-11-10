@@ -10,16 +10,17 @@ export function validateBackupPath(backupDir: string, filePath: string): boolean
   if (!filePath || !backupDir) return false;
 
   // Normalize paths
-  const normalizedBackupDir = backupDir.replace(/\\/g, '/').toLowerCase();
+  const normalizedBackupDir = backupDir.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
   const normalizedFilePath = filePath.replace(/\\/g, '/').toLowerCase();
 
-  // Check if file path starts with backup directory
-  if (!normalizedFilePath.startsWith(normalizedBackupDir)) {
+  // The file must be inside the directory itself, not in a sibling that merely
+  // shares the prefix (e.g. ".../backups-old/x.db" for ".../backups").
+  if (!normalizedFilePath.startsWith(`${normalizedBackupDir}/`)) {
     return false;
   }
 
   // Check for path traversal in the relative path
-  const relativePath = normalizedFilePath.slice(normalizedBackupDir.length);
+  const relativePath = normalizedFilePath.slice(normalizedBackupDir.length + 1);
   if (relativePath.includes('..')) {
     return false;
   }

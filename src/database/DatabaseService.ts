@@ -25,6 +25,7 @@ import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import path from 'path';
 import fs from 'fs';
 import { dbLogger } from '../utils/logger';
+import { writeFileAtomic, fileTimestamp, localDateStamp, pruneBackupFiles } from './fileUtils';
 
 // Import repositories
 import {
@@ -37,6 +38,50 @@ import {
   TrashRepository,
   PaymentAllocationRepository,
 } from './repositories';
+
+/** Tables every app database has had since the first release. */
+const REQUIRED_TABLES = ['companies', 'projects', 'transactions'];
+
+/** One archive per day under `<backupDir>/daily`, so an older state survives the frequent latest-backup overwrites. */
+const DAILY_ARCHIVE_DIR = 'daily';
+const DAILY_ARCHIVE_PREFIX = 'daily-';
+const DAILY_ARCHIVE_KEEP = 14;
+
+/** Copies of the live database taken right before it is replaced (restore, cloud download). */
+const SAFETY_COPY_DIR = 'safety';
+const SAFETY_COPY_KEEP = 10;
+
+/**
+ * Thrown when a buffer or file is not a usable app database (corrupt, empty,
+ * truncated, or missing core tables). The current database is left untouched.
+ */
+export class InvalidDatabaseError extends Error {
+  constructor(reason: string) {
+    super(`Invalid database file: ${reason}`);
+    this.name = 'InvalidDatabaseError';
+  }
+}
+
+/**
+ * Returns a description of what is wrong with `db`, or null if it passes the
+ * SQLite integrity check and contains the core tables.
+ */
+function findDatabaseProblem(db: SqlJsDatabase): string | null {
+  try {
+    const check = db.exec('PRAGMA quick_check');
+    const status = check[0]?.values[0]?.[0];
+    if (status !== 'ok') return `integrity check failed: ${String(status)}`;
+
+    const tables = db.exec("SELECT name FROM sqlite_master WHERE type = 'table'");
+    const names = new Set((tables[0]?.values ?? []).map((row) => String(row[0])));
+    const missing = REQUIRED_TABLES.filter((name) => !names.has(name));
+    if (missing.length > 0) return `missing tables: ${missing.join(', ')}`;
+
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
 
 /**
  * Unified database service with repository access
@@ -153,26 +198,33 @@ export class DatabaseService {
       dbLogger.info('New database created', 'DatabaseService');
     }
 
-    // Enable foreign key constraints (SQLite default: OFF)
-    this.db.run('PRAGMA foreign_keys = ON');
-    dbLogger.info('Foreign key constraints enabled', 'DatabaseService');
-
-    // Initialize tables, run migrations, and seed default data
-    this.initializeTables();
-    this.initializeDefaultCategories();
-
-    // Initialize repositories
-    this._companies = new CompanyRepository(this.db);
-    this._projects = new ProjectRepository(this.db);
-    this._transactions = new TransactionRepository(this.db);
-    this._materials = new MaterialRepository(this.db);
-    this._categories = new CategoryRepository(this.db);
-    this._analytics = new AnalyticsRepository(this.db);
-    this._trash = new TrashRepository(this.db);
-    this._paymentAllocations = new PaymentAllocationRepository(this.db);
+    this.prepareSchema(this.db);
+    this.createRepositories(this.db);
 
     this.initialized = true;
     dbLogger.info('DatabaseService initialized successfully', 'DatabaseService');
+  }
+
+  /**
+   * Enables foreign keys, creates missing tables, runs migrations and seeds
+   * default data on `db`.
+   */
+  private prepareSchema(db: SqlJsDatabase): void {
+    // Enable foreign key constraints (SQLite default: OFF)
+    db.run('PRAGMA foreign_keys = ON');
+    this.initializeTables(db);
+    this.initializeDefaultCategories(db);
+  }
+
+  private createRepositories(db: SqlJsDatabase): void {
+    this._companies = new CompanyRepository(db);
+    this._projects = new ProjectRepository(db);
+    this._transactions = new TransactionRepository(db);
+    this._materials = new MaterialRepository(db);
+    this._categories = new CategoryRepository(db);
+    this._analytics = new AnalyticsRepository(db);
+    this._trash = new TrashRepository(db);
+    this._paymentAllocations = new PaymentAllocationRepository(db);
   }
 
   /**
@@ -180,9 +232,7 @@ export class DatabaseService {
    */
   save(): void {
     if (this.db && this.dbPath) {
-      const data = this.db.export();
-      const buffer = Buffer.from(data);
-      fs.writeFileSync(this.dbPath, buffer);
+      writeFileAtomic(this.dbPath, this.db.export());
       // NOTE: do NOT clear `dirty` here. `dirty` means "there are local changes
       // that have not been pushed to the cloud yet" — only sync.doUpload (and
       // download, which replaces local state with remote) should clear it via
@@ -321,24 +371,52 @@ export class DatabaseService {
 
     const backupPath = path.join(backupDir, 'latest_backup.db');
     const data = this.db!.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(backupPath, buffer);
+    writeFileAtomic(backupPath, data);
 
     const metaPath = path.join(backupDir, 'backup_meta.json');
-    fs.writeFileSync(
-      metaPath,
-      JSON.stringify(
-        {
-          lastBackup: new Date().toISOString(),
-          size: buffer.length,
-        },
-        null,
-        2
-      )
-    );
+    const meta = JSON.stringify({ lastBackup: new Date().toISOString(), size: data.length }, null, 2);
+    writeFileAtomic(metaPath, Buffer.from(meta, 'utf-8'));
+
+    this.archiveDaily(backupDir, data);
 
     dbLogger.info(`Backup created: ${backupPath}`, 'DatabaseService');
     return backupPath;
+  }
+
+  /**
+   * Keeps the first backup of each day under `<backupDir>/daily`, so a bad
+   * change that has already reached `latest_backup.db` can still be undone
+   * from an earlier day. Archive failures never fail the backup itself.
+   */
+  private archiveDaily(backupDir: string, data: Uint8Array): void {
+    try {
+      const archiveDir = path.join(backupDir, DAILY_ARCHIVE_DIR);
+      const archivePath = path.join(archiveDir, `${DAILY_ARCHIVE_PREFIX}${localDateStamp()}.db`);
+      if (fs.existsSync(archivePath)) return;
+      fs.mkdirSync(archiveDir, { recursive: true });
+      writeFileAtomic(archivePath, data);
+      pruneBackupFiles(archiveDir, DAILY_ARCHIVE_PREFIX, DAILY_ARCHIVE_KEEP);
+      dbLogger.info(`Daily archive created: ${archivePath}`, 'DatabaseService');
+    } catch (error) {
+      dbLogger.error('Daily archive failed', error);
+    }
+  }
+
+  /**
+   * Saves a copy of the current database under `<backupDir>/safety` before it
+   * is replaced (restore from backup, cloud download). Keeps the newest copies
+   * per `label`.
+   */
+  createSafetyCopy(backupDir: string, label: string): string {
+    this.ensureInitialized();
+    const safetyDir = path.join(backupDir, SAFETY_COPY_DIR);
+    fs.mkdirSync(safetyDir, { recursive: true });
+    const prefix = `${label}-`;
+    const copyPath = path.join(safetyDir, `${prefix}${fileTimestamp()}.db`);
+    writeFileAtomic(copyPath, this.db!.export());
+    pruneBackupFiles(safetyDir, prefix, SAFETY_COPY_KEEP);
+    dbLogger.info(`Safety copy created: ${copyPath}`, 'DatabaseService');
+    return copyPath;
   }
 
   /**
@@ -379,22 +457,32 @@ export class DatabaseService {
   }
 
   /**
-   * Load database from a buffer (for restore from backup)
+   * Replace the current database with the contents of `buffer` (restore from
+   * backup, cloud download).
+   *
+   * The buffer is checked and brought up to the current schema before the
+   * swap. If it is not a usable database, an `InvalidDatabaseError` is thrown
+   * and the current database stays exactly as it was.
    */
-  async loadFromBuffer(buffer: Buffer): Promise<void> {
+  async loadFromBuffer(buffer: Uint8Array): Promise<void> {
     this.ensureInitialized();
     const SQL = await initSqlJs();
-    this.db = new SQL.Database(new Uint8Array(buffer));
-    this.db.run('PRAGMA foreign_keys = ON');
-    // Re-initialize repositories with new db instance
-    this._companies = new CompanyRepository(this.db);
-    this._projects = new ProjectRepository(this.db);
-    this._transactions = new TransactionRepository(this.db);
-    this._materials = new MaterialRepository(this.db);
-    this._categories = new CategoryRepository(this.db);
-    this._analytics = new AnalyticsRepository(this.db);
-    this._trash = new TrashRepository(this.db);
-    this._paymentAllocations = new PaymentAllocationRepository(this.db);
+    const candidate = new SQL.Database(new Uint8Array(buffer));
+
+    try {
+      const problem = findDatabaseProblem(candidate);
+      if (problem) throw new InvalidDatabaseError(problem);
+      this.prepareSchema(candidate);
+    } catch (error) {
+      candidate.close();
+      if (error instanceof InvalidDatabaseError) throw error;
+      throw new InvalidDatabaseError(error instanceof Error ? error.message : String(error));
+    }
+
+    const previous = this.db;
+    this.db = candidate;
+    this.createRepositories(candidate);
+    previous?.close();
     this.save();
     dbLogger.info('Database loaded from buffer', 'DatabaseService');
   }
@@ -423,8 +511,8 @@ export class DatabaseService {
   /**
    * Initialize database tables and indexes
    */
-  private initializeTables(): void {
-    this.db!.exec(`
+  private initializeTables(db: SqlJsDatabase): void {
+    db.exec(`
       CREATE TABLE IF NOT EXISTS companies (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT NOT NULL CHECK(type IN ('person', 'company')),
@@ -437,7 +525,7 @@ export class DatabaseService {
       )
     `);
 
-    this.db!.exec(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS projects (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         code TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
@@ -453,7 +541,7 @@ export class DatabaseService {
       )
     `);
 
-    this.db!.exec(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -463,7 +551,7 @@ export class DatabaseService {
       )
     `);
 
-    this.db!.exec(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         scope TEXT NOT NULL CHECK(scope IN ('cari', 'project', 'company')),
@@ -482,7 +570,7 @@ export class DatabaseService {
       )
     `);
 
-    this.db!.exec(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS materials (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         code TEXT UNIQUE NOT NULL, name TEXT NOT NULL, category TEXT, unit TEXT NOT NULL,
@@ -492,7 +580,7 @@ export class DatabaseService {
       )
     `);
 
-    this.db!.exec(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS stock_movements (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         material_id INTEGER NOT NULL,
@@ -507,7 +595,7 @@ export class DatabaseService {
       )
     `);
 
-    this.db!.exec(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS project_parties (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id INTEGER NOT NULL, company_id INTEGER NOT NULL,
@@ -520,7 +608,7 @@ export class DatabaseService {
       )
     `);
 
-    this.db!.exec(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS trash (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT NOT NULL, data TEXT NOT NULL,
@@ -529,7 +617,7 @@ export class DatabaseService {
     `);
 
     // Create indexes
-    this.db!.exec(`
+    db.exec(`
       CREATE INDEX IF NOT EXISTS idx_transactions_company ON transactions(company_id);
       CREATE INDEX IF NOT EXISTS idx_transactions_project ON transactions(project_id);
       CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
@@ -554,12 +642,12 @@ export class DatabaseService {
     `);
 
     // Run migrations
-    this.runMigrations();
+    this.runMigrations(db);
   }
 
-  private runMigrations(): void {
+  private runMigrations(db: SqlJsDatabase): void {
     // Create schema_versions table for tracking applied migrations
-    this.db!.exec(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS schema_versions (
         version INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
@@ -568,21 +656,21 @@ export class DatabaseService {
     `);
 
     const getVersion = (): number => {
-      const result = this.db!.exec('SELECT COALESCE(MAX(version), 0) as v FROM schema_versions');
+      const result = db.exec('SELECT COALESCE(MAX(version), 0) as v FROM schema_versions');
       return result.length > 0 && result[0].values.length > 0 ? (result[0].values[0][0] as number) : 0;
     };
 
     const applyMigration = (version: number, name: string, sql: string): void => {
       const current = getVersion();
       if (current >= version) return;
-      this.db!.exec(sql);
-      this.db!.run(`INSERT INTO schema_versions (version, name) VALUES (?, ?)`, [version, name]);
+      db.exec(sql);
+      db.run(`INSERT INTO schema_versions (version, name) VALUES (?, ?)`, [version, name]);
       dbLogger.info(`Migration ${version} applied: ${name}`, 'DatabaseService');
     };
 
     // Handle pre-existing databases that already have these columns/tables but no schema_versions
     if (getVersion() === 0) {
-      const stmt = this.db!.prepare('PRAGMA table_info(transactions)');
+      const stmt = db.prepare('PRAGMA table_info(transactions)');
       const columns: string[] = [];
       while (stmt.step()) {
         const row = stmt.getAsObject() as { name: string };
@@ -591,12 +679,12 @@ export class DatabaseService {
       stmt.free();
 
       if (columns.includes('linked_invoice_id')) {
-        this.db!.run(`INSERT INTO schema_versions (version, name) VALUES (?, ?)`, [1, 'add_linked_invoice_id (retroactive)']);
+        db.run(`INSERT INTO schema_versions (version, name) VALUES (?, ?)`, [1, 'add_linked_invoice_id (retroactive)']);
       }
 
-      const hasTable = this.db!.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='payment_allocations'");
+      const hasTable = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='payment_allocations'");
       if (hasTable.length > 0 && hasTable[0].values.length > 0) {
-        this.db!.run(`INSERT INTO schema_versions (version, name) VALUES (?, ?)`, [2, 'create_payment_allocations (retroactive)']);
+        db.run(`INSERT INTO schema_versions (version, name) VALUES (?, ?)`, [2, 'create_payment_allocations (retroactive)']);
       }
     }
 
@@ -633,16 +721,16 @@ export class DatabaseService {
 
     // Backfill existing companies with auto-generated codes and add unique index
     if (getVersion() === 3) {
-      const hasNullCodes = this.db!.exec(`SELECT COUNT(*) as c FROM companies WHERE code IS NULL`);
+      const hasNullCodes = db.exec(`SELECT COUNT(*) as c FROM companies WHERE code IS NULL`);
       if (hasNullCodes.length > 0 && (hasNullCodes[0].values[0][0] as number) > 0) {
-        this.db!.exec(`UPDATE companies SET code = 'CRH-' || printf('%03d', id) WHERE code IS NULL`);
+        db.exec(`UPDATE companies SET code = 'CRH-' || printf('%03d', id) WHERE code IS NULL`);
       }
-      this.db!.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_code ON companies(code)`);
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_code ON companies(code)`);
     }
   }
 
-  private initializeDefaultCategories(): void {
-    const stmt = this.db!.prepare('SELECT COUNT(*) as count FROM categories');
+  private initializeDefaultCategories(db: SqlJsDatabase): void {
+    const stmt = db.prepare('SELECT COUNT(*) as count FROM categories');
     stmt.step();
     const result = stmt.getAsObject() as { count: number };
     stmt.free();
@@ -688,14 +776,14 @@ export class DatabaseService {
       { name: 'Takas/Mahsup', type: 'payment', color: '#64748b' },
     ];
 
-    this.db!.run('BEGIN TRANSACTION');
+    db.run('BEGIN TRANSACTION');
     try {
       for (const cat of categories) {
-        this.db!.run('INSERT INTO categories (name, type, color, is_default) VALUES (?, ?, ?, 1)', [cat.name, cat.type, cat.color]);
+        db.run('INSERT INTO categories (name, type, color, is_default) VALUES (?, ?, ?, 1)', [cat.name, cat.type, cat.color]);
       }
-      this.db!.run('COMMIT');
+      db.run('COMMIT');
     } catch (error) {
-      this.db!.run('ROLLBACK');
+      db.run('ROLLBACK');
       console.error('Error initializing categories:', error);
     }
   }

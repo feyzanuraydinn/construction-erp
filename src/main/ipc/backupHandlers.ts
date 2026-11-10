@@ -2,16 +2,15 @@ import { ipcMain, IpcMainInvokeEvent, dialog, shell, BrowserWindow } from 'elect
 import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { DatabaseService } from '../../database/DatabaseService';
-import { googleDriveService } from '../googleDrive';
+import { DatabaseService, InvalidDatabaseError } from '../../database/DatabaseService';
+import { syncService } from '../SyncService';
 import { validateBackupPath, sanitizeError } from '../../utils/security';
 import { mainLogger } from '../logger';
+import { t } from '../i18n';
 
 export function registerBackupHandlers(
   getDbService: () => DatabaseService,
-  setDbService: (s: DatabaseService) => void,
-  getMainWindow: () => BrowserWindow | null,
-  checkInternetConnection: () => Promise<boolean>
+  getMainWindow: () => BrowserWindow | null
 ): void {
   ipcMain.handle('backup:create', async () => {
     const backupDir = path.join(app.getPath('userData'), 'backups');
@@ -21,22 +20,13 @@ export function registerBackupHandlers(
       const backupPath = getDbService().createBackup(backupDir);
       mainLogger.info(`Local backup created: ${backupPath}`, 'Backup');
 
-      // Cloud sync if connected
-      if (googleDriveService.hasCredentials() && googleDriveService.isConnected()) {
-        const hasInternet = await checkInternetConnection();
-        if (hasInternet) {
-          try {
-            await googleDriveService.uploadBackup(backupPath);
-            mainLogger.info('Backup synced to Google Drive', 'Backup');
-          } catch (cloudError) {
-            mainLogger.error('Cloud sync failed', 'Backup', cloudError);
-          }
-        } else {
-          mainLogger.info('No internet - local backup only', 'Backup');
-        }
-      } else {
-        mainLogger.info('Google Drive not connected - local backup only', 'Backup');
-      }
+      // Bring the cloud copy up to date through the normal sync cycle. It
+      // detects conflicts with other devices instead of overwriting, and never
+      // touches the weekly snapshots. Runs in the background; progress is
+      // reported through sync status events.
+      void syncService.checkAndSync().catch((error) => {
+        mainLogger.error('Sync after manual backup failed', 'Backup', error);
+      });
 
       return backupPath;
     } catch (error) {
@@ -72,36 +62,31 @@ export function registerBackupHandlers(
     }
   });
 
-  ipcMain.handle('backup:restore', async (_: IpcMainInvokeEvent, backupPath: string) => {
+  ipcMain.handle('backup:restore', async (_: IpcMainInvokeEvent, backupPath: unknown) => {
     try {
       const backupDir = path.join(app.getPath('userData'), 'backups');
-      if (!validateBackupPath(backupDir, backupPath)) {
-        return { success: false, error: 'error.backup.invalidPath' };
+      if (typeof backupPath !== 'string' || !validateBackupPath(backupDir, backupPath)) {
+        return { success: false, error: t('error.backup.invalidPath') };
       }
 
       if (!fs.existsSync(backupPath)) {
-        return { success: false, error: 'error.backup.fileNotFound' };
+        return { success: false, error: t('error.backup.fileNotFound') };
       }
 
-      // Close current database connection
-      getDbService().close();
+      const dbService = getDbService();
+      // Keep the current state so a wrong restore can be undone.
+      dbService.createSafetyCopy(backupDir, 'pre-restore');
+      // Validates the backup and migrates it before swapping it in; on failure
+      // the current database is left untouched and stays open.
+      await dbService.loadFromBuffer(fs.readFileSync(backupPath));
 
-      // Copy backup file to database location
-      const dbDir = path.join(app.getPath('userData'), 'data');
-      if (!fs.existsSync(dbDir)) {
-        fs.mkdirSync(dbDir, { recursive: true });
-      }
-      const dbPath = path.join(dbDir, 'construction-erp.db');
-      fs.copyFileSync(backupPath, dbPath);
-
-      // Reinitialize database
-      const newDbService = new DatabaseService();
-      await newDbService.init(app.getPath('userData'));
-      setDbService(newDbService);
-
+      mainLogger.info(`Backup restored from: ${backupPath}`, 'Backup');
       return { success: true };
     } catch (error) {
       mainLogger.error('Backup restore failed', 'Backup', error);
+      if (error instanceof InvalidDatabaseError) {
+        return { success: false, error: t('error.db.databaseCorrupted') };
+      }
       return { success: false, error: sanitizeError(error) };
     }
   });

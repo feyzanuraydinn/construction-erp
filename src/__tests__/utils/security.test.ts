@@ -27,6 +27,20 @@ describe('security utils', () => {
       expect(validateBackupPath('/backup/dir', '/backup/file.db')).toBe(false);
     });
 
+    it('should reject sibling directories that share the prefix', () => {
+      expect(validateBackupPath('/backups', '/backups-old/file.db')).toBe(false);
+      expect(validateBackupPath('C:\\data\\backups', 'C:\\data\\backups2\\file.db')).toBe(false);
+    });
+
+    it('should accept files in subfolders and a trailing slash on the dir', () => {
+      expect(validateBackupPath('/backups/', '/backups/file.db')).toBe(true);
+      expect(validateBackupPath('/backups', '/backups/daily/daily-2026-11-10.db')).toBe(true);
+    });
+
+    it('should reject the directory itself', () => {
+      expect(validateBackupPath('/backups', '/backups.db')).toBe(false);
+    });
+
     it('should reject non-.db file extensions', () => {
       expect(validateBackupPath('/backup', '/backup/file.txt')).toBe(false);
       expect(validateBackupPath('/backup', '/backup/file.sql')).toBe(false);

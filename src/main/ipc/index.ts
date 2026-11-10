@@ -16,19 +16,13 @@ import { registerSyncHandlers } from './syncHandlers';
 /**
  * Register all IPC handlers
  *
- * @param getDbService - getter function (to support dbService reassignment on restore)
- * @param setDbService - setter function (used by backup:restore)
+ * @param getDbService - getter function for the database service
  * @param getMainWindow - getter function for main window
- * @param checkInternetConnection - internet check utility
  */
 export function registerAllHandlers(
   getDbService: () => DatabaseService,
-  setDbService: (s: DatabaseService) => void,
-  getMainWindow: () => BrowserWindow | null,
-  checkInternetConnection: () => Promise<boolean>
+  getMainWindow: () => BrowserWindow | null
 ): void {
-  // All handlers receive getter function so they always use the current dbService
-  // (critical for backup:restore which replaces the dbService instance)
   registerCompanyHandlers(getDbService);
   registerProjectHandlers(getDbService);
   registerTransactionHandlers(getDbService);
@@ -37,9 +31,9 @@ export function registerAllHandlers(
   registerTrashHandlers(getDbService);
   registerDashboardHandlers(getDbService);
 
-  registerBackupHandlers(getDbService, setDbService, getMainWindow, checkInternetConnection);
+  registerBackupHandlers(getDbService, getMainWindow);
   registerExportHandlers(getMainWindow);
-  registerGdriveHandlers(getDbService);
+  registerGdriveHandlers();
   registerAppHandlers(getDbService);
   registerSyncHandlers();
 }
