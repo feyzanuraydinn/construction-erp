@@ -3,6 +3,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { shell, safeStorage } from 'electron';
 import http from 'http';
 import fs from 'fs';
+import { pipeline } from 'stream/promises';
 import path from 'path';
 import { t } from './i18n';
 
@@ -281,8 +282,13 @@ class GoogleDriveService {
   }
 
   async disconnect(): Promise<void> {
-    if (this.oauth2Client) {
-      this.oauth2Client.revokeCredentials();
+    // Revoking is best effort: there may be no token yet (first-time setup) or
+    // no network. Either way the local token is deleted below, and a failed
+    // revoke must not surface as an unhandled rejection.
+    if (this.oauth2Client?.credentials.access_token) {
+      this.oauth2Client.revokeCredentials().catch((error: unknown) => {
+        console.warn('Token revoke failed (continuing):', error instanceof Error ? error.message : error);
+      });
     }
     if (fs.existsSync(this.tokenPath)) {
       fs.unlinkSync(this.tokenPath);
@@ -384,33 +390,7 @@ class GoogleDriveService {
     fileId: string,
     destPath: string
   ): Promise<{ success: boolean; error?: string }> {
-    if (!this.oauth2Client || !this.isConnected()) {
-      return { success: false, error: t('main.gdrive.notConnected') };
-    }
-
-    try {
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-
-      const response = await drive.files.get(
-        {
-          fileId: fileId,
-          alt: 'media',
-        },
-        { responseType: 'stream' }
-      );
-
-      const dest = fs.createWriteStream(destPath);
-
-      return new Promise((resolve) => {
-        (response.data as NodeJS.ReadableStream)
-          .pipe(dest)
-          .on('finish', () => resolve({ success: true }))
-          .on('error', (error: Error) => resolve({ success: false, error: error.message }));
-      });
-    } catch (error) {
-      console.error('Download error:', error);
-      return { success: false, error: this.formatError(error) };
-    }
+    return this.downloadFile(fileId, destPath);
   }
 
   async deleteBackup(fileId: string): Promise<{ success: boolean; error?: string }> {
@@ -430,19 +410,26 @@ class GoogleDriveService {
 
   // ---- Sync-related methods (used by SyncService) ----
 
-  /** Finds the latest_backup.db file in the dedicated backup folder */
+  /**
+   * Finds latest_backup.db in the dedicated backup folder.
+   *
+   * Returns null only when the file does not exist. Drive or network errors
+   * are thrown, so callers never mistake an outage for an empty cloud (which
+   * would make sync upload a second, competing latest_backup.db).
+   */
   async getLatestFile(): Promise<DriveFile | null> {
     if (!this.oauth2Client || !this.isConnected()) return null;
 
     try {
       const folderId = await this.getOrCreateNamedBackupFolder();
-      if (!folderId) return null;
 
       const drive = new drive_v3.Drive({ auth: this.oauth2Client });
       const response = await drive.files.list({
         q: `'${folderId}' in parents and name='${LATEST_FILE_NAME}' and trashed=false`,
         spaces: 'drive',
         fields: 'files(id, name, size, createdTime, modifiedTime)',
+        // Older versions could leave duplicates behind; always pick the newest.
+        orderBy: 'modifiedTime desc',
         pageSize: 1,
       });
 
@@ -458,7 +445,7 @@ class GoogleDriveService {
       };
     } catch (error) {
       console.error('getLatestFile error:', error);
-      return null;
+      throw new Error(this.formatError(error));
     }
   }
 
@@ -473,8 +460,6 @@ class GoogleDriveService {
     try {
       const drive = new drive_v3.Drive({ auth: this.oauth2Client });
       const folderId = await this.getOrCreateNamedBackupFolder();
-      if (!folderId) return { success: false, error: 'Yedek klasörü oluşturulamadı.' };
-
       const existing = await this.getLatestFile();
 
       const media = {
@@ -519,7 +504,6 @@ class GoogleDriveService {
     try {
       const drive = new drive_v3.Drive({ auth: this.oauth2Client });
       const folderId = await this.getOrCreateNamedBackupFolder();
-      if (!folderId) return { success: false, error: 'Yedek klasörü oluşturulamadı.' };
 
       const ts = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
       const name = `${SNAPSHOT_PREFIX}${ts}.db`;
@@ -550,7 +534,6 @@ class GoogleDriveService {
     if (!this.oauth2Client || !this.isConnected()) return [];
     try {
       const folderId = await this.getOrCreateNamedBackupFolder();
-      if (!folderId) return [];
 
       const drive = new drive_v3.Drive({ auth: this.oauth2Client });
       const response = await drive.files.list({
@@ -594,7 +577,11 @@ class GoogleDriveService {
     }
   }
 
-  /** Generic file download by ID to a destination path */
+  /**
+   * Downloads a file by ID to `destPath`. Errors on either side of the stream
+   * (network drop, disk full) resolve as a failure and remove the partial
+   * file; they can no longer leave the promise pending forever.
+   */
   async downloadFile(
     fileId: string,
     destPath: string
@@ -608,15 +595,11 @@ class GoogleDriveService {
         { fileId, alt: 'media' },
         { responseType: 'stream' }
       );
-      const dest = fs.createWriteStream(destPath);
-      return new Promise((resolve) => {
-        (response.data as NodeJS.ReadableStream)
-          .pipe(dest)
-          .on('finish', () => resolve({ success: true }))
-          .on('error', (err: Error) => resolve({ success: false, error: err.message }));
-      });
+      await pipeline(response.data, fs.createWriteStream(destPath));
+      return { success: true };
     } catch (error) {
       console.error('downloadFile error:', error);
+      fs.rmSync(destPath, { force: true });
       return { success: false, error: this.formatError(error) };
     }
   }
@@ -634,33 +617,30 @@ class GoogleDriveService {
   }
 
   /** Get-or-create the canonical SyncService backup folder. Distinct from the
-   *  legacy listBackups folder helper to avoid disturbing existing behavior. */
-  private async getOrCreateNamedBackupFolder(): Promise<string | null> {
-    if (!this.oauth2Client) return null;
-    try {
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-      const searchResponse = await drive.files.list({
-        q: `name='${BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        spaces: 'drive',
-        fields: 'files(id, name)',
-      });
+   *  legacy listBackups folder helper to avoid disturbing existing behavior.
+   *  Throws when Drive cannot be reached or returns no folder ID. */
+  private async getOrCreateNamedBackupFolder(): Promise<string> {
+    if (!this.oauth2Client) throw new Error(t('main.gdrive.notConnected'));
+    const drive = new drive_v3.Drive({ auth: this.oauth2Client });
+    const searchResponse = await drive.files.list({
+      q: `name='${BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      spaces: 'drive',
+      fields: 'files(id, name)',
+    });
 
-      if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-        return searchResponse.data.files[0].id || null;
-      }
+    const existingId = searchResponse.data.files?.[0]?.id;
+    if (existingId) return existingId;
 
-      const createResponse = await drive.files.create({
-        requestBody: {
-          name: BACKUP_FOLDER_NAME,
-          mimeType: 'application/vnd.google-apps.folder',
-        },
-        fields: 'id',
-      });
-      return createResponse.data.id || null;
-    } catch (error) {
-      console.error('Folder error:', error);
-      return null;
-    }
+    const createResponse = await drive.files.create({
+      requestBody: {
+        name: BACKUP_FOLDER_NAME,
+        mimeType: 'application/vnd.google-apps.folder',
+      },
+      fields: 'id',
+    });
+    const createdId = createResponse.data.id;
+    if (!createdId) throw new Error('Drive did not return an ID for the backup folder');
+    return createdId;
   }
 }
 

@@ -29,6 +29,11 @@ export function registerGdriveHandlers(): void {
 
   safeHandle('gdrive:disconnect', async () => {
     await googleDriveService.disconnect();
+    // The next connection may be a different Drive account (or new
+    // credentials). Forget what we knew about the old cloud copy, so the first
+    // sync compares from scratch and asks on a mismatch instead of silently
+    // overwriting the other account's file.
+    syncService.resetMeta();
     return { success: true };
   });
 
