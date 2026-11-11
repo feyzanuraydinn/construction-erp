@@ -57,7 +57,7 @@ describe('Trash', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Çöp Kutusu')).toBeInTheDocument();
-      expect(screen.getByText('Silinen öğeler 30 gün içinde otomatik olarak kalıcı silinir')).toBeInTheDocument();
+      expect(screen.getByText('Silinen öğeler, siz kalıcı olarak silene kadar burada kalır ve geri yüklenebilir')).toBeInTheDocument();
     });
   });
 
@@ -260,6 +260,39 @@ describe('Trash', () => {
     await waitFor(() => {
       expect(mockToast.error).toHaveBeenCalledWith('Geri yükleme sırasında hata oluştu');
     });
+  });
+
+  it('should show an error, not success, when restore returns success: false', async () => {
+    (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockTrashItems);
+    (window.electronAPI.trash.restore as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      error: 'parent_missing',
+    });
+
+    await act(async () => {
+      render(<Trash />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('ABC İnşaat')).toBeInTheDocument();
+    });
+
+    const restoreButtons = screen.getAllByTitle('Geri Yükle');
+    await act(async () => {
+      fireEvent.click(restoreButtons[0]);
+    });
+
+    await waitFor(() => {
+      const allRestoreButtons = screen.getAllByRole('button', { name: 'Geri Yükle' });
+      fireEvent.click(allRestoreButtons[allRestoreButtons.length - 1]);
+    });
+
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalledWith(
+        'Bu öğenin bağlı olduğu kayıt (cari veya proje) silinmiş. Önce onu geri yükleyin.'
+      );
+    });
+    expect(mockToast.success).not.toHaveBeenCalled();
   });
 
   // ---------- Table headers ----------

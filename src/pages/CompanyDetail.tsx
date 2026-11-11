@@ -45,10 +45,11 @@ import {
   Divider,
   SelectAllCheckbox,
   RowCheckbox,
+  MatchStatusBadge,
 } from '../components/ui';
 import { useTransactionList, calculateCompanyFinancials, getPaginationProps } from '../hooks';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { getTransactionColor, getTransactionTextColor, isPositiveTransaction } from '../utils/transactionHelpers';
+import { getTransactionColor, getTransactionTextColor, isPositiveTransaction, deleteTransactionMessage } from '../utils/transactionHelpers';
 import { TRANSACTION_TYPES, TRANSACTION_TYPE_LABELS } from '../utils/constants';
 import type {
   Company,
@@ -501,7 +502,10 @@ function CompanyDetail() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <p className="font-medium">{tx.description}</p>
+                          <p className="font-medium flex items-center gap-2">
+                                  <span>{tx.description}</span>
+                                  <MatchStatusBadge transaction={tx} />
+                                </p>
                           {tx.category_name && (
                             <p className="text-xs text-gray-500 dark:text-gray-400">{t(`categories.${tx.category_name}`, tx.category_name)}</p>
                           )}
@@ -558,7 +562,7 @@ function CompanyDetail() {
         onClose={() => dispatch({ type: 'CANCEL_DELETE' })}
         onConfirm={handleDeleteTransaction}
         title={t('shared.deleteTransaction.title')}
-        message={t('shared.deleteTransaction.message')}
+        message={deleteTransactionMessage(t, ui.deleteConfirm, 'shared.deleteTransaction.message')}
         type="danger"
         confirmText={t('common.delete')}
       />

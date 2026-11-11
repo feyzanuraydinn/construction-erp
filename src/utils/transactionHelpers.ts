@@ -1,4 +1,6 @@
-import type { TransactionType, BadgeVariant } from '../types';
+import type { TFunction } from 'i18next';
+import type { TransactionType, BadgeVariant, TransactionWithDetails } from '../types';
+import { formatCurrency } from './formatters';
 import { INCOME_TYPES, EXPENSE_TYPES } from './constants';
 
 // ==================== TÜR KONTROL FONKSİYONLARI ====================
@@ -115,4 +117,20 @@ export function getSimpleTransactionBadgeVariant(
     default:
       return 'info';
   }
+}
+
+export function deleteTransactionMessage(
+  t: TFunction,
+  tx: Pick<TransactionWithDetails, 'type' | 'allocated_amount' | 'settled_amount'> | null,
+  baseKey: string
+): string {
+  const base = t(baseKey);
+  if (!tx) return base;
+  const isPayment = tx.type === 'payment_in' || tx.type === 'payment_out';
+  const matched = (isPayment ? tx.allocated_amount : tx.settled_amount) ?? 0;
+  if (matched <= 0.005) return base;
+  const note = t(isPayment ? 'shared.deleteTransaction.matchedPayment' : 'shared.deleteTransaction.matchedInvoice', {
+    amount: formatCurrency(matched),
+  });
+  return `${base} ${note}`;
 }

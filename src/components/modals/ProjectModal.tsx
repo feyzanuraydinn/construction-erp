@@ -184,10 +184,10 @@ export function ProjectModal({ isOpen, onClose, project, companies, onSave }: Pr
                     setValue('ownership_type', 'own', { shouldValidate: true });
                     setValue('client_company_id', '');
                   }}
-                  className="sr-only"
+                  className="sr-only peer"
                 />
                 <div
-                  className={`p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${
+                  className={`peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-800 p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${
                     ownershipType === 'own'
                       ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                       : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
@@ -206,10 +206,10 @@ export function ProjectModal({ isOpen, onClose, project, companies, onSave }: Pr
                   onChange={() =>
                     setValue('ownership_type', 'client', { shouldValidate: true })
                   }
-                  className="sr-only"
+                  className="sr-only peer"
                 />
                 <div
-                  className={`p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${
+                  className={`peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-800 p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${
                     ownershipType === 'client'
                       ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
                       : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'

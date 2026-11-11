@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiAlertTriangle, FiUploadCloud, FiDownloadCloud, FiX } from 'react-icons/fi';
 import { useSync } from '../contexts/SyncContext';
 import { useToast } from '../contexts/ToastContext';
+import { useModalLayer } from './ui/Modal';
 
 export const SyncConflictModal: React.FC = () => {
   const { conflict, clearConflict } = useSync();
   const toast = useToast();
   const { t, i18n } = useTranslation();
   const [resolving, setResolving] = useState<'use-local' | 'use-remote' | 'cancel' | null>(null);
-
-  if (!conflict) return null;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   const handleResolve = async (choice: 'use-local' | 'use-remote' | 'cancel') => {
     if (!window.electronAPI?.sync) return;
@@ -31,6 +32,12 @@ export const SyncConflictModal: React.FC = () => {
     }
   };
 
+  useModalLayer(conflict !== null, () => {
+    if (resolving === null) void handleResolve('cancel');
+  }, dialogRef);
+
+  if (!conflict) return null;
+
   const locale = i18n.language === 'tr' ? 'tr-TR' : undefined;
   const remoteTime = new Date(conflict.remoteModifiedTime).toLocaleString(locale);
   const lastSync = conflict.lastSyncSuccess
@@ -39,13 +46,19 @@ export const SyncConflictModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-lg w-full overflow-hidden">
+      <div
+        ref={dialogRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-lg w-full overflow-hidden"
+      >
         <div className="p-5 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 flex items-center gap-3">
           <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/40 rounded-full flex items-center justify-center flex-shrink-0">
             <FiAlertTriangle size={24} className="text-amber-600 dark:text-amber-400" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('sync.conflictTitle')}</h2>
+            <h2 id={titleId} className="text-lg font-bold text-gray-900 dark:text-white">{t('sync.conflictTitle')}</h2>
             <p className="text-xs text-gray-600 dark:text-gray-400">{t('sync.conflictSubtitle')}</p>
           </div>
         </div>

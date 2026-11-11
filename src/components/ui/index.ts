@@ -3,7 +3,7 @@ export { Button } from './Button';
 export { Input, Select, Textarea } from './Input';
 export { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from './Table';
-export { Badge, StatusBadge, TypeBadge, AccountTypeBadge, BalanceBadge } from './Badge';
+export { Badge, StatusBadge, TypeBadge, AccountTypeBadge, BalanceBadge, MatchStatusBadge } from './Badge';
 export { StatCard } from './StatCard';
 export { EmptyState } from './EmptyState';
 export { ConfirmDialog } from './ConfirmDialog';

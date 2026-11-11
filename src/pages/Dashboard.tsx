@@ -19,7 +19,7 @@ import {
 } from '../components/ui';
 import { useDataCache, calculateDashboardFinancials } from '../hooks';
 import { useToast } from '../contexts/ToastContext';
-import { formatCurrency, formatDate } from '../utils/formatters';
+import { formatCurrency, formatDate, formatDateForInput, toLocalDateString } from '../utils/formatters';
 import { getTransactionColor, getTransactionTextColor } from '../utils/transactionHelpers';
 import { TRANSACTION_TYPE_LABELS } from '../utils/constants';
 import type {
@@ -32,7 +32,7 @@ import type {
 
 type DateFilter = 'all' | 'today' | 'week' | 'month' | 'year';
 
-const getDateRange = (filter: DateFilter): { start: Date | null; end: Date } => {
+export const getDateRange = (filter: DateFilter): { start: Date | null; end: Date } => {
   const now = new Date();
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
@@ -40,9 +40,8 @@ const getDateRange = (filter: DateFilter): { start: Date | null; end: Date } => 
     case 'today':
       return { start: new Date(now.getFullYear(), now.getMonth(), now.getDate()), end };
     case 'week': {
-      const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - now.getDay() + 1);
-      startOfWeek.setHours(0, 0, 0, 0);
+      const daysSinceMonday = (now.getDay() + 6) % 7;
+      const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceMonday);
       return { start: startOfWeek, end };
     }
     case 'month':
@@ -124,7 +123,7 @@ function Dashboard() {
     setCreditorsLoading(true);
     try {
       const { start } = getDateRange(filter);
-      const startDate = start ? start.toISOString().split('T')[0] : undefined;
+      const startDate = start ? toLocalDateString(start) : undefined;
       const [debtors, creditors] = await Promise.all([
         window.electronAPI.dashboard.getTopDebtors(5, startDate),
         window.electronAPI.dashboard.getTopCreditors(5, startDate),
@@ -156,9 +155,8 @@ function Dashboard() {
     [allProjects]
   );
 
-  // Combined loading state
   const loading =
-    statsLoading || txLoading || debtorsLoading || creditorsLoading || projectsLoading;
+    (statsLoading && !stats) || (txLoading && !allTransactions) || (projectsLoading && !allProjects);
 
   // Show stale indicator
   const isStale = statsStale || txStale;
@@ -177,7 +175,10 @@ function Dashboard() {
     const { start } = getDateRange(dateFilter);
     const transactions = allTransactions ?? [];
 
-    const filtered = start ? transactions.filter((tx) => new Date(tx.date) >= start) : transactions;
+    const startDate = start ? toLocalDateString(start) : null;
+    const filtered = startDate
+      ? transactions.filter((tx) => formatDateForInput(tx.date) >= startDate)
+      : transactions;
 
     // Merkezi hesaplama fonksiyonu ile dashboard finansalları
     const financials = calculateDashboardFinancials(filtered);
@@ -345,10 +346,7 @@ function Dashboard() {
                       </div>
                       <span className={`font-medium ${getTransactionTextColor(tx.type)}`}>
                         {getTransactionPrefix(tx.type)}
-                        {formatCurrency(tx.amount)}
-                        {tx.currency !== 'TRY' && (
-                          <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">({tx.currency})</span>
-                        )}
+                        {formatCurrency(tx.amount, tx.currency)}
                       </span>
                     </button>
                   ))}
@@ -491,7 +489,7 @@ function Dashboard() {
                         </span>
                         <span className="text-sm text-gray-900 dark:text-gray-100">{creditor.name}</span>
                       </div>
-                      <BalanceBadge amount={creditor.balance} size="sm" showIcon={false} />
+                      <BalanceBadge amount={-creditor.balance} size="sm" showIcon={false} />
                     </button>
                   ))}
                 </div>
@@ -548,12 +546,7 @@ function Dashboard() {
                     className={`text-lg font-bold ${getTransactionTextColor(selectedTransaction.type)}`}
                   >
                     {getTransactionPrefix(selectedTransaction.type)}
-                    {formatCurrency(selectedTransaction.amount)}
-                    {selectedTransaction.currency !== 'TRY' && (
-                      <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">
-                        ({selectedTransaction.currency})
-                      </span>
-                    )}
+                    {formatCurrency(selectedTransaction.amount, selectedTransaction.currency)}
                   </p>
                 </div>
                 <div>

@@ -2,7 +2,7 @@
   "id": "construction-erp",
   "slug": "construction-erp",
   "preview": "construction-erp.webp",
-  "technologies": ["Electron", "React", "TypeScript", "MongoDB", "Node.js"],
+  "technologies": ["Electron", "React", "TypeScript", "SQLite (sql.js)", "Tailwind CSS", "Vite"],
   "isMobile": false,
   "featured": true,
   "content": {
@@ -15,12 +15,12 @@
       "en": "Enterprise Resource Planning for Construction"
     },
     "cardDescription": {
-      "tr": "İnşaat şirketleri için projeleri, kaynakları, envanteri ve finansları verimli bir şekilde yönetmek üzere tasarlanmış kapsamlı bir masaüstü ERP sistemi.",
-      "en": "A comprehensive desktop ERP system designed for construction companies to manage projects, resources, inventory, and finances efficiently."
+      "tr": "İnşaat firmaları için cari hesapları, projeleri, stoğu ve finansları tek yerde yöneten, çevrimdışı çalışan bir masaüstü ERP uygulaması.",
+      "en": "An offline-first desktop ERP for construction companies that manages accounts, projects, inventory and finances in one place."
     },
     "description": {
-      "tr": "İnşaat şirketleri için projeleri, kaynakları, envanteri ve finansları verimli bir şekilde yönetmek üzere tasarlanmış kapsamlı bir masaüstü ERP sistemi. Çapraz platform uyumluluğu için Electron ve React ile geliştirildi.",
-      "en": "A comprehensive desktop ERP system designed for construction companies to manage projects, resources, inventory, and finances efficiently. Built with Electron and React for cross-platform compatibility."
+      "tr": "İnşaat firmaları için cari hesapları, projeleri, stoğu ve finansları tek yerde yöneten, çevrimdışı çalışan bir masaüstü ERP uygulaması. Faturalar, tahsilat ve ödemeler, fatura-ödeme eşleştirmesi, dövizli işlemler, stok hareketleri ve analiz raporlarını kapsar. Veriler yerel bir SQLite veritabanında tutulur ve isteğe bağlı olarak Google Drive ile senkronize edilir. Electron, React ve TypeScript ile Windows için geliştirildi; Türkçe ve İngilizce arayüze sahiptir.",
+      "en": "An offline-first desktop ERP for construction companies that manages accounts, projects, inventory and finances in one place. It covers invoices, collections and payments, invoice-payment matching, foreign-currency transactions, stock movements and analytics reports. Data is kept in a local SQLite database and can optionally be synced with Google Drive. Built for Windows with Electron, React and TypeScript, with a Turkish and English interface."
     },
     "cardAlt": {
       "tr": "İnşaat ERP Sistemi ekran görüntüsü",
@@ -37,34 +37,34 @@
     "roles": [
       {
         "icon": "code",
-        "title": { "tr": "Full Stack Geliştirme", "en": "Full Stack Development" },
+        "title": { "tr": "Full Stack Masaüstü Geliştirme", "en": "Full Stack Desktop Development" },
         "desc": {
-          "tr": "React, Electron ve Node.js kullanılarak ön yüzden arka yüze tüm uygulama geliştirildi",
-          "en": "Built the entire application from frontend to backend using React, Electron, and Node.js"
+          "tr": "Electron ana süreci, güvenli IPC katmanı ve React arayüzü uçtan uca geliştirildi",
+          "en": "Built the Electron main process, a secure IPC layer and the React interface end to end"
         }
       },
       {
         "icon": "database",
-        "title": { "tr": "Veritabanı Tasarımı", "en": "Database Design" },
+        "title": { "tr": "Yerel Veritabanı ve Bulut Senkronizasyonu", "en": "Local Database and Cloud Sync" },
         "desc": {
-          "tr": "Verimli veri yönetimi için MongoDB veritabanı şeması tasarlanıp uygulandı",
-          "en": "Designed and implemented MongoDB database schema for efficient data management"
+          "tr": "sql.js (SQLite) ile çevrimdışı çalışan veritabanı, şema geçişleri, otomatik yedekler ve Google Drive üzerinden çakışma çözümlü senkronizasyon tasarlandı",
+          "en": "Designed an offline SQLite (sql.js) database with schema migrations, automatic backups and Google Drive sync with conflict resolution"
         }
       },
       {
         "icon": "chart",
-        "title": { "tr": "Analitik Paneli", "en": "Analytics Dashboard" },
+        "title": { "tr": "Finansal Analiz ve Raporlama", "en": "Financial Analytics and Reporting" },
         "desc": {
-          "tr": "İş içgörüleri için grafikler ve analitikler içeren gerçek zamanlı gösterge paneli oluşturuldu",
-          "en": "Created real-time dashboard with charts and analytics for business insights"
+          "tr": "Gelir-gider trendi, nakit akışı ve vadesi geçen alacak raporları; Excel ve PDF dışa aktarımı geliştirildi",
+          "en": "Built income-expense trends, cash flow and overdue receivables reports, with Excel and PDF export"
         }
       },
       {
-        "icon": "users",
-        "title": { "tr": "Kullanıcı Yönetimi", "en": "User Management" },
+        "icon": "box",
+        "title": { "tr": "Proje, Cari ve Stok Yönetimi", "en": "Project, Account and Inventory Management" },
         "desc": {
-          "tr": "Rol tabanlı erişim kontrolü ve çalışan yönetimi modülü uygulandı",
-          "en": "Implemented role-based access control and employee management module"
+          "tr": "Fatura-ödeme eşleştirmesi, dövizli işlemler, stok hareketleri ve geri yüklenebilir çöp kutusu uygulandı",
+          "en": "Implemented invoice-payment matching, foreign-currency transactions, stock movements and a restorable trash"
         }
       }
     ]

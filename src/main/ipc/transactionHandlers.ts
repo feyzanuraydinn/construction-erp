@@ -1,8 +1,32 @@
 import { IpcMainInvokeEvent } from 'electron';
 import type { DatabaseService } from '../../database/DatabaseService';
-import { transactionSchema, transactionFiltersSchema, validateInput, validateId } from '../../utils/schemas';
+import {
+  transactionSchema,
+  transactionFiltersSchema,
+  saveTransactionSchema,
+  matchCandidatesSchema,
+  validateInput,
+  validateId,
+} from '../../utils/schemas';
 import { safeHandle } from './safeHandle';
 import { t } from '../i18n';
+import { SaveProblemError, type SaveProblem } from '../../database/repositories/TransactionRepository';
+import { isPaymentType } from '../../database/repositories/PaymentAllocationRepository';
+
+const SAVE_PROBLEM_KEYS: Record<SaveProblem, string> = {
+  not_found: 'main.transaction.allocationNotFound',
+  type_mismatch: 'main.transaction.allocationTypeMismatch',
+  duplicate: 'main.transaction.allocationDuplicate',
+  exceeds_payment: 'main.transaction.allocationExceedsPayment',
+  exceeds_invoice: 'main.transaction.allocationExceedsInvoice',
+  counterparty_mismatch: 'main.transaction.allocationCounterpartyMismatch',
+  needs_counterparty: 'main.transaction.needsCounterparty',
+  invalid_category: 'main.transaction.invalidDocumentCategory',
+};
+
+function toUserError(error: unknown): unknown {
+  return error instanceof SaveProblemError ? new Error(t(SAVE_PROBLEM_KEYS[error.problem])) : error;
+}
 
 export function registerTransactionHandlers(getDbService: () => DatabaseService): void {
   safeHandle('transaction:getAll', (_: IpcMainInvokeEvent, filters: unknown = {}) => {
@@ -42,8 +66,12 @@ export function registerTransactionHandlers(getDbService: () => DatabaseService)
   safeHandle('transaction:create', (_: IpcMainInvokeEvent, data: unknown) => {
     const validation = validateInput(transactionSchema, data);
     if (!validation.success) throw new Error(validation.error);
+    const input = validation.data!;
+    if (isPaymentType(input.type) && input.scope === 'project' && !input.company_id) {
+      throw new Error(t(SAVE_PROBLEM_KEYS.needs_counterparty));
+    }
     const db = getDbService();
-    const result = db.transactions.create(validation.data!);
+    const result = db.transactions.create(input);
     db.save();
     return result;
   });
@@ -54,9 +82,13 @@ export function registerTransactionHandlers(getDbService: () => DatabaseService)
     const dataValidation = validateInput(transactionSchema, data);
     if (!dataValidation.success) throw new Error(dataValidation.error);
     const db = getDbService();
-    const result = db.transactions.update(idValidation.data!, dataValidation.data!);
-    db.save();
-    return result;
+    try {
+      const result = db.transactions.updateChecked(idValidation.data!, dataValidation.data!);
+      db.save();
+      return result;
+    } catch (error) {
+      throw toUserError(error);
+    }
   });
 
   safeHandle('transaction:delete', (_: IpcMainInvokeEvent, id: unknown) => {
@@ -80,21 +112,38 @@ export function registerTransactionHandlers(getDbService: () => DatabaseService)
     return getDbService().transactions.getInvoicesForCompany(validation.data!);
   });
 
-  // Payment allocation handlers
-  safeHandle(
-    'transaction:getInvoicesWithBalance',
-    (_: IpcMainInvokeEvent, entityId: unknown, entityType: unknown, invoiceType: unknown) => {
-      const idValidation = validateId(entityId);
-      if (!idValidation.success) throw new Error(idValidation.error);
-      if (entityType !== 'project' && entityType !== 'company') throw new Error(t('main.transaction.invalidEntityType'));
-      if (invoiceType !== 'invoice_out' && invoiceType !== 'invoice_in') throw new Error(t('main.transaction.invalidInvoiceType'));
-      return getDbService().paymentAllocations.getInvoicesWithBalance(
-        idValidation.data!,
-        entityType as 'project' | 'company',
-        invoiceType as 'invoice_out' | 'invoice_in'
-      );
+  safeHandle('transaction:save', (_: IpcMainInvokeEvent, request: unknown) => {
+    const validation = validateInput(saveTransactionSchema, request);
+    if (!validation.success) throw new Error(validation.error);
+    const { id, data, paymentAllocations, invoiceAllocations, remainderDocument } = validation.data!;
+    const db = getDbService();
+    try {
+      const result = db.transactions.saveWithMatching({
+        id,
+        data,
+        paymentAllocations,
+        invoiceAllocations,
+        remainderDocument: remainderDocument
+          ? { categoryId: remainderDocument.categoryId, note: t('main.transaction.documentFromPaymentNote') }
+          : undefined,
+      });
+      db.save();
+      return result;
+    } catch (error) {
+      throw toUserError(error);
     }
-  );
+  });
+
+  safeHandle('transaction:getMatchCandidates', (_: IpcMainInvokeEvent, request: unknown) => {
+    const validation = validateInput(matchCandidatesSchema, request);
+    if (!validation.success) throw new Error(validation.error);
+    const { type, companyId, projectId, selfId } = validation.data!;
+    const pool = { companyId, projectId };
+    const repo = getDbService().paymentAllocations;
+    return isPaymentType(type)
+      ? repo.getInvoiceCandidates(type, pool, selfId)
+      : repo.getPaymentCandidates(type, pool, selfId);
+  });
 
   safeHandle(
     'transaction:setAllocations',
@@ -107,6 +156,8 @@ export function registerTransactionHandlers(getDbService: () => DatabaseService)
         amount: Number(a.amount),
       })).filter(a => a.invoiceId > 0 && a.amount > 0);
       const db = getDbService();
+      const problem = db.paymentAllocations.findAllocationProblem(idValidation.data!, validAllocations);
+      if (problem) throw new Error(t(SAVE_PROBLEM_KEYS[problem]));
       db.paymentAllocations.setForPayment(idValidation.data!, validAllocations);
       db.save();
       return { success: true };

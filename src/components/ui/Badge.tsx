@@ -1,7 +1,7 @@
 import React, { ReactNode, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatCurrency as formatCurrencyUtil } from '../../utils/formatters';
-import type { ProjectStatus, CompanyType, AccountType } from '../../types';
+import type { ProjectStatus, CompanyType, AccountType, TransactionWithDetails } from '../../types';
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'gray' | 'purple' | 'default';
 
@@ -114,8 +114,8 @@ export const BalanceBadge = memo(function BalanceBadge({
   showIcon = true,
   size = 'md',
 }: BalanceBadgeProps) {
-  const isPositive = amount > 0;
-  const isNegative = amount < 0;
+  const isPositive = amount >= 0.005;
+  const isNegative = amount <= -0.005;
 
   const formatAmount = (value: number) => formatCurrencyUtil(Math.abs(value));
 
@@ -144,6 +144,30 @@ export const BalanceBadge = memo(function BalanceBadge({
       {showIcon && <span>{icon}</span>}
       {isNegative ? '-' : isPositive ? '+' : ''}
       {formatAmount(amount)}
+    </span>
+  );
+});
+
+interface MatchStatusBadgeProps {
+  transaction: Pick<TransactionWithDetails, 'type' | 'scope' | 'amount' | 'amount_try' | 'allocated_amount'>;
+  className?: string;
+}
+
+export const MatchStatusBadge = memo(function MatchStatusBadge({ transaction, className = '' }: MatchStatusBadgeProps) {
+  const { t } = useTranslation();
+  if (transaction.type !== 'payment_in' && transaction.type !== 'payment_out') return null;
+  if (transaction.scope === 'company') return null;
+  const total = transaction.amount_try || transaction.amount;
+  const matched = transaction.allocated_amount ?? 0;
+  const open = Math.round((total - matched) * 100) / 100;
+  if (open <= 0.005) return null;
+  const partial = matched > 0.005;
+  const title = t(transaction.type === 'payment_out' ? 'matchStatus.titleOut' : 'matchStatus.titleIn', {
+    amount: formatCurrencyUtil(open),
+  });
+  return (
+    <span title={title} className={`inline-flex ${className}`}>
+      <Badge variant="warning">{partial ? t('matchStatus.partial') : t('matchStatus.unmatched')}</Badge>
     </span>
   );
 });

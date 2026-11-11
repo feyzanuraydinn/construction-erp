@@ -11,6 +11,11 @@ vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
 
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => mockNavigate,
+}));
+
 const mockSetTheme = vi.fn();
 vi.mock('../../contexts/ThemeContext', () => ({
   useTheme: () => ({ theme: 'light', resolvedTheme: 'light', setTheme: mockSetTheme, toggleTheme: vi.fn() }),
@@ -255,5 +260,19 @@ describe('Settings', () => {
     await waitFor(() => {
       expect(mockToast.error).toHaveBeenCalledWith('Yedek oluşturulamadı');
     });
+  });
+});
+
+describe('Settings data review link', () => {
+  it('opens the data review page', async () => {
+    (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (window.electronAPI.backup.list as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (window.electronAPI.gdrive.hasCredentials as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    (window.electronAPI.app.getVersion as ReturnType<typeof vi.fn>).mockResolvedValue('1.0.0');
+    await act(async () => {
+      render(<Settings />);
+    });
+    fireEvent.click(screen.getByText('Veri Kontrolü'));
+    expect(mockNavigate).toHaveBeenCalledWith('/data-review');
   });
 });

@@ -62,4 +62,10 @@ describe('BalanceBadge', () => {
     const el = screen.getByText(/0/);
     expect(el).toBeInTheDocument();
   });
+
+  it('treats floating-point noise as a zero balance, not a red "-0,00"', () => {
+    const { container } = render(<BalanceBadge amount={100.1 + 200.2 + 300.3 - 600.6} />);
+    expect(container.textContent).not.toContain('↓');
+    expect(container.textContent).toContain('•');
+  });
 });

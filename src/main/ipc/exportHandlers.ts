@@ -67,7 +67,7 @@ function parseCurrencyValue(val: unknown): number {
   return parseFloat(cleaned) || 0;
 }
 
-async function createStyledWorkbook(records: Record<string, unknown>[], metadata?: ExportMetadata): Promise<ExcelJS.Workbook> {
+export async function createStyledWorkbook(records: Record<string, unknown>[], metadata?: ExportMetadata): Promise<ExcelJS.Workbook> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet(t('main.export.sheetName'));
 

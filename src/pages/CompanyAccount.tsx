@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useToast } from '../contexts/ToastContext';
 import {
   FiPlus,
   FiEdit2,
@@ -42,11 +43,13 @@ import {
 } from '../components/ui';
 import { useTransactionList, calculateTransactionTotals, getPaginationProps } from '../hooks';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import { categoryLabel } from '../utils/categories';
 import { getSimpleTransactionTextColor, getSimpleTransactionBadgeVariant, isPositiveTransaction } from '../utils/transactionHelpers';
 import type { TransactionWithDetails, Category } from '../types';
 
 function CompanyAccount() {
   const { t } = useTranslation();
+  const toast = useToast();
   const [transactions, setTransactions] = useState<TransactionWithDetails[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +105,10 @@ function CompanyAccount() {
         setTransactions(Array.isArray(txData) ? txData : []);
         setCategories(Array.isArray(categoriesData) ? categoriesData : []);
       })
-      .catch((error) => console.error('Load error:', error))
+      .catch((error) => {
+        console.error('Load error:', error);
+        toast.error(t('common.loadError'));
+      })
       .finally(() => setLoading(false));
   }
 
@@ -137,7 +143,7 @@ function CompanyAccount() {
   const expenseByCategory = useMemo(() => transactions
     .filter((tx) => !isPositiveTransaction(tx.type))
     .reduce<Record<string, number>>((acc, tx) => {
-      const catName = tx.category_name || t('companyAccount.otherCategory');
+      const catName = tx.category_name ? categoryLabel(t, tx.category_name) : t('companyAccount.otherCategory');
       acc[catName] = (acc[catName] || 0) + (tx.amount_try || tx.amount);
       return acc;
     }, {}), [transactions, t]);

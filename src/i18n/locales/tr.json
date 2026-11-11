@@ -11,7 +11,9 @@
     "closeConfirmDetail": "Çıkmadan önce verileriniz yerel yedek dosyasına kaydedilecek ve buluta yüklenecek.",
     "closeConfirmDetailPending": "Kaydedilmemiş değişiklikleriniz var. Çıkmadan önce yerel yedek alınacak ve buluta yüklenecek.",
     "closeConfirmYes": "Evet, Kapat",
-    "closeInProgress": "Veriler yedekleniyor ve buluta yükleniyor..."
+    "closeInProgress": "Veriler yedekleniyor ve buluta yükleniyor...",
+    "collapseSidebar": "Kenar çubuğunu daralt",
+    "expandSidebar": "Kenar çubuğunu genişlet"
   },
 
   "menu": {
@@ -128,7 +130,7 @@
     "dateFormat": "Geçerli tarih formatı: YYYY-MM-DD",
     "positiveNumber": "Geçerli pozitif bir sayı giriniz",
     "nameRequired": "İsim zorunludur",
-    "tcNumber": "TC Kimlik numarası 11 haneli ve sadece rakamlardan oluşmalıdır",
+    "tcNumber": "Geçerli bir TC Kimlik numarası giriniz (11 hane)",
     "emailFormat": "Geçerli bir e-posta adresi giriniz",
     "projectCodeRequired": "Proje kodu zorunludur",
     "projectNameRequired": "Proje adı zorunludur",
@@ -141,7 +143,11 @@
     "categoryNameRequired": "Kategori adı zorunludur",
     "clientIdRequired": "Client ID zorunludur",
     "clientSecretRequired": "Client Secret zorunludur",
-    "validationError": "Validasyon hatası"
+    "validationError": "Validasyon hatası",
+    "exchangeRateRequired": "Dövizli işlemler için sıfırdan büyük bir kur giriniz",
+    "iban": "Geçerli bir IBAN giriniz (TR ile başlayan 26 karakter)",
+    "nonNegative": "Negatif olamaz",
+    "endBeforeStart": "Bitiş tarihi başlangıç tarihinden önce olamaz"
   },
 
   "pagination": {
@@ -413,6 +419,9 @@
     "noProjectsDesc": "Yeni bir proje ekleyerek başlayın",
     "deleteTitle": "Projeyi Sil",
     "deleteMessage": "\"{{name}}\" projesini silmek istediğinize emin misiniz?",
+    "deleteRelatedTransactions": "Bu projeye ait {{count}} işlem de silinecek.",
+    "deleteUnlinkedTransactions": "Projeye bağlanmış {{count}} cari işlem silinmeyecek, yalnızca proje bağlantısı kaldırılacak.",
+    "deleteRestorable": "Hepsi Çöp Kutusu'ndan geri yüklenebilir.",
     "deleteSuccess": "Proje başarıyla silindi",
     "createSuccess": "Proje başarıyla oluşturuldu",
     "updateSuccess": "Proje başarıyla güncellendi",
@@ -565,6 +574,7 @@
     "bulkDeleteMessage": "Seçili {{count}} işlemi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
     "bulkDeleteConfirm": "Tümünü Sil",
     "bulkDeleteSuccess": "{{count}} işlem başarıyla silindi",
+    "bulkDeletePartial": "{{success}} silindi, {{error}} silinemedi",
     "companyGeneral": "Firma Genel",
     "stats": {
       "salesInvoices": "Satış Faturaları",
@@ -575,8 +585,8 @@
       "profitLossSubtitle": "Satış - Alış Faturaları",
       "cashFlow": "Nakit Akışı",
       "cashFlowSubtitle": "Tahsilat - Ödeme",
-      "netStatus": "Net Durum",
-      "netStatusSubtitle": "Kâr/Zarar + Nakit",
+      "netStatus": "Açık Bakiye",
+      "netStatusSubtitle": "Carilerle alacak − borç (avanslar düşülmüş; carisiz kayıtlar hariç)",
       "transactionCount": "{{count}} işlem"
     },
     "table": {
@@ -698,12 +708,13 @@
     "googleDrive": "Google Drive Yedekleme",
     "connected": "Bağlı",
     "configure": "Yapılandır",
+    "changeCredentials": "Kimliği Değiştir",
     "connectGoogle": "Google ile Bağlan",
     "disconnect": "Bağlantıyı Kes",
     "driveConnectSuccess": "Google Drive bağlantısı başarılı",
     "driveConnectError": "Bağlantı başarısız",
     "driveDisconnectTitle": "Google Drive Bağlantısını Kes",
-    "driveDisconnectMessage": "Google Drive bağlantısı kesilecek. Bulut yedekleme özelliğini tekrar kullanmak için yeniden bağlanmanız gerekecek.",
+    "driveDisconnectMessage": "Google Drive bağlantısı kesilecek. Bu bilgisayar Drive'a bağlı çalıştığı için, bağlantı kesilince yeniden bağlanana kadar uygulama kullanılamaz. Başka bir Google hesabına geçmek için kullanabilirsiniz.",
     "driveDisconnectSuccess": "Google Drive bağlantısı kesildi",
     "driveDisconnectError": "Bağlantı kesilemedi",
     "driveUploadSuccess": "Yedek Google Drive'a yüklendi",
@@ -718,7 +729,7 @@
     "noCloudBackup": "Henüz bulut yedeği yok",
     "credentialsDesc": "Google Cloud Console'dan OAuth 2.0 credentials oluşturun.",
     "credentialsRequired": "Client ID ve Client Secret gereklidir",
-    "credentialsSaved": "Credentials kaydedildi",
+    "credentialsSaved": "Kimlik bilgileri kaydedildi",
     "credentialsSaveError": "Kaydetme hatası",
     "connectionError": "Bağlantı hatası",
     "uploadError": "Yükleme hatası",
@@ -751,7 +762,7 @@
 
   "trash": {
     "title": "Çöp Kutusu",
-    "subtitle": "Silinen öğeler 30 gün içinde otomatik olarak kalıcı silinir",
+    "subtitle": "Silinen öğeler, siz kalıcı olarak silene kadar burada kalır ve geri yüklenebilir",
     "emptyTrash": "Çöp Kutusunu Boşalt",
     "warning": "Dikkat",
     "warningMessage": "Kalıcı olarak silinen öğeler geri getirilemez. İlişkili işlemler ve veriler de silinecektir.",
@@ -761,6 +772,7 @@
     "emptyDesc": "Silinen öğeler burada görünecektir",
     "restoreSuccess": "Öğe başarıyla geri yüklendi",
     "restoreError": "Geri yükleme sırasında hata oluştu",
+    "restoreParentMissing": "Bu öğenin bağlı olduğu kayıt (cari veya proje) silinmiş. Önce onu geri yükleyin.",
     "permanentDeleteSuccess": "Öğe kalıcı olarak silindi",
     "permanentDeleteError": "Silme sırasında hata oluştu",
     "emptyTrashSuccess": "Çöp kutusu boşaltıldı",
@@ -869,10 +881,13 @@
     "deleteError": "Silme sırasında hata oluştu",
     "bulkDeleted": "{{count}} işlem başarıyla silindi",
     "bulkDeleteError": "Toplu silme sırasında hata oluştu",
+    "bulkDeletePartial": "{{deleted}} işlem silindi, {{failed}} işlem silinemedi",
     "excelExported": "Excel dosyası başarıyla oluşturuldu",
     "deleteTransaction": {
       "title": "İşlemi Sil",
-      "message": "Bu işlemi silmek istediğinize emin misiniz?"
+      "message": "Bu işlemi silmek istediğinize emin misiniz?",
+      "matchedPayment": "Bu ödeme {{amount}} tutarında fatura kapatıyor; silinirse o faturalar yeniden açık (ödenmemiş) görünür. Çöp kutusundan geri yüklenirse eşleşme de geri gelir.",
+      "matchedInvoice": "Bu fatura {{amount}} tutarında ödemeyle eşleşmiş; silinirse o ödemeler eşleşmemiş (avans) olarak kalır. Çöp kutusundan geri yüklenirse eşleşme de geri gelir."
     },
     "bulkDelete": {
       "title": "Toplu Silme",
@@ -982,15 +997,17 @@
       "projectProfit": "Proje Kârı",
       "incomeMinusCost": "Gelir - Maliyet",
       "incomeMinusExpense": "Gelir - Gider",
-      "incomeBreakdown": "Fatura: {{invoice}} | Bağımsız Tahsilat: {{independentPayment}}",
-      "expenseBreakdown": "Fatura: {{invoice}} | Bağımsız Ödeme: {{independentPayment}}",
+      "incomeBreakdown": "Satış faturaları · Tahsil edilen: {{collected}}",
+      "expenseBreakdown": "Alış faturaları ve gider kayıtları · Ödenen: {{paid}}",
       "estimatedProfit": "Tahmini Kâr",
       "noBudget": "Bütçe belirlenmemiş",
       "budgetStatus": "Bütçe Durumu",
       "clientReceivable": "Müşteri Alacağı",
-      "invoiceMinusCollection": "Fatura - Tahsilat",
+      "invoiceMinusCollection": "Satış faturalarında tahsil edilmemiş",
       "projectDebt": "Proje Borcu",
-      "subcontractorDebt": "Taşeronlara kalan borç"
+      "subcontractorDebt": "Alış faturalarında ödenmemiş",
+      "unmatchedPaymentsNotice": "Bu projede faturayla eşleşmemiş {{amount}} ödeme var. Bunlar verilen avans sayılır ve gidere dahil değildir. Faturası olmayan bir harcamaysa ödemeyi açıp “Gider olarak işle”yi seçin; faturası geldiyse eşleştirin.",
+      "unmatchedCollectionsNotice": "Bu projede faturayla eşleşmemiş {{amount}} tahsilat var. Bunlar alınan avans sayılır ve gelire dahil değildir. Faturası olmayan bir gelirse tahsilatı açıp “Gelir olarak işle”yi seçin; faturası kesildiyse eşleştirin."
     },
     "projectInfo": "Proje Bilgileri",
     "noProjectInfo": "Projeye ait bilgi eklenmemiş",
@@ -1015,7 +1032,8 @@
       "role": "Rol",
       "invoiceTotal": "Fatura Toplamı",
       "paymentCollection": "Ödeme/Tahsilat",
-      "balance": "Bakiye"
+      "balance": "Bakiye",
+      "transactionCount": "İşlem Sayısı"
     },
     "stakeholderDetail": {
       "title": "{{company_name}} - Proje İşlemleri"
@@ -1052,6 +1070,158 @@
     "documentPrefix": "Belge: {{no}}"
   },
 
+  "driveLock": {
+    "title": "Google Drive bağlantısı koptu",
+    "reasonExpired": "Google oturumunun süresi doldu ya da erişim iptal edildi. Google, test modundaki uygulamalarda oturumu yaklaşık 7 günde bir sonlandırır.",
+    "reasonDisconnected": "Bu bilgisayar daha önce Google Drive'a bağlıydı, şu an bağlı değil.",
+    "dataSafe": "Verileriniz bu bilgisayarda güvende. Bağlandığınızda yedekleme ve cihazlar arası eşitleme kaldığı yerden devam eder.",
+    "blocked": "Yedeksiz çalışılmaması için bağlantı kurulana kadar uygulama kullanılamaz.",
+    "credentialsMissing": "Google bağlantı bilgileri (Client ID / Client Secret) bu bilgisayarda bulunamadı. Daha önce Ayarlar'da girdiğiniz bilgileri yeniden girin.",
+    "saveCredentials": "Bilgileri kaydet",
+    "connect": "Google ile yeniden bağlan",
+    "waiting": "Tarayıcıda giriş bekleniyor…",
+    "waitingHint": "Tarayıcıda açılan Google sayfasında hesabınızı seçip izin verin. Bağlantı kurulunca bu pencere kendiliğinden kapanır.",
+    "sameAccountHint": "Daha önce kullandığınız Google hesabını seçin. Farklı bir hesap seçerseniz hangi verinin kullanılacağı size sorulur.",
+    "connectFailed": "Bağlantı kurulamadı.",
+    "connectError": "Bağlanılamadı: {{error}}"
+  },
+
+  "dataReview": {
+    "title": "Veri Kontrolü",
+    "subtitle": "Yeni sürümde gelir ve gider yalnızca faturalardan ve gider/gelir kayıtlarından hesaplanır; tahsilat ve ödemeler faturaları kapatır, eşleşmeyenler avans sayılır. Bu ekran eski sürümlerden kalan kayıtları kontrol eder.",
+    "noIssues": "Sorun yok",
+    "needsReview": "İnceleyin",
+    "loadError": "Veri kontrolü yüklenemedi: {{error}}",
+    "applied": "Uygulandı: {{changed}} kayıt güncellendi.",
+    "applyError": "Uygulanamadı, hiçbir değişiklik yapılmadı: {{error}}",
+    "completedToast": "Veri kontrolü tamamlandı.",
+    "completedInfo": "Geçiş {{date}} tarihinde tamamlandı. Aşağıdaki kontroller veri bütünlüğü içindir ve her zaman yeniden çalıştırılabilir.",
+    "intro1": "Hiçbir kayıt siz “Uygula”ya basmadan değişmez. Her adımdan önce veritabanının bir kopyası Yedekler/safety klasörüne alınır ve her adım ya tamamen uygulanır ya hiç uygulanmaz.",
+    "intro2": "Adımları sırayla yapın: önce onarımlar ve kurlar tutarları düzeltir, ardından eşleşmeler doğru tutarlarla yapılır. En sonda eski ve yeni rakamları karşılaştırıp geçişi tamamlayın.",
+    "banner_one": "Yeni sürümde hesaplama değişti: eski kayıtlarınızdan {{count}} tanesinin gözden geçirilmesi gerekiyor.",
+    "banner": "Yeni sürümde hesaplama değişti: eski kayıtlarınızdan {{count}} tanesinin gözden geçirilmesi gerekiyor.",
+    "bannerAction": "Kayıtları incele",
+    "repairs": {
+      "title": "Onarımlar",
+      "description": "Eski sürüm hatalarından kalan yanlış TL tutarları, kırık bağlantılar ve silinmiş cari/projelerden kalan işlemler.",
+      "amountFixes_one": "TL karşılığı tutarıyla uyuşmayan {{count}} işlem (ilk sürümler tutar düzenlenince TL karşılığını güncellemiyordu)",
+      "amountFixes": "TL karşılığı tutarıyla uyuşmayan {{count}} işlem (ilk sürümler tutar düzenlenince TL karşılığını güncellemiyordu)",
+      "storedTry": "Kayıtlı TL",
+      "correctTry": "Doğru TL",
+      "brokenLinks": "Kırık bağlantılar (otomatik temizlenir)",
+      "orphans_one": "Silinmiş bir cariye veya projeye ait kalmış {{count}} işlem",
+      "orphans": "Silinmiş bir cariye veya projeye ait kalmış {{count}} işlem",
+      "orphansHint": "Eski sürümde cari/proje silinince işlemleri bazen silinmeden kalıyordu; bu işlemler hiçbir sayfada görünmüyor ama Gösterge Paneli toplamlarına giriyordu. Seçili olanlar çöp kutusuna taşınır; carisi/projesi geri yüklenirse onlar da geri yüklenebilir.",
+      "moveToTrash": "{{name}} çöp kutusuna taşınsın",
+      "deleted": "Silinmiş",
+      "deletedCompany": "Cari",
+      "deletedProject": "Proje",
+      "apply": "Onarımları uygula"
+    },
+    "dangling": {
+      "categories_one": "Silinmiş kategoriye bağlı {{count}} işlem: kategorisi boşaltılır.",
+      "categories": "Silinmiş kategoriye bağlı {{count}} işlem: kategorisi boşaltılır.",
+      "linkedInvoices_one": "Silinmiş faturaya eski tip bağlantısı olan {{count}} ödeme: bağlantı temizlenir.",
+      "linkedInvoices": "Silinmiş faturaya eski tip bağlantısı olan {{count}} ödeme: bağlantı temizlenir.",
+      "clientCompanies_one": "Müşterisi silinmiş {{count}} proje: müşteri alanı boşaltılır.",
+      "clientCompanies": "Müşterisi silinmiş {{count}} proje: müşteri alanı boşaltılır.",
+      "stockLinks_one": "Silinmiş proje/cariye bağlı {{count}} stok hareketi: bağlantı temizlenir.",
+      "stockLinks": "Silinmiş proje/cariye bağlı {{count}} stok hareketi: bağlantı temizlenir.",
+      "allocations_one": "Silinmiş işlemlere ait {{count}} eşleşme: kaldırılır.",
+      "allocations": "Silinmiş işlemlere ait {{count}} eşleşme: kaldırılır.",
+      "parties_one": "Silinmiş proje/cariye ait {{count}} paydaş kaydı: kaldırılır.",
+      "parties": "Silinmiş proje/cariye ait {{count}} paydaş kaydı: kaldırılır.",
+      "projectTags_one": "Silinmiş projeye etiketli {{count}} cari işlemi: etiket kaldırılır, işlem kalır.",
+      "projectTags": "Silinmiş projeye etiketli {{count}} cari işlemi: etiket kaldırılır, işlem kalır."
+    },
+    "rates": {
+      "title": "Döviz kurları",
+      "description": "Kuru 1 kaydedilmiş USD/EUR işlemler: eski sürüm proje işlemlerinde kuru hep 1 alıyordu, kur alınamadığında da 1 kullanılıyordu. Bu yüzden TL toplamları yanlış.",
+      "account": "Cari / Proje",
+      "storedRate": "Kayıtlı kur",
+      "newRate": "İşlem tarihindeki kur",
+      "rateFor": "{{name}} için 1 {{currency}} kaç TL",
+      "hint": "Kuru boş bıraktığınız işlemler değişmez ve burada kalır. Aynı dövizdeki fatura ile ödemesinin eşleşmesi yeni kura göre güncellenir.",
+      "apply": "Girilen kurları uygula"
+    },
+    "matches": {
+      "title": "Eşleşme sorunları",
+      "description": "Kuralına uymayan eşleşmeler: başka carinin faturasıyla eşleşmiş ödemeler, tutarından fazla eşleşmiş kayıtlar ve tür değişikliğinden kalan eşleşmeler.",
+      "fixThis": "Bu düzeltme uygulansın",
+      "apply": "Seçili düzeltmeleri uygula"
+    },
+    "issues": {
+      "type_mismatch": "“{{payment}}” ile “{{invoice}}” arasındaki eşleşme türlere uymuyor (kayıt türü sonradan değiştirilmiş). Eşleşme kaldırılacak.",
+      "counterparty": "“{{payment}}” ödemesi başka bir carinin faturasıyla (“{{invoice}}”) eşleşmiş. Eşleşme kaldırılacak; ödeme kendi carisinde açık kalır.",
+      "assign_company": "Carisi seçilmemiş “{{payment}}” ödemesi {{company}} faturalarıyla eşleşmiş. Ödemeye {{company}} carisi atanacak; böylece cari hesabı da ödemeyi görür.",
+      "payment_over": "“{{payment}}” ödemesi tutarından ({{amount}}) fazla eşleşmiş (tutar eşleştirmeden sonra düşürülmüş olabilir). En yeni eşleşmeler azaltılacak:",
+      "invoice_over": "“{{invoice}}” faturası tutarından ({{amount}}) fazla ödemeyle eşleşmiş. En yeni ödemelerin eşleşmesi azaltılacak:"
+    },
+    "unmatched": {
+      "title": "Faturayla eşleşmeyen ödemeler",
+      "description": "Eski sürümde proje sayfası, faturayla eşleşmeyen ödemeleri gider (tahsilatları gelir) sayıyordu; cari hesapta ise bunlar avans görünüyordu. Yeni sürümde yalnızca belgeler gelir/gider olur. Her biri için ne olduğunu seçin.",
+      "explainDocument": "“Gider/Gelir olarak işle”: faturası olmayan harcama veya gelir (yevmiye, fiş, gider pusulası). Ödemeyle eşleşmiş bir gider/gelir kaydı oluşturulur; proje rakamı eskisi gibi kalır.",
+      "explainAdvance": "“Avans olarak kalsın”: faturası sonra gelecek peşin ödeme. Kâra/gidere girmez, carinin hesabında açık durur; fatura girilince eşleştirilir. Bir faturası zaten varsa ikisini de seçmeyin: önce faturayla eşleştirin.",
+      "setAll": "Kalan tutarların hepsi için:",
+      "allDocument": "Gider/gelir olarak işle",
+      "allAdvance": "Avans olarak kalsın",
+      "accountProject": "Cari / Proje",
+      "unmatchedAmount": "Eşleşmemiş",
+      "matchWithInvoices": "Açık faturalarla eşleştir",
+      "restChoice": "Kalan ne olsun?",
+      "oldCountedExpense": "Eski proje sayfasında gider sayılıyordu",
+      "oldCountedIncome": "Eski proje sayfasında gelir sayılıyordu",
+      "noCompany": "Cari yok",
+      "person": "Şahıs (genelde fatura kesmez)",
+      "noOpenInvoice": "Açık fatura yok",
+      "fullyMatched": "Tamamı faturalarla kapanıyor",
+      "rest": "Kalan: {{amount}}",
+      "restChoiceFor": "{{name}} için kalan tutar",
+      "choose": "Seçin…",
+      "categoryFor": "{{name}} için kategori",
+      "chooseCategory": "Kategori seçin…",
+      "firmTitle_one": "Firma hesabında eski tip {{count}} ödeme kaydı",
+      "firmTitle": "Firma hesabında eski tip {{count}} ödeme kaydı",
+      "firmHint": "İlk sürümlerde firma gelir/gideri tahsilat/ödeme olarak kaydediliyordu; şimdiki firma hesabı kartları bunları toplamıyor. Seçili olanlar Gelir/Gider kaydına dönüştürülür.",
+      "becomes": "Dönüşeceği tür",
+      "convertThis": "{{name}} dönüştürülsün",
+      "missingChoices_one": "{{count}} ödeme için kalan tutarın ne olacağını seçin.",
+      "missingChoices": "{{count}} ödeme için kalan tutarın ne olacağını seçin.",
+      "applyHint": "“Avans olarak kalsın” seçilenler değişmez; eşleştirme ve gider/gelir kayıtları uygulanır.",
+      "apply": "Seçimleri uygula"
+    },
+    "summary": {
+      "title": "Özet ve tamamla",
+      "description": "“Önce”: yeni sürüm ilk açıldığında ({{date}}) eski hesapla görünen rakamlar. “Şimdi”: güncel kayıtlar, yeni hesapla.",
+      "noBaseline": "Eski rakamlar kaydedilmemiş; yalnızca güncel rakamlar gösteriliyor.",
+      "income": "Gelir (satış faturaları)",
+      "expense": "Gider (alış faturaları ve gider kayıtları)",
+      "collected": "Tahsilat",
+      "paid": "Ödeme",
+      "before": "Önce",
+      "now": "Şimdi",
+      "projects": "Rakamı değişen projeler",
+      "project": "Proje",
+      "beforeIncomeExpense": "Önce: gelir / gider",
+      "beforeProfit": "Önce: kâr",
+      "nowIncomeExpense": "Şimdi: gelir / gider",
+      "nowProfit": "Şimdi: kâr",
+      "projectsHint": "Fark genellikle eski hesabın, eşleştirilmemiş ödeme ile faturasını iki kez saymasından ya da avansları gider saymasından gelir.",
+      "completeHint": "Rakamlar doğruysa geçişi tamamlayın. Sonrasında eşleşmeyen ödemeler avans olarak kalır ve bu adım bir daha sorulmaz.",
+      "complete": "Geçişi tamamla",
+      "confirmTitle": "Geçiş tamamlansın mı?",
+      "confirmWithOpen": "Hâlâ {{open}} açık sorun ve {{unmatched}} eşleşmeyen ödeme var. Tamamlarsanız eşleşmeyen ödemeler avans olarak kalır; sorunları daha sonra Ayarlar > Veri Kontrolü'nden düzeltebilirsiniz.",
+      "confirmClean": "Tüm adımlar tamam. Geçiş tamamlanınca bu ekran yalnızca veri bütünlüğü kontrolü için kullanılır."
+    }
+  },
+
+  "matchStatus": {
+    "unmatched": "Eşleşmemiş",
+    "partial": "Kısmi eşleşme",
+    "titleOut": "Faturayla kapatılmamış {{amount}}: verilen avans olarak açık duruyor, gidere dahil değil.",
+    "titleIn": "Faturayla kapatılmamış {{amount}}: alınan avans olarak açık duruyor, gelire dahil değil."
+  },
+
   "transactionModal": {
     "editTitle": "İşlem Düzenle",
     "newProjectTransaction": "Yeni Proje İşlemi",
@@ -1071,11 +1241,38 @@
     "noOpenInvoices": "Açık fatura bulunamadı",
     "remaining": "Kalan",
     "allocation": "Eşleştirme",
-    "unallocated": "Bağımsız",
+    "unallocated": "Eşleşmeyen",
     "fullMatch": "Tam eşleşme",
     "typeChangeWarningTitle": "Bağlı Eşleştirmeler Mevcut",
     "typeChangeWarningMessage": "Bu işleme bağlı {{count}} adet ödeme eşleştirmesi (toplam {{total}}) bulunmaktadır. Tür değiştirilirse bu eşleştirmeler kaldırılacaktır.",
-    "removeAllocations": "Bağları Kaldır ve Devam Et"
+    "removeAllocations": "Bağları Kaldır ve Devam Et",
+    "exchangeRate": "Kur (1 {{currency}} = ? TL)",
+    "useCurrentRate": "Güncel kuru kullan",
+    "saveError": "İşlem kaydedilemedi: {{error}}",
+    "allocationSaveError": "İşlem kaydedildi ancak fatura eşleştirmeleri kaydedilemedi: {{error}}",
+    "allocationExceedsPayment": "Eşleştirme toplamı ({{allocated}}) ödeme tutarını ({{payment}}) aşıyor.",
+    "clearMatches": "Eşleşmeleri kaldır",
+    "removeMatch": "Eşleşmeyi kaldır",
+    "matchAmountFor": "{{name}} için eşleşen tutar",
+    "otherProject": "Proje: {{name}}",
+    "noCompanyHint": "Carisi seçilmemiş bir ödeme yalnızca bu projenin carisiz faturalarıyla eşleşir. Bir tedarikçinin faturasını kapatıyorsa önce cariyi seçin.",
+    "outsideMatch": "Bu kayıt farklı bir cariye ait bir işlemle eşleşmiş ({{description}}, {{amount}}). Bu eşleşme artık geçerli değil; kaydedince kaldırılır.",
+    "noOpenPayments": "Bu cariye ait eşleşmemiş ödeme yok.",
+    "unmatchedOnPayment": "Eşleşmemiş",
+    "invoiceOpen": "Açık",
+    "invoiceMatchesTitle": "Bu faturayı kapatan ödemeler",
+    "invoiceMatchesTitleSale": "Bu faturayı kapatan tahsilatlar",
+    "restTitle": "Faturayla eşleşmeyen {{amount}} ne olsun?",
+    "restAdvance": "Avans olarak kalsın",
+    "restAdvanceHint": "Faturası sonra gelecek. Tutar carinin hesabında açık avans olarak durur; fatura gelince eşleştirilir. Kâra/gidere girmez.",
+    "restAdvanceNoCompany": "Cari seçilmediği için avans olamaz: avansın kimden alınacağı belli değil.",
+    "restExpense": "Gider olarak işle",
+    "restExpenseHint": "Faturası olmayan harcama (yevmiye, fiş, gider pusulası). Ödemeyle eşleşmiş bir gider kaydı oluşturulur; gidere girer.",
+    "restIncome": "Gelir olarak işle",
+    "restIncomeHint": "Faturası olmayan gelir. Tahsilatla eşleşmiş bir gelir kaydı oluşturulur; gelire girer.",
+    "restCategory": "Gider/gelir kategorisi",
+    "restChoiceRequired": "Faturayla eşleşmeyen tutar için seçim yapın: avans mı, gider/gelir mi?",
+    "restCategoryRequired": "Gider/gelir kaydı için bir kategori seçin."
   },
 
   "categories": {
@@ -1247,11 +1444,16 @@
       "accessDenied": "Erişim reddedildi. Google Cloud Console'da test kullanıcısı olarak eklendiğinizden emin olun.",
       "oauthError": "OAuth hatası: {{error}}",
       "connectionDenied": "Bağlantı Reddedildi",
-      "successTitle": "Bağlantı Başarılı",
-      "connectionSuccess": "Google Drive Bağlantısı Başarılı!",
-      "closeWindow": "Bu pencereyi kapatabilirsiniz.",
+      "successTitle": "Bağlantı başarılı",
+      "brand": "Construction ERP · Google Drive",
+      "successMessage": "Yedekleriniz bundan sonra Google Drive'a otomatik olarak kaydedilecek ve cihazlarınız arasında eşitlenecek.",
+      "errorHint": "Uygulamaya dönüp bağlanmayı yeniden deneyebilirsiniz.",
+      "noAuthCodeMessage": "Google yetkilendirme kodunu göndermedi. Uygulamaya dönüp bağlanmayı yeniden deneyin.",
+      "connectionSuccess": "Google Drive bağlandı",
+      "closeWindow": "Bu sekmeyi kapatabilirsiniz; uygulama penceresi öne getirildi.",
       "connectionError": "Bağlantı Hatası",
       "noAuthCode": "Yetkilendirme Kodu Alınamadı",
+      "invalidState": "Bu istek uygulamanın başlattığı bağlantıya ait değil. Lütfen bağlantıyı uygulamadan yeniden başlatın.",
       "portInUse": "Port {{port}} zaten kullanımda. Lütfen uygulamayı yeniden başlatın veya açık olan diğer uygulama pencerelerini kapatın.",
       "serverError": "Sunucu hatası: {{error}}",
       "authTimeout": "Zaman aşımı - Yetkilendirme tamamlanmadı",
@@ -1272,7 +1474,29 @@
     "transaction": {
       "invalidEntityType": "Geçersiz entity tipi",
       "invalidInvoiceType": "Geçersiz fatura tipi",
-      "allocationsMustBeArray": "Eşleştirmeler dizi olmalıdır"
+      "allocationsMustBeArray": "Eşleştirmeler dizi olmalıdır",
+      "allocationExceedsPayment": "Eşleştirme toplamı ödeme tutarını aşamaz.",
+      "allocationExceedsInvoice": "Bir faturaya kalan bakiyesinden fazla eşleştirme yapılamaz.",
+      "allocationTypeMismatch": "Tahsilat yalnızca satış faturalarıyla, ödeme yalnızca alış faturalarıyla eşleştirilebilir.",
+      "allocationNotFound": "Eşleştirilecek işlem bulunamadı.",
+      "allocationDuplicate": "Aynı fatura birden fazla kez eşleştirilemez.",
+      "allocationCounterpartyMismatch": "Bir ödeme yalnızca aynı carinin faturalarıyla eşleştirilebilir (carisiz ödemeler aynı projenin carisiz faturalarıyla).",
+      "needsCounterparty": "Carisi seçilmemiş bir proje ödemesi avans olarak kalamaz. Faturayla eşleştirin, gider/gelir olarak işleyin veya bir cari seçin.",
+      "invalidDocumentCategory": "Gider/gelir kaydı için seçilen kategori uygun değil.",
+      "documentFromPaymentNote": "Ödemeyle birlikte oluşturuldu"
+    },
+    "dataReview": {
+      "generatedNote": "Veri kontrolünde ödemeden oluşturuldu"
+    },
+    "sync": {
+      "dbNotReady": "Veritabanı hazır değil.",
+      "busy": "Senkronizasyon zaten devam ediyor.",
+      "remoteNotFound": "Buluttaki dosya bulunamadı.",
+      "dbFileMissing": "Veritabanı dosyası bulunamadı.",
+      "invalidChoice": "Geçersiz seçim."
+    },
+    "backup": {
+      "selectFolderTitle": "Yedek Klasörü Seçin"
     }
   },
   "sync": {

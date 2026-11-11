@@ -29,6 +29,31 @@ describe('useKeyboardShortcuts Hook', () => {
     expect(onEscape).toHaveBeenCalledTimes(1);
   });
 
+  it('should not call onNew while a dialog is open (would wipe a form in progress)', () => {
+    const onNew = vi.fn();
+    renderHook(() => useKeyboardShortcuts({ onNew }));
+    const dialog = document.createElement('div');
+    dialog.setAttribute('aria-modal', 'true');
+    document.body.appendChild(dialog);
+
+    dispatchKeyEvent('n', true);
+
+    expect(onNew).not.toHaveBeenCalled();
+    dialog.remove();
+  });
+
+  it('should not call onNew while a select has focus', () => {
+    const onNew = vi.fn();
+    renderHook(() => useKeyboardShortcuts({ onNew }));
+    const select = document.createElement('select');
+    document.body.appendChild(select);
+
+    select.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, bubbles: true }));
+
+    expect(onNew).not.toHaveBeenCalled();
+    select.remove();
+  });
+
   it('should not call onNew without Ctrl key', () => {
     const onNew = vi.fn();
     renderHook(() => useKeyboardShortcuts({ onNew }));

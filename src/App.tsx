@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
-import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, Suspense, lazy, type ReactNode } from 'react';
+import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import './i18n';
 import {
@@ -24,7 +24,9 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { SyncProvider } from './contexts/SyncContext';
 import { SyncStatusIndicator } from './components/SyncStatusIndicator';
 import { SyncConflictModal } from './components/SyncConflictModal';
+import { DriveReconnectModal } from './components/DriveReconnectModal';
 import { CloseConfirmModal } from './components/CloseConfirmModal';
+import { DataReviewBanner } from './components/DataReviewBanner';
 import { CommandPalette, LoadingSpinner } from './components/ui';
 
 // Logo Component
@@ -48,6 +50,16 @@ const Transactions = lazy(() => import('./pages/Transactions'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Trash = lazy(() => import('./pages/Trash'));
+const DataReview = lazy(() => import('./pages/DataReview'));
+
+function RoutePage({ name, children }: { name: string; children: ReactNode }) {
+  const { pathname } = useLocation();
+  return (
+    <PageErrorBoundary key={pathname} pageName={name}>
+      {children}
+    </PageErrorBoundary>
+  );
+}
 
 // Loading fallback component
 const PageLoader: React.FC = () => <LoadingSpinner className="h-full" />;
@@ -145,6 +157,8 @@ const AppContent: React.FC = () => {
           {/* Toggle Button */}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            aria-label={sidebarCollapsed ? t('app.expandSidebar') : t('app.collapseSidebar')}
+            aria-expanded={!sidebarCollapsed}
             className="absolute -right-3 top-20 bg-slate-800 text-white p-1.5 rounded-full border border-white/20 hover:bg-slate-700 transition-colors z-10"
           >
             {sidebarCollapsed ? <FiChevronRight size={14} /> : <FiChevronLeft size={14} />}
@@ -204,23 +218,27 @@ const AppContent: React.FC = () => {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-hidden bg-gray-100 dark:bg-gray-900">
+        <main className="flex flex-col flex-1 overflow-hidden bg-gray-100 dark:bg-gray-900">
+          <DataReviewBanner className="flex-shrink-0" />
+          <div className="flex-1 min-h-0">
           <Suspense fallback={<PageLoader />}>
             <Routes>
-              <Route path="/" element={<PageErrorBoundary pageName="Dashboard"><Dashboard /></PageErrorBoundary>} />
-              <Route path="/companies" element={<PageErrorBoundary pageName="Companies"><Companies /></PageErrorBoundary>} />
-              <Route path="/companies/:id" element={<PageErrorBoundary pageName="CompanyDetail"><CompanyDetail /></PageErrorBoundary>} />
-              <Route path="/projects" element={<PageErrorBoundary pageName="Projects"><Projects /></PageErrorBoundary>} />
-              <Route path="/projects/:id" element={<PageErrorBoundary pageName="ProjectDetail"><ProjectDetail /></PageErrorBoundary>} />
-              <Route path="/stock" element={<PageErrorBoundary pageName="Stock"><Stock /></PageErrorBoundary>} />
-              <Route path="/company-account" element={<PageErrorBoundary pageName="CompanyAccount"><CompanyAccount /></PageErrorBoundary>} />
-              <Route path="/transactions" element={<PageErrorBoundary pageName="Transactions"><Transactions /></PageErrorBoundary>} />
-              <Route path="/analytics" element={<PageErrorBoundary pageName="Analytics"><Analytics /></PageErrorBoundary>} />
-              <Route path="/settings" element={<PageErrorBoundary pageName="Settings"><Settings /></PageErrorBoundary>} />
-              <Route path="/trash" element={<PageErrorBoundary pageName="Trash"><Trash /></PageErrorBoundary>} />
+              <Route path="/" element={<RoutePage name="Dashboard"><Dashboard /></RoutePage>} />
+              <Route path="/companies" element={<RoutePage name="Companies"><Companies /></RoutePage>} />
+              <Route path="/companies/:id" element={<RoutePage name="CompanyDetail"><CompanyDetail /></RoutePage>} />
+              <Route path="/projects" element={<RoutePage name="Projects"><Projects /></RoutePage>} />
+              <Route path="/projects/:id" element={<RoutePage name="ProjectDetail"><ProjectDetail /></RoutePage>} />
+              <Route path="/stock" element={<RoutePage name="Stock"><Stock /></RoutePage>} />
+              <Route path="/company-account" element={<RoutePage name="CompanyAccount"><CompanyAccount /></RoutePage>} />
+              <Route path="/transactions" element={<RoutePage name="Transactions"><Transactions /></RoutePage>} />
+              <Route path="/analytics" element={<RoutePage name="Analytics"><Analytics /></RoutePage>} />
+              <Route path="/settings" element={<RoutePage name="Settings"><Settings /></RoutePage>} />
+              <Route path="/trash" element={<RoutePage name="Trash"><Trash /></RoutePage>} />
+              <Route path="/data-review" element={<RoutePage name="DataReview"><DataReview /></RoutePage>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
+          </div>
         </main>
 
         {/* Command Palette */}
@@ -228,6 +246,7 @@ const AppContent: React.FC = () => {
 
         {/* Global modals — mounted at top level so they appear over any page */}
         <SyncConflictModal />
+        <DriveReconnectModal />
         <CloseConfirmModal />
       </div>
     </HashRouter>

@@ -2,6 +2,7 @@ import type { Database as SqlJsDatabase } from 'sql.js';
 import { BaseRepository } from './BaseRepository';
 import type { Company, CompanyWithBalance } from '../../types';
 import type { CompanyInput } from '../../utils/schemas';
+import { collectCompanyBundle, moveToTrash } from './trashBundle';
 
 export class CompanyRepository extends BaseRepository<Company> {
   constructor(db: SqlJsDatabase) {
@@ -93,11 +94,7 @@ export class CompanyRepository extends BaseRepository<Company> {
     if (!company) return { success: false };
     this.db.run('BEGIN TRANSACTION');
     try {
-      this.run(`INSERT INTO trash (type, data) VALUES ('company', ?)`, [JSON.stringify(company)]);
-      // Delete client projects (CASCADE handles project_parties and related transactions)
-      this.run(`DELETE FROM projects WHERE client_company_id = ?`, [id]);
-      // Delete company (CASCADE handles transactions, project_parties)
-      this.run(`DELETE FROM companies WHERE id = ?`, [id]);
+      moveToTrash(this.db, 'company', company, collectCompanyBundle(this.db, id));
       this.db.run('COMMIT');
       return { success: true };
     } catch (error) {

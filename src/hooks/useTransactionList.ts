@@ -198,11 +198,6 @@ export function useTransactionList({
   // Keyboard shortcuts
   useKeyboardShortcuts({
     onNew: () => dispatch({ type: 'OPEN_NEW_TRANSACTION' }),
-    onEscape: () => {
-      if (ui.modalOpen) {
-        dispatch({ type: 'CLOSE_MODAL' });
-      }
-    },
   });
 
   // Load allocations when viewing a payment transaction
@@ -246,6 +241,13 @@ export function useTransactionList({
     });
   }, [transactions, ui.filterType, ui.filterCategory, ui.filterMinAmount, ui.filterMaxAmount, ui.filterStartDate, ui.filterEndDate, extraFilter]);
 
+  useEffect(() => {
+    if (ui.selectedIds.size === 0) return;
+    const visible = new Set(filteredTransactions.map((tx) => tx.id));
+    const kept = [...ui.selectedIds].filter((id) => visible.has(id));
+    if (kept.length !== ui.selectedIds.size) dispatch({ type: 'SELECT_ALL', ids: kept });
+  }, [filteredTransactions, ui.selectedIds]);
+
   // Pagination
   const pagination = usePagination({
     totalItems: filteredTransactions.length,
@@ -287,19 +289,23 @@ export function useTransactionList({
   }, []);
 
   const handleBulkDelete = useCallback(async () => {
-    try {
-      await Promise.all(
-        Array.from(ui.selectedIds).map((txId) => window.electronAPI.transaction.delete(txId))
+    const ids = Array.from(ui.selectedIds);
+    const results = await Promise.allSettled(ids.map((txId) => window.electronAPI.transaction.delete(txId)));
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed === 0) {
+      toast.success(t('shared.bulkDeleted', { count: ids.length }));
+    } else {
+      console.error('Bulk delete failures:', results.filter((r) => r.status === 'rejected'));
+      toast.error(
+        failed === ids.length
+          ? t('shared.bulkDeleteError')
+          : t('shared.bulkDeletePartial', { deleted: ids.length - failed, failed })
       );
-      toast.success(t('shared.bulkDeleted', { count: ui.selectedIds.size }));
-      dispatch({ type: 'CLEAR_SELECTION' });
-      dispatch({ type: 'CANCEL_BULK_DELETE' });
-      invalidateCachePattern('dashboard:.*');
-      loadData();
-    } catch (error) {
-      console.error('Bulk delete error:', error);
-      toast.error(t('shared.bulkDeleteError'));
     }
+    dispatch({ type: 'CLEAR_SELECTION' });
+    dispatch({ type: 'CANCEL_BULK_DELETE' });
+    invalidateCachePattern('dashboard:.*');
+    loadData();
   }, [ui.selectedIds, toast, t, loadData]);
 
   const handleSaveTransaction = useCallback(

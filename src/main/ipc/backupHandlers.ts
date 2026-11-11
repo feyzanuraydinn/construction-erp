@@ -97,7 +97,7 @@ export function registerBackupHandlers(
       if (!mainWindow) return null;
       const result = await dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory'],
-        title: 'Select Backup Folder',
+        title: t('main.backup.selectFolderTitle'),
       });
       return result.canceled ? null : result.filePaths[0];
     } catch (error) {

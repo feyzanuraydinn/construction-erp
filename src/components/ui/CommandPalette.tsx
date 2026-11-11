@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FiSearch, FiUsers, FiFolder, FiPackage, FiX } from 'react-icons/fi';
 import type { Company, Project, Material } from '../../types';
+import { foldForSearch } from '../../utils/formatters';
 
 interface SearchResult {
   id: number;
@@ -72,11 +73,11 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         materials: await window.electronAPI.material.getAll(),
       };
 
-      const lowerQuery = searchQuery.toLowerCase();
+      const lowerQuery = foldForSearch(searchQuery);
       const searchResults: SearchResult[] = [];
 
       companies
-        .filter((c: Company) => c.name.toLowerCase().includes(lowerQuery))
+        .filter((c: Company) => foldForSearch(c.name).includes(lowerQuery))
         .slice(0, 5)
         .forEach((c: Company) => {
           searchResults.push({
@@ -90,7 +91,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       projects
         .filter(
           (p: Project) =>
-            p.name.toLowerCase().includes(lowerQuery) || p.code.toLowerCase().includes(lowerQuery)
+            foldForSearch(p.name).includes(lowerQuery) || foldForSearch(p.code).includes(lowerQuery)
         )
         .slice(0, 5)
         .forEach((p: Project) => {
@@ -105,7 +106,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       materials
         .filter(
           (m: Material) =>
-            m.name.toLowerCase().includes(lowerQuery) || m.code.toLowerCase().includes(lowerQuery)
+            foldForSearch(m.name).includes(lowerQuery) || foldForSearch(m.code).includes(lowerQuery)
         )
         .slice(0, 5)
         .forEach((m: Material) => {

@@ -1,6 +1,6 @@
 {
   "name": "construction-erp",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Construction ERP - Accounts, Project & Stock Management",
   "main": "dist-electron/main/main.js",
   "homepage": "./",
@@ -13,7 +13,8 @@
     "build:electron": "tsc -p src/main/tsconfig.json",
     "build": "npm run build:electron && npm run build:react && electron-builder --dir && npm run postbuild && npm run build:installer",
     "postbuild": "node -e \"require('child_process').execSync(require('path').join('node_modules','rcedit','bin','rcedit-x64.exe') + ' \\\"dist/win-unpacked/Construction ERP.exe\\\" --set-icon public/icon.ico', {stdio: 'inherit', shell: true})\"",
-    "build:installer": "electron-builder --prepackaged dist/win-unpacked",
+    "build:installer": "electron-builder --prepackaged dist/win-unpacked --publish never",
+    "release": "npm run build:electron && npm run build:react && electron-builder --dir && npm run postbuild && electron-builder --prepackaged dist/win-unpacked --publish always",
     "postinstall": "electron-builder install-app-deps",
     "test": "vitest",
     "test:ui": "vitest --ui",
@@ -28,6 +29,14 @@
   "build": {
     "appId": "com.construction.erp",
     "productName": "Construction ERP",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "feyzanuraydinn",
+        "repo": "construction-erp",
+        "releaseType": "release"
+      }
+    ],
     "directories": {
       "output": "dist"
     },
@@ -55,6 +64,7 @@
       "signAndEditExecutable": false
     },
     "nsis": {
+      "artifactName": "Construction-ERP-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
@@ -76,6 +86,10 @@
       {
         "from": "resources/ShareHelper.exe",
         "to": "ShareHelper.exe"
+      },
+      {
+        "from": "resources/app-update.yml",
+        "to": "app-update.yml"
       }
     ]
   },

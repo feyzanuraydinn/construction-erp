@@ -281,6 +281,34 @@ describe('useCRUDPage', () => {
       expect(result.current.selectedIds.has(1)).toBe(false);
     });
 
+    it('drops selected rows that a search hides, so bulk delete cannot hit them', async () => {
+      const options = createDefaultOptions();
+      const { result } = renderHook(() => useCRUDPage<TestItem, { type: string }>(options));
+      await waitForLoadComplete(result);
+
+      act(() => {
+        result.current.handleSelectOne(1, true);
+        result.current.handleSelectOne(2, true);
+      });
+      act(() => result.current.setSearch('Alpha'));
+
+      await waitFor(() => expect([...result.current.selectedIds]).toEqual([1]));
+    });
+
+    it('drops selected rows that a filter hides', async () => {
+      const options = createDefaultOptions();
+      const { result } = renderHook(() => useCRUDPage<TestItem, { type: string }>(options));
+      await waitForLoadComplete(result);
+
+      act(() => {
+        result.current.handleSelectOne(1, true);
+        result.current.handleSelectOne(2, true);
+      });
+      act(() => result.current.setFilters({ type: 'B' }));
+
+      await waitFor(() => expect([...result.current.selectedIds]).toEqual([2]));
+    });
+
     it('should select all items', async () => {
       const options = createDefaultOptions();
       const { result } = renderHook(() => useCRUDPage<TestItem, { type: string }>(options));

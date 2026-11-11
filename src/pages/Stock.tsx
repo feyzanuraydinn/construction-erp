@@ -40,7 +40,6 @@ import { formatCurrency, formatDate, formatNumber } from '../utils/formatters';
 import { MATERIAL_CATEGORIES, MOVEMENT_TYPES } from '../utils/constants';
 import type { Material, StockMovementWithDetails, Project, Company } from '../types';
 
-
 function Stock() {
   const { t } = useTranslation();
   const toast = useToast();
@@ -83,15 +82,6 @@ function Stock() {
         setMaterialModalOpen(true);
       } else {
         setMovementModalOpen(true);
-      }
-    },
-    onEscape: () => {
-      if (materialModalOpen) {
-        setMaterialModalOpen(false);
-        setEditingMaterial(null);
-      }
-      if (movementModalOpen) {
-        setMovementModalOpen(false);
       }
     },
   });
@@ -146,7 +136,6 @@ function Stock() {
     toast.success(t('stock.movementSaveSuccess'));
     loadData();
   };
-
 
   const filteredMaterials = useMemo(() => {
     return materials.filter((m) => {
@@ -400,7 +389,9 @@ function Stock() {
       {activeTab === 'movements' && (
         <Card>
           <CardBody className="p-0">
-            {movements.length === 0 ? (
+            {loading ? (
+              <LoadingSpinner className="py-12" />
+            ) : movements.length === 0 ? (
               <EmptyState
                 icon={FiPackage}
                 title={t('stock.noMovements')}
@@ -466,10 +457,14 @@ function Stock() {
                       </TableCell>
                       <TableCell
                         className={`text-right font-medium ${
-                          movement.movement_type === 'in' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                          movement.movement_type === 'in'
+                            ? 'text-green-600 dark:text-green-400'
+                            : movement.movement_type === 'adjustment'
+                              ? 'text-gray-700 dark:text-gray-300'
+                              : 'text-red-600 dark:text-red-400'
                         }`}
                       >
-                        {movement.movement_type === 'in' ? '+' : '-'}
+                        {movement.movement_type === 'in' ? '+' : movement.movement_type === 'adjustment' ? '= ' : '-'}
                         {formatNumber(movement.quantity, 2)} {movement.material_unit}
                       </TableCell>
                       <TableCell>{movement.project_name || '-'}</TableCell>

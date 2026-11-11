@@ -1,4 +1,15 @@
 import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
+function launchApp(): Promise<ElectronApplication> {
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'construction-erp-e2e-'));
+  return electron.launch({
+    args: ['.', `--user-data-dir=${userDataDir}`],
+    env: { ...process.env, NODE_ENV: 'test' },
+  });
+}
 
 /**
  * E2E Test Suite for Construction ERP Electron App
@@ -12,27 +23,34 @@ import { test, expect, _electron as electron, ElectronApplication, Page } from '
  * structural selectors rather than hardcoded text wherever possible.
  */
 
+async function appWindow(app: ElectronApplication): Promise<Page> {
+  for (let i = 0; i < 60; i++) {
+    const window = app.windows().find((w) => w.url().startsWith('http://localhost:3000'));
+    if (window) return window;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error('App window did not open');
+}
+
+async function quitApp(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ app: electronApp }) => electronApp.exit(0)).catch(() => undefined);
+}
+
 let electronApp: ElectronApplication;
 let page: Page;
 
 test.describe('Construction ERP - Core Navigation & UI', () => {
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: ['.'],
-      env: {
-        ...process.env,
-        NODE_ENV: 'test',
-      },
-    });
+    electronApp = await launchApp();
 
-    page = await electronApp.firstWindow();
+    page = await appWindow(electronApp);
     await page.waitForLoadState('domcontentloaded');
     // Wait for React to render
     await page.waitForTimeout(2000);
   });
 
   test.afterAll(async () => {
-    await electronApp.close();
+    await quitApp(electronApp);
   });
 
   test('1. App launches and displays sidebar navigation', async () => {
@@ -137,21 +155,15 @@ test.describe('Construction ERP - Core Navigation & UI', () => {
 
 test.describe('Construction ERP - Company CRUD Flow', () => {
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: ['.'],
-      env: {
-        ...process.env,
-        NODE_ENV: 'test',
-      },
-    });
+    electronApp = await launchApp();
 
-    page = await electronApp.firstWindow();
+    page = await appWindow(electronApp);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
   });
 
   test.afterAll(async () => {
-    await electronApp.close();
+    await quitApp(electronApp);
   });
 
   test('1. Navigate to companies page', async () => {
@@ -177,7 +189,7 @@ test.describe('Construction ERP - Company CRUD Flow', () => {
 
   test('3. Fill and submit company form', async () => {
     // Find the name input (first required text input in the modal)
-    const nameInput = page.locator('.fixed.inset-0 input[type="text"]').first();
+    const nameInput = page.locator('[aria-modal="true"] input:not([type]), [aria-modal="true"] input[type="text"]').first();
     await nameInput.fill('E2E Test Şirketi');
 
     // Find the phone input
@@ -227,21 +239,15 @@ test.describe('Construction ERP - Company CRUD Flow', () => {
 
 test.describe('Construction ERP - Project CRUD Flow', () => {
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: ['.'],
-      env: {
-        ...process.env,
-        NODE_ENV: 'test',
-      },
-    });
+    electronApp = await launchApp();
 
-    page = await electronApp.firstWindow();
+    page = await appWindow(electronApp);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
   });
 
   test.afterAll(async () => {
-    await electronApp.close();
+    await quitApp(electronApp);
   });
 
   test('1. Navigate to projects page', async () => {
@@ -276,21 +282,15 @@ test.describe('Construction ERP - Project CRUD Flow', () => {
 
 test.describe('Construction ERP - Stock Management Flow', () => {
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: ['.'],
-      env: {
-        ...process.env,
-        NODE_ENV: 'test',
-      },
-    });
+    electronApp = await launchApp();
 
-    page = await electronApp.firstWindow();
+    page = await appWindow(electronApp);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
   });
 
   test.afterAll(async () => {
-    await electronApp.close();
+    await quitApp(electronApp);
   });
 
   test('1. Navigate to stock page', async () => {
@@ -317,21 +317,15 @@ test.describe('Construction ERP - Stock Management Flow', () => {
 
 test.describe('Construction ERP - Analytics & Reports Flow', () => {
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: ['.'],
-      env: {
-        ...process.env,
-        NODE_ENV: 'test',
-      },
-    });
+    electronApp = await launchApp();
 
-    page = await electronApp.firstWindow();
+    page = await appWindow(electronApp);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
   });
 
   test.afterAll(async () => {
-    await electronApp.close();
+    await quitApp(electronApp);
   });
 
   test('1. Navigate to analytics page', async () => {
@@ -367,21 +361,15 @@ test.describe('Construction ERP - Analytics & Reports Flow', () => {
 
 test.describe('Construction ERP - Theme & Language Switching', () => {
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: ['.'],
-      env: {
-        ...process.env,
-        NODE_ENV: 'test',
-      },
-    });
+    electronApp = await launchApp();
 
-    page = await electronApp.firstWindow();
+    page = await appWindow(electronApp);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
   });
 
   test.afterAll(async () => {
-    await electronApp.close();
+    await quitApp(electronApp);
   });
 
   test('1. Switch language to English', async () => {

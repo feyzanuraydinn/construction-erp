@@ -1,5 +1,6 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { categoryLabel } from '../../utils/categories';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Card, CardHeader, CardBody } from '../../components/ui';
 import { formatCurrency } from '../../utils/formatters';
@@ -15,9 +16,13 @@ interface ExpenseBreakdownChartProps {
 }
 
 export const ExpenseBreakdownChart = memo(function ExpenseBreakdownChart({
-  categoryBreakdown,
+  categoryBreakdown: rawBreakdown,
 }: ExpenseBreakdownChartProps) {
   const { t } = useTranslation();
+  const categoryBreakdown = useMemo(
+    () => rawBreakdown.map((entry) => ({ ...entry, category: categoryLabel(t, entry.category) })),
+    [rawBreakdown, t]
+  );
 
   return (
     <Card>

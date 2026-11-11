@@ -1,6 +1,6 @@
 import React, { forwardRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatPercent } from '../../utils/formatters';
 import { getPrintTransactionTextColor, isPositiveTransaction } from '../../utils/transactionHelpers';
 import { calculateProjectFinancials, calculateTransactionTotals } from '../../utils/financials';
 import type {
@@ -327,7 +327,7 @@ export const ProjectPrintView = forwardRef<HTMLDivElement, ProjectPrintViewProps
             },
             {
               label: t('print.budgetUsage'),
-              value: project.estimated_budget ? `%${budgetUsed.toFixed(0)}` : '-',
+              value: project.estimated_budget ? formatPercent(budgetUsed) : '-',
               color: budgetUsed > 100 ? 'text-red-700' : 'text-gray-900',
             },
           ]}
@@ -341,7 +341,7 @@ export const ProjectPrintView = forwardRef<HTMLDivElement, ProjectPrintViewProps
             },
             {
               label: t('print.budgetUsage'),
-              value: project.estimated_budget ? `%${budgetUsed.toFixed(0)}` : '-',
+              value: project.estimated_budget ? formatPercent(budgetUsed) : '-',
               color: budgetUsed > 100 ? 'text-red-700' : 'text-gray-900',
             },
           ]}

@@ -12,6 +12,7 @@ import { registerExportHandlers } from './exportHandlers';
 import { registerGdriveHandlers } from './gdriveHandlers';
 import { registerAppHandlers } from './appHandlers';
 import { registerSyncHandlers } from './syncHandlers';
+import { registerReviewHandlers } from './reviewHandlers';
 
 /**
  * Register all IPC handlers
@@ -30,6 +31,7 @@ export function registerAllHandlers(
   registerCategoryHandlers(getDbService);
   registerTrashHandlers(getDbService);
   registerDashboardHandlers(getDbService);
+  registerReviewHandlers(getDbService);
 
   registerBackupHandlers(getDbService, getMainWindow);
   registerExportHandlers(getMainWindow);

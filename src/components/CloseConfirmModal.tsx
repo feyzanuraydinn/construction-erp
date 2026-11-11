@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiAlertCircle, FiUploadCloud } from 'react-icons/fi';
+import { useModalLayer } from './ui/Modal';
 
 /**
  * In-app confirmation modal triggered when the user clicks the window's close
@@ -47,16 +48,26 @@ export const CloseConfirmModal: React.FC = () => {
     }
   };
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  useModalLayer(open, () => void handleCancel(), dialogRef);
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+      <div
+        ref={dialogRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden"
+      >
         <div className="p-5 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 flex items-center gap-3">
           <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/40 rounded-full flex items-center justify-center flex-shrink-0">
             <FiAlertCircle size={20} className="text-amber-600 dark:text-amber-400" />
           </div>
-          <h2 className="text-base font-bold text-gray-900 dark:text-white">{t('app.closeConfirmTitle')}</h2>
+          <h2 id={titleId} className="text-base font-bold text-gray-900 dark:text-white">{t('app.closeConfirmTitle')}</h2>
         </div>
 
         <div className="p-5 space-y-3">

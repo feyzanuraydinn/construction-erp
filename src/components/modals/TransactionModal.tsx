@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiTrendingUp, FiTrendingDown, FiZap } from 'react-icons/fi';
+import { FiTrendingUp, FiTrendingDown, FiZap, FiX, FiAlertTriangle } from 'react-icons/fi';
 import {
   Modal,
   ModalBody,
@@ -13,6 +13,9 @@ import {
 } from '../ui';
 import { formatCurrency, formatDate, formatDateForInput } from '../../utils/formatters';
 import { CURRENCIES } from '../../utils/constants';
+import { ipcErrorMessage } from '../../utils/ipcError';
+import { useToast } from '../../contexts/ToastContext';
+import { useExchangeRates } from '../../hooks/useExchangeRates';
 import type {
   TransactionWithDetails,
   TransactionFormData,
@@ -22,7 +25,9 @@ import type {
   TransactionType,
   TransactionScope,
   Currency,
-  InvoiceWithBalance,
+  MatchCandidate,
+  PaymentAllocationWithDetails,
+  SaveTransactionRequest,
 } from '../../types';
 
 // ==================== TYPES ====================
@@ -33,6 +38,7 @@ interface TransactionModalFormState {
   description: string;
   amount: string;
   currency: Currency;
+  exchange_rate: string;
   category_id: string;
   company_id: string;
   project_id: string;
@@ -41,15 +47,9 @@ interface TransactionModalFormState {
   linked_invoice_id: string;
 }
 
-interface AllocationEntry {
-  invoiceId: number;
-  amount: number;
-  invoiceDescription: string;
-  invoiceTotal: number;
-  invoiceRemaining: number;
-  invoiceDate: string;
-  invoiceDocNo: string | null;
-}
+type MatchAmounts = Record<number, number>;
+
+type RestChoice = 'advance' | 'document';
 
 interface TransactionModalConfig {
   /** 4 tip (project/cari) veya 2 tip (company) */
@@ -103,6 +103,7 @@ function getDefaultFormData(): TransactionModalFormState {
     description: '',
     amount: '',
     currency: 'TRY',
+    exchange_rate: '',
     category_id: '',
     company_id: '',
     project_id: '',
@@ -123,30 +124,41 @@ function isPaymentType(type: TransactionType): boolean {
   return type === 'payment_in' || type === 'payment_out';
 }
 
-/** FIFO otomatik dağıtım: En eski faturadan başlayarak ödeme tutarını dağıtır */
-function autoAllocateFIFO(
-  invoices: InvoiceWithBalance[],
-  paymentAmount: number
-): AllocationEntry[] {
-  let remaining = paymentAmount;
-  const allocations: AllocationEntry[] = [];
-  for (const inv of invoices) {
-    if (remaining <= 0) break;
-    const allocAmount = Math.min(remaining, inv.remaining);
-    if (allocAmount > 0) {
-      allocations.push({
-        invoiceId: inv.id,
-        amount: Math.round(allocAmount * 100) / 100,
-        invoiceDescription: inv.description,
-        invoiceTotal: inv.amount_try,
-        invoiceRemaining: inv.remaining,
-        invoiceDate: inv.date,
-        invoiceDocNo: inv.document_no,
-      });
-      remaining -= allocAmount;
+function formAmountInTry(form: TransactionModalFormState, isSimple: boolean): number {
+  const amount = parseFloat(form.amount) || 0;
+  const rate = isSimple || form.currency === 'TRY' ? 1 : parseFloat(form.exchange_rate) || 0;
+  return Math.round(amount * rate * 100) / 100;
+}
+
+const MONEY_TOLERANCE = 0.005;
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function autoMatch(candidates: MatchCandidate[], target: number): MatchAmounts {
+  let left = target;
+  const result: MatchAmounts = {};
+  for (const candidate of candidates) {
+    if (left <= MONEY_TOLERANCE) break;
+    const amount = roundMoney(Math.min(left, candidate.remaining));
+    if (amount > 0) {
+      result[candidate.id] = amount;
+      left = roundMoney(left - amount);
     }
   }
-  return allocations;
+  return result;
+}
+
+function sumMatches(matches: MatchAmounts): number {
+  return roundMoney(Object.values(matches).reduce((sum, amount) => sum + amount, 0));
+}
+
+function defaultDocumentCategory(categories: Category[], type: 'invoice_in' | 'invoice_out'): string {
+  const ofType = categories.filter((c) => c.type === type);
+  const preferred = ofType.find((c) => c.name === (type === 'invoice_in' ? 'Diğer Gider' : 'Diğer Gelir'));
+  const chosen = preferred ?? ofType[0];
+  return chosen ? String(chosen.id) : '';
 }
 
 // ==================== COMPONENT ====================
@@ -164,17 +176,19 @@ export function TransactionModal({
   mode = 'full',
 }: TransactionModalProps) {
   const { t } = useTranslation();
+  const toast = useToast();
   const [formData, setFormData] = useState<TransactionModalFormState>(getDefaultFormData);
   const [loading, setLoading] = useState(false);
-  const [exchangeRates, setExchangeRates] = useState<{ USD: number; EUR: number }>({
-    USD: 1,
-    EUR: 1,
-  });
+  const [rateError, setRateError] = useState<string | null>(null);
 
-  // Fatura eşleştirme state'leri
-  const [availableInvoices, setAvailableInvoices] = useState<InvoiceWithBalance[]>([]);
-  const [allocations, setAllocations] = useState<AllocationEntry[]>([]);
-  const [loadingInvoices, setLoadingInvoices] = useState(false);
+  const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
+  const [matches, setMatches] = useState<MatchAmounts>({});
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [candidatesReady, setCandidatesReady] = useState(false);
+  const [outsideMatches, setOutsideMatches] = useState<PaymentAllocationWithDetails[]>([]);
+  const [restChoice, setRestChoice] = useState<RestChoice | null>(null);
+  const [restCategoryId, setRestCategoryId] = useState('');
+  const [restError, setRestError] = useState<string | null>(null);
 
   // Tür değişikliği uyarı state'leri
   const [typeChangeWarning, setTypeChangeWarning] = useState<{
@@ -186,7 +200,7 @@ export function TransactionModal({
 
   const isSimple = mode === 'simple';
   const enableCurrency = !isSimple;
-  const enableLinkedInvoice = !isSimple;
+  const enableMatching = !isSimple;
 
   // Transaction type options computed with t()
   const FULL_TYPES: TransactionModalConfig['transactionTypes'] = useMemo(() => [
@@ -213,75 +227,74 @@ export function TransactionModal({
 
   const typeOptions = isSimple ? SIMPLE_TYPES : FULL_TYPES;
 
-  // Döviz kurlarını al (sadece cari scope'ta)
-  useEffect(() => {
-    if (!enableCurrency || scope !== 'cari') return;
-    const fetchRates = async () => {
-      try {
-        const rates = await window.electronAPI.exchange.getRates();
-        if (rates) setExchangeRates(rates);
-      } catch (error) {
-        console.error('Kur bilgisi alınamadı:', error);
-      }
-    };
-    fetchRates();
-  }, [enableCurrency, scope]);
-
-  // Bakiyesi kalan faturaları yükle
-  const loadInvoicesWithBalance = useCallback(async () => {
-    if (!enableLinkedInvoice || !isOpen || !entityId) return;
-    if (!isPaymentType(formData.type)) return;
-
-    setLoadingInvoices(true);
-    try {
-      const invoiceType = formData.type === 'payment_in' ? 'invoice_out' : 'invoice_in';
-      const entityType = scope === 'project' ? 'project' : 'company';
-      const data = await window.electronAPI.transaction.getInvoicesWithBalance(
-        entityId,
-        entityType,
-        invoiceType
-      );
-      setAvailableInvoices(data || []);
-    } catch (error) {
-      console.error('Fatura yükleme hatası:', error);
-      setAvailableInvoices([]);
-    } finally {
-      setLoadingInvoices(false);
-    }
-  }, [enableLinkedInvoice, isOpen, entityId, scope, formData.type]);
+  const currentRates = useExchangeRates(isOpen && enableCurrency);
 
   useEffect(() => {
-    loadInvoicesWithBalance();
-  }, [loadInvoicesWithBalance]);
+    if (!currentRates || formData.currency === 'TRY' || formData.exchange_rate !== '') return;
+    const rate = currentRates[formData.currency];
+    setFormData((prev) => ({ ...prev, exchange_rate: String(rate) }));
+  }, [currentRates, formData.currency, formData.exchange_rate]);
 
-  // Düzenleme modunda mevcut eşleştirmeleri yükle
+  const poolCompanyId =
+    scope === 'cari' ? entityId ?? null : formData.company_id ? Number(formData.company_id) : null;
+  const poolProjectId = scope === 'project' ? entityId ?? null : null;
+  const isPayment = isPaymentType(formData.type);
+  const transactionId = transaction?.id ?? null;
+  const transactionType = transaction?.type ?? null;
+
   useEffect(() => {
-    if (!transaction || !isOpen || !isPaymentType(transaction.type)) {
-      setAllocations([]);
+    setCandidatesReady(false);
+    setOutsideMatches([]);
+    if (!enableMatching || !isOpen || (poolCompanyId === null && poolProjectId === null)) {
+      setCandidates([]);
+      setMatches({});
+      setCandidatesReady(enableMatching && isOpen);
       return;
     }
-    const loadExistingAllocations = async () => {
+    let cancelled = false;
+    setLoadingCandidates(true);
+    (async () => {
       try {
-        const data = await window.electronAPI.transaction.getAllocationsForPayment(transaction.id);
-        if (data && data.length > 0) {
-          setAllocations(
-            data.map((a) => ({
-              invoiceId: a.invoice_id,
-              amount: a.amount,
-              invoiceDescription: a.invoice_description || '',
-              invoiceTotal: a.invoice_amount_try || a.invoice_amount || 0,
-              invoiceRemaining: a.amount, // mevcut allocation tutarı
-              invoiceDate: a.invoice_date || '',
-              invoiceDocNo: a.invoice_document_no || null,
-            }))
+        const data = await window.electronAPI.transaction.getMatchCandidates({
+          type: formData.type,
+          companyId: poolCompanyId,
+          projectId: poolProjectId,
+          selfId: transactionId,
+        });
+        if (cancelled) return;
+        const list = data || [];
+        setCandidates(list);
+        const current: MatchAmounts = {};
+        for (const candidate of list) {
+          if (candidate.allocated_here > 0) current[candidate.id] = candidate.allocated_here;
+        }
+        setMatches(current);
+
+        if (transactionId !== null && transactionType === formData.type) {
+          const saved = isPaymentType(formData.type)
+            ? await window.electronAPI.transaction.getAllocationsForPayment(transactionId)
+            : await window.electronAPI.transaction.getAllocationsForInvoice(transactionId);
+          if (cancelled) return;
+          const listed = new Set(list.map((c) => c.id));
+          setOutsideMatches(
+            (saved || []).filter((a) => !listed.has(isPaymentType(formData.type) ? a.invoice_id : a.payment_id))
           );
         }
+        setCandidatesReady(true);
       } catch (error) {
-        console.error('Eşleştirme yükleme hatası:', error);
+        console.error('Eşleştirme adayları yüklenemedi:', error);
+        if (!cancelled) {
+          setCandidates([]);
+          setMatches({});
+        }
+      } finally {
+        if (!cancelled) setLoadingCandidates(false);
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-    loadExistingAllocations();
-  }, [transaction, isOpen]);
+  }, [enableMatching, isOpen, formData.type, poolCompanyId, poolProjectId, transactionId, transactionType]);
 
   // Form verilerini başlat
   useEffect(() => {
@@ -298,6 +311,10 @@ export function TransactionModal({
         description: transaction.description,
         amount: String(transaction.amount),
         currency: transaction.currency || 'TRY',
+        exchange_rate:
+          transaction.currency && transaction.currency !== 'TRY' && transaction.exchange_rate > 0
+            ? String(transaction.exchange_rate)
+            : '',
         category_id: transaction.category_id ? String(transaction.category_id) : '',
         company_id: transaction.company_id ? String(transaction.company_id) : '',
         project_id: transaction.project_id ? String(transaction.project_id) : '',
@@ -309,70 +326,93 @@ export function TransactionModal({
       });
     } else {
       setFormData(getDefaultFormData());
-      setAllocations([]);
     }
+    setRestChoice(transaction ? 'advance' : null);
+    setRestCategoryId('');
+    setRestError(null);
+    setRateError(null);
   }, [transaction, isOpen, isSimple]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    const currency: Currency = isSimple ? 'TRY' : formData.currency;
+    const exchangeRate = currency === 'TRY' ? 1 : parseFloat(formData.exchange_rate);
+    if (!(exchangeRate > 0)) {
+      setRateError(t('validation.exchangeRateRequired'));
+      return;
+    }
+    setRateError(null);
+
+    if (enableMatching && matchedTotal > targetAmount + MONEY_TOLERANCE) {
+      toast.error(
+        t('transactionModal.allocationExceedsPayment', {
+          allocated: formatCurrency(matchedTotal),
+          payment: formatCurrency(targetAmount),
+        })
+      );
+      return;
+    }
+    if (needsRestChoice) {
+      if (restChoice === null || (restChoice === 'advance' && !advanceAllowed)) {
+        setRestError(t('transactionModal.restChoiceRequired'));
+        return;
+      }
+      if (restChoice === 'document' && !restCategoryId) {
+        setRestError(t('transactionModal.restCategoryRequired'));
+        return;
+      }
+    }
+    setRestError(null);
+
     setLoading(true);
     try {
-      // Kur hesaplama
-      let exchangeRate = 1;
-      if (enableCurrency && scope === 'cari') {
-        if (formData.currency === 'USD') exchangeRate = exchangeRates.USD;
-        else if (formData.currency === 'EUR') exchangeRate = exchangeRates.EUR;
-      }
-
       const baseData: TransactionFormData = {
-        scope,
+        scope: transaction ? transaction.scope : scope,
         type: formData.type,
         date: formData.date,
         description: formData.description,
         amount: parseFloat(formData.amount),
-        currency: isSimple ? 'TRY' : formData.currency,
+        currency,
+        exchange_rate: exchangeRate,
         category_id: formData.category_id || undefined,
         document_no: formData.document_no || undefined,
         notes: formData.notes || undefined,
         company_id: undefined,
         project_id: undefined,
-        exchange_rate: undefined,
         linked_invoice_id: undefined,
       };
 
-      // Scope'a göre entity alanlarını ayarla
       if (scope === 'project') {
         baseData.project_id = entityId;
         baseData.company_id = formData.company_id || undefined;
       } else if (scope === 'cari') {
         baseData.company_id = entityId;
         baseData.project_id = formData.project_id || undefined;
-        baseData.exchange_rate = exchangeRate;
       }
 
-      let savedId: number;
-      if (transaction) {
-        const result = await window.electronAPI.transaction.update(transaction.id, baseData);
-        savedId = result.id;
+      if (!enableMatching) {
+        if (transaction) await window.electronAPI.transaction.update(transaction.id, baseData);
+        else await window.electronAPI.transaction.create(baseData);
       } else {
-        const result = await window.electronAPI.transaction.create(baseData);
-        savedId = result.id;
-      }
-
-      // Fatura eşleştirmelerini kaydet
-      if (enableLinkedInvoice && isPaymentType(formData.type) && allocations.length > 0) {
-        await window.electronAPI.transaction.setAllocations(
-          savedId,
-          allocations.map((a) => ({ invoiceId: a.invoiceId, amount: a.amount }))
-        );
-      } else if (enableLinkedInvoice && isPaymentType(formData.type) && allocations.length === 0 && transaction) {
-        // Düzenleme modunda eşleştirmeler temizlendiyse
-        await window.electronAPI.transaction.setAllocations(savedId, []);
+        const request: SaveTransactionRequest = { id: transaction?.id, data: baseData };
+        const entries = Object.entries(matches)
+          .map(([id, amount]) => ({ id: Number(id), amount }))
+          .filter((entry) => entry.amount > 0);
+        if (candidatesReady) {
+          if (isPayment) request.paymentAllocations = entries.map((e) => ({ invoiceId: e.id, amount: e.amount }));
+          else request.invoiceAllocations = entries.map((e) => ({ paymentId: e.id, amount: e.amount }));
+        }
+        if (needsRestChoice && restChoice === 'document') {
+          request.remainderDocument = { categoryId: Number(restCategoryId) };
+        }
+        await window.electronAPI.transaction.save(request);
       }
 
       onSave(!transaction);
     } catch (error) {
       console.error('Save error:', error);
+      toast.error(t('transactionModal.saveError', { error: ipcErrorMessage(error) }));
     } finally {
       setLoading(false);
     }
@@ -385,7 +425,10 @@ export function TransactionModal({
       category_id: '',
       linked_invoice_id: '',
     });
-    setAllocations([]);
+    setMatches({});
+    setRestChoice(null);
+    setRestCategoryId('');
+    setRestError(null);
   };
 
   const handleTypeChange = async (value: TransactionType) => {
@@ -441,44 +484,74 @@ export function TransactionModal({
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Allocation helpers
-  const updateAllocationAmount = (invoiceId: number, amount: number) => {
-    setAllocations((prev) => {
-      const existing = prev.find((a) => a.invoiceId === invoiceId);
-      if (existing) {
-        if (amount <= 0) return prev.filter((a) => a.invoiceId !== invoiceId);
-        return prev.map((a) => (a.invoiceId === invoiceId ? { ...a, amount } : a));
+  const handleCurrencyChange = (currency: Currency) => {
+    let exchangeRate = '';
+    if (currency !== 'TRY') {
+      if (transaction && transaction.currency === currency && transaction.exchange_rate > 0) {
+        exchangeRate = String(transaction.exchange_rate);
+      } else if (currentRates) {
+        exchangeRate = String(currentRates[currency]);
       }
-      const invoice = availableInvoices.find((inv) => inv.id === invoiceId);
-      if (!invoice || amount <= 0) return prev;
-      return [
-        ...prev,
-        {
-          invoiceId,
-          amount,
-          invoiceDescription: invoice.description,
-          invoiceTotal: invoice.amount_try,
-          invoiceRemaining: invoice.remaining,
-          invoiceDate: invoice.date,
-          invoiceDocNo: invoice.document_no,
-        },
-      ];
+    }
+    setRateError(null);
+    setFormData((prev) => ({ ...prev, currency, exchange_rate: exchangeRate }));
+  };
+
+  const applyCurrentRate = () => {
+    if (!currentRates || formData.currency === 'TRY') return;
+    updateField('exchange_rate', String(currentRates[formData.currency]));
+  };
+
+  const targetAmount = formAmountInTry(formData, isSimple);
+  const matchedTotal = sumMatches(matches);
+  const unmatched = Math.max(0, roundMoney(targetAmount - matchedTotal));
+  const advanceAllowed = poolCompanyId !== null;
+  const needsRestChoice = enableMatching && isPayment && targetAmount > 0 && unmatched > MONEY_TOLERANCE;
+  const documentType = formData.type === 'payment_in' ? 'invoice_out' : 'invoice_in';
+  const documentCategories = categories.filter((c) => c.type === documentType);
+
+  useEffect(() => {
+    if (!advanceAllowed && restChoice === 'advance') setRestChoice(null);
+  }, [advanceAllowed, restChoice]);
+
+  const chooseRest = (choice: RestChoice) => {
+    setRestChoice(choice);
+    setRestError(null);
+    if (choice === 'document' && !restCategoryId) {
+      setRestCategoryId(defaultDocumentCategory(categories, documentType));
+    }
+  };
+
+  const setMatchAmount = (candidate: MatchCandidate, value: number) => {
+    setMatches((prev) => {
+      const others = sumMatches(prev) - (prev[candidate.id] ?? 0);
+      const capped = roundMoney(Math.max(0, Math.min(value, candidate.remaining, targetAmount - others)));
+      const next = { ...prev };
+      if (capped > 0) next[candidate.id] = capped;
+      else delete next[candidate.id];
+      return next;
     });
   };
 
-  const handleAutoAllocate = () => {
-    const paymentAmount = parseFloat(formData.amount) || 0;
-    if (paymentAmount <= 0 || availableInvoices.length === 0) return;
-    setAllocations(autoAllocateFIFO(availableInvoices, paymentAmount));
+  const removeMatch = (candidateId: number) => {
+    setMatches((prev) => {
+      const next = { ...prev };
+      delete next[candidateId];
+      return next;
+    });
   };
 
-  const totalAllocated = allocations.reduce((sum, a) => sum + a.amount, 0);
-  const paymentAmount = parseFloat(formData.amount) || 0;
-  const unallocated = Math.max(0, paymentAmount - totalAllocated);
+  const handleAutoMatch = () => {
+    if (targetAmount <= 0 || candidates.length === 0) return;
+    setMatches(autoMatch(candidates, targetAmount));
+  };
 
   const filteredCategories = getFilteredCategories(categories, formData.type);
-  const showAllocationPanel = enableLinkedInvoice && isPaymentType(formData.type);
-  const showExchangeRate = enableCurrency && scope === 'cari';
+  const showMatchPanel = enableMatching && (isPayment || candidates.length > 0 || matchedTotal > 0 || outsideMatches.length > 0);
+  const showExchangeRate = enableCurrency && formData.currency !== 'TRY';
+  const rateValue = parseFloat(formData.exchange_rate);
+  const amountValue = parseFloat(formData.amount);
+  const currentRate = currentRates && formData.currency !== 'TRY' ? currentRates[formData.currency] : null;
 
   const getTitle = () => {
     if (transaction) return t('transactionModal.editTitle');
@@ -489,7 +562,7 @@ export function TransactionModal({
 
   return (
     <>
-    <Modal isOpen={isOpen} onClose={onClose} title={getTitle()} size={showAllocationPanel ? 'lg' : 'md'}>
+    <Modal isOpen={isOpen} onClose={onClose} title={getTitle()} size={showMatchPanel ? 'lg' : 'md'}>
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <ModalBody className="space-y-4">
           {/* İşlem Türü Seçimi */}
@@ -504,10 +577,10 @@ export function TransactionModal({
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                     handleTypeChange(e.target.value as TransactionType)
                   }
-                  className="sr-only"
+                  className="sr-only peer"
                 />
                 <div
-                  className={`${isSimple ? 'p-4' : 'p-2.5'} border-2 rounded-lg cursor-pointer text-center transition-all ${
+                  className={`peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-800 ${isSimple ? 'p-4' : 'p-2.5'} border-2 rounded-lg cursor-pointer text-center transition-all ${
                     formData.type === opt.value
                       ? COLOR_MAP[opt.color]
                       : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
@@ -574,7 +647,7 @@ export function TransactionModal({
                 options={CURRENCIES}
                 value={formData.currency}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  updateField('currency', e.target.value as Currency)
+                  handleCurrencyChange(e.target.value as Currency)
                 }
               />
             ) : (
@@ -589,29 +662,44 @@ export function TransactionModal({
             )}
           </div>
 
-          {/* Kur Bilgisi (sadece cari scope + döviz seçiliyse) */}
-          {showExchangeRate && formData.currency !== 'TRY' && formData.amount && (
-            <div className="p-3 text-sm border border-blue-200 dark:border-blue-700 rounded-lg bg-blue-50 dark:bg-blue-900/20">
-              <div className="flex items-center justify-between">
-                <span className="text-blue-700 dark:text-blue-400">{t('transactionModal.currentRate')}:</span>
-                <span className="font-medium text-blue-900 dark:text-blue-300">
-                  1 {formData.currency} ={' '}
-                  {(formData.currency === 'USD'
-                    ? exchangeRates.USD
-                    : exchangeRates.EUR
-                  ).toFixed(4)}{' '}
-                  TL
-                </span>
-              </div>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-blue-700 dark:text-blue-400">{t('transactionModal.tryEquivalent')}:</span>
-                <span className="font-medium text-blue-900 dark:text-blue-300">
-                  {formatCurrency(
-                    parseFloat(formData.amount) *
-                      (formData.currency === 'USD' ? exchangeRates.USD : exchangeRates.EUR)
+          {showExchangeRate && (
+            <div className="p-3 space-y-2 text-sm border border-blue-200 dark:border-blue-700 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+              <Input
+                label={`${t('transactionModal.exchangeRate', { currency: formData.currency })} *`}
+                type="number"
+                step="0.0001"
+                min="0"
+                value={formData.exchange_rate}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setRateError(null);
+                  updateField('exchange_rate', e.target.value);
+                }}
+                error={rateError ?? undefined}
+              />
+              {currentRate !== null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-blue-700 dark:text-blue-400">
+                    {t('transactionModal.currentRate')}: 1 {formData.currency} = {currentRate.toFixed(4)} TL
+                  </span>
+                  {rateValue !== currentRate && (
+                    <button
+                      type="button"
+                      onClick={applyCurrentRate}
+                      className="font-medium text-blue-700 underline dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
+                    >
+                      {t('transactionModal.useCurrentRate')}
+                    </button>
                   )}
-                </span>
-              </div>
+                </div>
+              )}
+              {rateValue > 0 && amountValue > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-blue-700 dark:text-blue-400">{t('transactionModal.tryEquivalent')}:</span>
+                  <span className="font-medium text-blue-900 dark:text-blue-300">
+                    {formatCurrency(Math.round(amountValue * rateValue * 100) / 100)}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -641,61 +729,107 @@ export function TransactionModal({
             />
           )}
 
-          {/* Fatura Eşleştirme Paneli */}
-          {showAllocationPanel && (
+          {showMatchPanel && (
             <div className="p-3 space-y-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('shared.allocations.title')}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  icon={FiZap}
-                  onClick={handleAutoAllocate}
-                  disabled={paymentAmount <= 0 || availableInvoices.length === 0}
-                  className="!text-indigo-700 dark:!text-indigo-400 !bg-indigo-100 dark:!bg-indigo-900/30 hover:!bg-indigo-200 dark:hover:!bg-indigo-900/50"
-                >
-                  {t('transactionModal.autoAllocate')}
-                </Button>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {isPayment
+                    ? t('shared.allocations.title')
+                    : formData.type === 'invoice_out'
+                      ? t('transactionModal.invoiceMatchesTitleSale')
+                      : t('transactionModal.invoiceMatchesTitle')}
+                </span>
+                <div className="flex items-center gap-1">
+                  {matchedTotal > 0 && (
+                    <Button type="button" variant="ghost" size="xs" icon={FiX} onClick={() => setMatches({})}>
+                      {t('transactionModal.clearMatches')}
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    icon={FiZap}
+                    onClick={handleAutoMatch}
+                    disabled={targetAmount <= 0 || candidates.length === 0}
+                    className="!text-indigo-700 dark:!text-indigo-400 !bg-indigo-100 dark:!bg-indigo-900/30 hover:!bg-indigo-200 dark:hover:!bg-indigo-900/50"
+                  >
+                    {t('transactionModal.autoAllocate')}
+                  </Button>
+                </div>
               </div>
 
-              {loadingInvoices ? (
+              {scope === 'project' && poolCompanyId === null && isPayment && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t('transactionModal.noCompanyHint')}</p>
+              )}
+
+              {outsideMatches.map((a) => (
+                <div
+                  key={a.id}
+                  role="alert"
+                  className="flex items-start gap-2 p-2 text-xs text-amber-800 border border-amber-200 rounded bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300"
+                >
+                  <FiAlertTriangle className="mt-0.5 flex-shrink-0" />
+                  <span>
+                    {t('transactionModal.outsideMatch', {
+                      description: (isPayment ? a.invoice_description : a.payment_description) || '-',
+                      amount: formatCurrency(a.amount),
+                    })}
+                  </span>
+                </div>
+              ))}
+
+              {loadingCandidates ? (
                 <div className="py-3 text-xs text-center text-gray-500 dark:text-gray-400">{t('transactionModal.loadingInvoices')}</div>
-              ) : availableInvoices.length === 0 ? (
+              ) : candidates.length === 0 ? (
                 <div className="py-3 text-xs text-center text-gray-500 dark:text-gray-400">
-                  {t('transactionModal.noOpenInvoices')}
+                  {isPayment ? t('transactionModal.noOpenInvoices') : t('transactionModal.noOpenPayments')}
                 </div>
               ) : (
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {availableInvoices.map((inv) => {
-                    const alloc = allocations.find((a) => a.invoiceId === inv.id);
-                    const allocAmount = alloc?.amount || 0;
+                <div className="space-y-2 overflow-y-auto max-h-56">
+                  {candidates.map((candidate) => {
+                    const amount = matches[candidate.id] ?? 0;
+                    const otherProject =
+                      candidate.project_name && candidate.project_id !== poolProjectId ? candidate.project_name : null;
+                    const name = candidate.document_no || candidate.description;
                     return (
                       <div
-                        key={inv.id}
-                        className="flex items-center gap-2 p-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded"
+                        key={candidate.id}
+                        className={`flex items-center gap-2 p-2 bg-white border rounded dark:bg-gray-800 ${
+                          amount > 0 ? 'border-indigo-300 dark:border-indigo-700' : 'border-gray-100 dark:border-gray-700'
+                        }`}
                       >
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                            {inv.document_no || inv.description}
-                          </div>
+                          <div className="text-xs font-medium text-gray-900 truncate dark:text-gray-100">{name}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {formatDate(inv.date)} — {t('transactionModal.remaining')}: {formatCurrency(inv.remaining)}
+                            {formatDate(candidate.date)} — {formatCurrency(candidate.amount_try)}
+                            {' · '}
+                            {isPayment ? t('transactionModal.remaining') : t('transactionModal.unmatchedOnPayment')}:{' '}
+                            {formatCurrency(Math.max(0, roundMoney(candidate.remaining - amount)))}
+                            {otherProject && <> · {t('transactionModal.otherProject', { name: otherProject })}</>}
                           </div>
                         </div>
                         <input
                           type="number"
                           step="0.01"
                           min="0"
-                          max={inv.remaining}
-                          value={allocAmount || ''}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            updateAllocationAmount(inv.id, Math.min(val, inv.remaining));
-                          }}
+                          max={candidate.remaining}
+                          value={amount || ''}
+                          onChange={(e) => setMatchAmount(candidate, parseFloat(e.target.value) || 0)}
                           placeholder="0"
-                          className="w-24 px-2 py-1 text-xs text-right border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 dark:text-gray-100 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                          aria-label={t('transactionModal.matchAmountFor', { name })}
+                          className="w-24 px-2 py-1 text-xs text-right bg-white border border-gray-200 rounded dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                         />
+                        <button
+                          type="button"
+                          onClick={() => removeMatch(candidate.id)}
+                          disabled={amount <= 0}
+                          title={t('transactionModal.removeMatch')}
+                          aria-label={t('transactionModal.removeMatch')}
+                          className="p-1 text-gray-400 rounded hover:text-red-600 disabled:invisible dark:hover:text-red-400"
+                        >
+                          <FiX size={14} />
+                        </button>
                       </div>
                     );
                   })}
@@ -703,20 +837,76 @@ export function TransactionModal({
               )}
 
               {/* Toplam göstergesi */}
-              {paymentAmount > 0 && (
+              {targetAmount > 0 && (
                 <div className="flex items-center justify-between pt-2 text-xs border-t border-gray-200 dark:border-gray-700">
                   <span className="text-gray-600 dark:text-gray-400">
-                    {t('transactionModal.allocation')}: {formatCurrency(totalAllocated)} / {formatCurrency(paymentAmount)}
+                    {t('transactionModal.allocation')}: {formatCurrency(matchedTotal)} / {formatCurrency(targetAmount)}
                   </span>
-                  {unallocated > 0 && (
+                  {unmatched > MONEY_TOLERANCE ? (
                     <span className="text-amber-600 dark:text-amber-400">
-                      {t('transactionModal.unallocated')}: {formatCurrency(unallocated)}
+                      {isPayment ? t('transactionModal.unallocated') : t('transactionModal.invoiceOpen')}: {formatCurrency(unmatched)}
                     </span>
-                  )}
-                  {unallocated === 0 && totalAllocated > 0 && (
-                    <span className="text-green-600 dark:text-green-400">{t('transactionModal.fullMatch')}</span>
+                  ) : (
+                    matchedTotal > 0 && <span className="text-green-600 dark:text-green-400">{t('transactionModal.fullMatch')}</span>
                   )}
                 </div>
+              )}
+
+              {needsRestChoice && (
+                <fieldset className="pt-2 space-y-2 border-t border-gray-200 dark:border-gray-700">
+                  <legend className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {t('transactionModal.restTitle', { amount: formatCurrency(unmatched) })}
+                  </legend>
+                  <label className={`flex items-start gap-2 text-xs ${advanceAllowed ? 'cursor-pointer' : 'opacity-60'}`}>
+                    <input
+                      type="radio"
+                      name="restChoice"
+                      checked={restChoice === 'advance'}
+                      disabled={!advanceAllowed}
+                      onChange={() => chooseRest('advance')}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">{t('transactionModal.restAdvance')}</span>
+                      <span className="block text-gray-500 dark:text-gray-400">
+                        {advanceAllowed ? t('transactionModal.restAdvanceHint') : t('transactionModal.restAdvanceNoCompany')}
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 text-xs cursor-pointer">
+                    <input
+                      type="radio"
+                      name="restChoice"
+                      checked={restChoice === 'document'}
+                      onChange={() => chooseRest('document')}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        {formData.type === 'payment_in' ? t('transactionModal.restIncome') : t('transactionModal.restExpense')}
+                      </span>
+                      <span className="block text-gray-500 dark:text-gray-400">
+                        {formData.type === 'payment_in' ? t('transactionModal.restIncomeHint') : t('transactionModal.restExpenseHint')}
+                      </span>
+                    </span>
+                  </label>
+                  {restChoice === 'document' && (
+                    <Select
+                      label={t('transactionModal.restCategory')}
+                      options={documentCategories.map((c) => ({ value: c.id, label: t(`categories.${c.name}`, c.name) }))}
+                      value={restCategoryId}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                        setRestCategoryId(e.target.value);
+                        setRestError(null);
+                      }}
+                    />
+                  )}
+                  {restError && (
+                    <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+                      {restError}
+                    </p>
+                  )}
+                </fieldset>
               )}
             </div>
           )}
@@ -748,7 +938,7 @@ export function TransactionModal({
           <Button variant="secondary" onClick={onClose} type="button">
             {t('common.cancel')}
           </Button>
-          <Button type="submit" loading={loading}>
+          <Button type="submit" loading={loading} disabled={loadingCandidates}>
             {transaction ? t('common.update') : t('common.save')}
           </Button>
         </ModalFooter>

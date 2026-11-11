@@ -37,8 +37,6 @@ const mockProjects: ProjectWithSummary[] = [
     total_expense: 2000000,
     total_collected: 2500000,
     total_paid: 1800000,
-    independent_payment_in: 0,
-    independent_payment_out: 0,
     client_company_id: null,
     client_name: null,
     location: 'Istanbul',
@@ -60,8 +58,6 @@ const mockProjects: ProjectWithSummary[] = [
     total_expense: 3000000,
     total_collected: 3500000,
     total_paid: 2500000,
-    independent_payment_in: 0,
-    independent_payment_out: 0,
     client_company_id: 1,
     client_name: 'ABC İnşaat',
     location: 'Antalya',
@@ -83,8 +79,6 @@ const mockProjects: ProjectWithSummary[] = [
     total_expense: 10000000,
     total_collected: 11000000,
     total_paid: 9000000,
-    independent_payment_in: 0,
-    independent_payment_out: 0,
     client_company_id: null,
     client_name: null,
     location: 'Ankara',
@@ -179,6 +173,33 @@ describe('Projects', () => {
       expect(screen.getByText('Merkez Konut Projesi')).toBeInTheDocument();
       expect(screen.getByText('Sahil Villa Projesi')).toBeInTheDocument();
       expect(screen.getByText('Ticaret Merkezi')).toBeInTheDocument();
+    });
+  });
+
+  it('tells what a delete affects: own transactions go, tagged account transactions stay', async () => {
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
+    (window.electronAPI.project.getRelatedCounts as ReturnType<typeof vi.fn>).mockResolvedValue({
+      transactionCount: 3,
+      linkedTransactionCount: 2,
+    });
+
+    await act(async () => {
+      render(<Projects />);
+    });
+    await waitFor(() => expect(screen.getByText('Merkez Konut Projesi')).toBeInTheDocument());
+
+    const row = screen.getByText('Merkez Konut Projesi').closest('tr');
+    const deleteButton = row?.querySelector('button[title="Sil"]');
+    if (!deleteButton) throw new Error('delete button not found');
+    await act(async () => {
+      fireEvent.click(deleteButton);
+    });
+
+    const dialog = await screen.findByRole('alertdialog');
+    await waitFor(() => {
+      expect(dialog.textContent).toContain('Bu projeye ait 3 işlem de silinecek.');
+      expect(dialog.textContent).toContain('2 cari işlem silinmeyecek');
+      expect(dialog.textContent).toContain('Çöp Kutusu');
     });
   });
 

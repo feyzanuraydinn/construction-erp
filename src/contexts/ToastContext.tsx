@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useRef, useEffect, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -10,7 +11,6 @@ export interface Toast {
 }
 
 interface ToastContextValue {
-  toasts: Toast[];
   addToast: (type: ToastType, message: string, duration?: number) => void;
   removeToast: (id: string) => void;
   success: (message: string) => void;
@@ -70,8 +70,13 @@ export function ToastProvider({ children }: ToastProviderProps) {
   const warning = useCallback((message: string) => addToast('warning', message), [addToast]);
   const info = useCallback((message: string) => addToast('info', message), [addToast]);
 
+  const value = useMemo<ToastContextValue>(
+    () => ({ addToast, removeToast, success, error, warning, info }),
+    [addToast, removeToast, success, error, warning, info]
+  );
+
   return (
-    <ToastContext.Provider value={{ toasts, addToast, removeToast, success, error, warning, info }}>
+    <ToastContext.Provider value={value}>
       {children}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </ToastContext.Provider>
@@ -93,10 +98,8 @@ interface ToastContainerProps {
 }
 
 function ToastContainer({ toasts, onRemove }: ToastContainerProps) {
-  if (toasts.length === 0) return null;
-
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+    <div aria-live="polite" className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onRemove={onRemove} />
       ))}
@@ -111,6 +114,7 @@ interface ToastItemProps {
 }
 
 function ToastItem({ toast, onRemove }: ToastItemProps) {
+  const { t } = useTranslation();
   const baseStyles =
     'flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white animate-slide-in';
 
@@ -129,13 +133,13 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
   };
 
   return (
-    <div className={`${baseStyles} ${typeStyles[toast.type]}`}>
-      <span className="text-lg font-bold">{icons[toast.type]}</span>
+    <div role={toast.type === 'error' ? 'alert' : 'status'} className={`${baseStyles} ${typeStyles[toast.type]}`}>
+      <span className="text-lg font-bold" aria-hidden="true">{icons[toast.type]}</span>
       <span className="flex-1 text-sm">{toast.message}</span>
       <button
         onClick={() => onRemove(toast.id)}
         className="ml-1 p-0.5 rounded hover:bg-white/20 transition-colors"
-        aria-label="Close"
+        aria-label={t('common.close')}
       >
         ✕
       </button>

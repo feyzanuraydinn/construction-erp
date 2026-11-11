@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   FiDatabase,
   FiPlus,
@@ -16,6 +17,7 @@ import {
   FiSun,
   FiMoon,
   FiMonitor,
+  FiShield,
 } from 'react-icons/fi';
 import { Card, CardHeader, CardBody, Button, Input, Select, ConfirmDialog, LoadingSpinner } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
@@ -64,6 +66,7 @@ const COLORS = [
 
 function Settings() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const toast = useToast();
   const { theme, setTheme } = useTheme();
   const [categories, setCategories] = useState<Category[]>([]);
@@ -173,11 +176,17 @@ function Settings() {
     setDriveLoading(true);
     try {
       await window.electronAPI.gdrive.saveCredentials(
-        credentials.clientId,
-        credentials.clientSecret
+        credentials.clientId.trim(),
+        credentials.clientSecret.trim()
       );
+      try {
+        await window.electronAPI.gdrive.disconnect();
+      } catch {
+      }
       setDriveHasCredentials(true);
+      setDriveConnected(false);
       setShowCredentialsForm(false);
+      setCredentials({ clientId: '', clientSecret: '' });
       toast.success(t('settings.credentialsSaved'));
     } catch (error) {
       toast.error(t('settings.credentialsSaveError'));
@@ -372,6 +381,9 @@ function Settings() {
           <h1 className="page-title">{t('settings.title')}</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t('settings.subtitle')}</p>
         </div>
+        <Button variant="secondary" icon={FiShield} onClick={() => navigate('/data-review')}>
+          {t('dataReview.title')}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -453,9 +465,19 @@ function Settings() {
                   </Button>
                 )}
                 {driveHasCredentials && !driveConnected && (
-                  <Button size="sm" icon={FiLink} onClick={handleDriveConnect} loading={driveLoading}>
-                    {t('settings.connectGoogle')}
-                  </Button>
+                  <>
+                    <Button size="sm" icon={FiLink} onClick={handleDriveConnect} loading={driveLoading}>
+                      {t('settings.connectGoogle')}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={FiSettings}
+                      onClick={() => setShowCredentialsForm(!showCredentialsForm)}
+                    >
+                      {t('settings.changeCredentials')}
+                    </Button>
+                  </>
                 )}
                 {driveConnected && (
                   <>
@@ -466,6 +488,14 @@ function Settings() {
                       loading={driveLoading}
                     >
                       {t('settings.cloudBackup')}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={FiSettings}
+                      onClick={() => setShowCredentialsForm(!showCredentialsForm)}
+                    >
+                      {t('settings.changeCredentials')}
                     </Button>
                     <Button
                       variant="secondary"
@@ -523,7 +553,10 @@ function Settings() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => setShowCredentialsForm(false)}
+                      onClick={() => {
+                        setShowCredentialsForm(false);
+                        setCredentials({ clientId: '', clientSecret: '' });
+                      }}
                     >
                       {t('common.cancel')}
                     </Button>

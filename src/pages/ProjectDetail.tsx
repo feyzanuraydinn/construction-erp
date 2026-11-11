@@ -15,6 +15,7 @@ import {
   FiDownload,
   FiFilter,
   FiShare2,
+  FiAlertTriangle,
 } from 'react-icons/fi';
 import { StakeholderDetailModal, ExpenseBreakdownChart } from './project-detail';
 import { PrintPreviewModal, TransactionModal, ExportPreviewModal } from '../components/modals';
@@ -44,10 +45,11 @@ import {
   TabGroup,
   SelectAllCheckbox,
   RowCheckbox,
+  MatchStatusBadge,
 } from '../components/ui';
 import { useTransactionList, calculateProjectFinancials, getPaginationProps } from '../hooks';
-import { formatCurrency, formatDate } from '../utils/formatters';
-import { getTransactionTextColor, getTransactionBadgeVariant, isIncomeType, isExpenseType } from '../utils/transactionHelpers';
+import { formatCurrency, formatDate, formatPercent } from '../utils/formatters';
+import { getTransactionTextColor, getTransactionBadgeVariant, isIncomeType, isExpenseType, deleteTransactionMessage } from '../utils/transactionHelpers';
 import {
   TRANSACTION_TYPES,
   TRANSACTION_TYPE_LABELS,
@@ -60,7 +62,6 @@ import type {
   CategoryBreakdown,
   AccountType,
 } from '../types';
-
 
 function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
@@ -148,10 +149,10 @@ function ProjectDetail() {
   const isClientProject = project.ownership_type === 'client';
 
   const {
-    totalInvoiceOut,
-    totalInvoiceIn,
-    independentPaymentIn,
-    independentPaymentOut,
+    totalPaymentIn,
+    totalPaymentOut,
+    unmatchedPaymentIn,
+    unmatchedPaymentOut,
     totalIncome,
     totalExpense,
     projectProfit,
@@ -168,11 +169,14 @@ function ProjectDetail() {
         const amount = tx.amount_try || tx.amount;
         const isInvoice = tx.type === 'invoice_in' || tx.type === 'invoice_out';
         const isPayment = tx.type === 'payment_in' || tx.type === 'payment_out';
+        const signed =
+          tx.type === 'invoice_out' || tx.type === 'payment_out' ? amount : -amount;
         const existing = acc.find((s) => s.company_id === tx.company_id);
         if (existing) {
           existing.transaction_count += 1;
           if (isInvoice) existing.total_invoice += amount;
           if (isPayment) existing.total_payment += amount;
+          existing.balance += signed;
         } else {
           const company = companies.find((c) => c.id === tx.company_id);
           acc.push({
@@ -184,6 +188,7 @@ function ProjectDetail() {
             transaction_count: 1,
             total_invoice: isInvoice ? amount : 0,
             total_payment: isPayment ? amount : 0,
+            balance: signed,
           });
         }
       }
@@ -198,6 +203,7 @@ function ProjectDetail() {
       transaction_count: number;
       total_invoice: number;
       total_payment: number;
+      balance: number;
     }[]
   );
 
@@ -238,13 +244,13 @@ function ProjectDetail() {
         <StatCard
           title={isClientProject ? t('projectDetail.stats.projectIncome') : t('projectDetail.stats.totalIncome')}
           value={formatCurrency(totalIncome)}
-          subtitle={t('projectDetail.stats.incomeBreakdown', { invoice: formatCurrency(totalInvoiceOut), independentPayment: formatCurrency(independentPaymentIn) })}
+          subtitle={t('projectDetail.stats.incomeBreakdown', { collected: formatCurrency(totalPaymentIn) })}
           color="green"
         />
         <StatCard
           title={isClientProject ? t('projectDetail.stats.projectCost') : t('projectDetail.stats.totalExpense')}
           value={formatCurrency(totalExpense)}
-          subtitle={t('projectDetail.stats.expenseBreakdown', { invoice: formatCurrency(totalInvoiceIn), independentPayment: formatCurrency(independentPaymentOut) })}
+          subtitle={t('projectDetail.stats.expenseBreakdown', { paid: formatCurrency(totalPaymentOut) })}
           color="red"
         />
         <StatCard
@@ -255,6 +261,22 @@ function ProjectDetail() {
           highlighted
         />
       </div>
+      {(unmatchedPaymentOut > 0.005 || unmatchedPaymentIn > 0.005) && (
+        <div
+          role="status"
+          className="flex items-start gap-3 p-3 mb-4 text-sm border rounded-lg text-amber-800 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300"
+        >
+          <FiAlertTriangle className="mt-0.5 flex-shrink-0" />
+          <div className="space-y-1">
+            {unmatchedPaymentOut > 0.005 && (
+              <p>{t('projectDetail.stats.unmatchedPaymentsNotice', { amount: formatCurrency(unmatchedPaymentOut) })}</p>
+            )}
+            {unmatchedPaymentIn > 0.005 && (
+              <p>{t('projectDetail.stats.unmatchedCollectionsNotice', { amount: formatCurrency(unmatchedPaymentIn) })}</p>
+            )}
+          </div>
+        </div>
+      )}
       <div className={`grid grid-cols-1 gap-4 mb-6 ${isClientProject ? 'md:grid-cols-4' : 'md:grid-cols-2'}`}>
         <StatCard
           title={t('projectDetail.stats.estimatedProfit')}
@@ -265,7 +287,7 @@ function ProjectDetail() {
         />
         <StatCard
           title={t('projectDetail.stats.budgetStatus')}
-          value={project.estimated_budget ? `%${budgetUsed.toFixed(0)}` : '-'}
+          value={project.estimated_budget ? formatPercent(budgetUsed) : '-'}
           subtitle={
             project.estimated_budget
               ? `${formatCurrency(totalExpense)} / ${formatCurrency(project.estimated_budget)}`
@@ -544,7 +566,10 @@ function ProjectDetail() {
                                 </Badge>
                               </TableCell>
                               <TableCell>
-                                <p className="font-medium">{tx.description}</p>
+                                <p className="font-medium flex items-center gap-2">
+                                  <span>{tx.description}</span>
+                                  <MatchStatusBadge transaction={tx} />
+                                </p>
                                 {tx.category_name && (
                                   <p className="text-xs text-gray-500 dark:text-gray-400">{t(`categories.${tx.category_name}`, tx.category_name)}</p>
                                 )}
@@ -593,7 +618,7 @@ function ProjectDetail() {
                           <TableHead className="text-right">{t('projectDetail.stakeholders.invoiceTotal')}</TableHead>
                           <TableHead className="text-right">{t('projectDetail.stakeholders.paymentCollection')}</TableHead>
                           <TableHead className="text-right">{t('projectDetail.stakeholders.balance')}</TableHead>
-                          <TableHead className="text-right">{t('common.actions')}</TableHead>
+                          <TableHead className="text-right">{t('projectDetail.stakeholders.transactionCount')}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -614,7 +639,7 @@ function ProjectDetail() {
                             label: stakeholder.account_type,
                             variant: 'gray' as const,
                           };
-                          const balance = stakeholder.total_invoice - stakeholder.total_payment;
+                          const { balance } = stakeholder;
                           return (
                             <TableRow
                               key={stakeholder.company_id}
@@ -675,7 +700,7 @@ function ProjectDetail() {
         onClose={() => dispatch({ type: 'CANCEL_DELETE' })}
         onConfirm={handleDeleteTransaction}
         title={t('shared.deleteTransaction.title')}
-        message={t('shared.deleteTransaction.message')}
+        message={deleteTransactionMessage(t, ui.deleteConfirm, 'shared.deleteTransaction.message')}
         type="danger"
         confirmText={t('common.delete')}
       />

@@ -24,7 +24,7 @@
 - **Karanlık Mod** - Açık, koyu ve sisteme uyumlu tema seçenekleri
 - **Komut Paleti** - Ctrl+K ile hızlı gezinme
 - **Yazdırma** - İşlemler ve raporlar için baskıya hazır görünümler
-- **Otomatik Güncelleme** - Yerleşik güncelleme kontrolü, indirme ve kurulum
+- **Otomatik Güncelleme** - GitHub Releases'ı denetler, onayla indirir ve yeniden başlatınca kurar
 
 ## Teknoloji Yığını
 
@@ -62,8 +62,22 @@ npm run dev
 # Tam derleme: derleme + paketleme + yükleyici
 npm run build
 
-# Çıktı: dist/Construction ERP Setup 3.0.0.exe
+# Çıktı: dist/Construction-ERP-Setup-3.1.0.exe
 ```
+
+### Güncelleme Yayınlama
+
+Kurulu uygulamalar açılışta ve 6 saatte bir GitHub Releases'ı denetler, indirmeden önce sorar ve yeniden başlatınca kurar (önce yerel yedek alınır ve buluta yüklenir).
+
+1. `package.json` içindeki `version` değerini artırın (ör. `3.1.0` → `3.2.0`).
+2. Sürüm oluşturma yetkisi olan bir GitHub anahtarıyla yayınlayın:
+
+```bash
+set GH_TOKEN=<anahtar>
+npm run release
+```
+
+Ya da `npm run build` çalıştırıp `dist/Construction-ERP-Setup-<sürüm>.exe`, onun `.blockmap` dosyasını ve `dist/latest.yml` dosyasını `v<sürüm>` etiketli yeni bir GitHub sürümüne yükleyin.
 
 ### Kullanılabilir Komutlar
 
@@ -71,6 +85,7 @@ npm run build
 |-------|----------|
 | `npm run dev` | Geliştirme modunu başlat (Vite + Electron) |
 | `npm run build` | Tam üretim derlemesi ve yükleyici |
+| `npm run release` | Yükleyiciyi derleyip GitHub sürümü olarak yayınla (`GH_TOKEN` gerekir) |
 | `npm run build:react` | Sadece React arayüzü derle (Vite) |
 | `npm run build:electron` | Sadece Electron ana süreci derle |
 | `npm test` | Birim testlerini çalıştır (Vitest) |

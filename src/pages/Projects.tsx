@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCRUDPage, getPaginationProps } from '../hooks';
@@ -85,6 +85,20 @@ function Projects() {
       columns: getProjectColumns(t),
     },
   });
+
+  const [deleteRelated, setDeleteRelated] = useState<{ transactionCount: number; linkedTransactionCount: number } | null>(null);
+  const deleteMessage = useMemo(() => {
+    if (!crud.deleteConfirm) return '';
+    let msg = t('projects.deleteMessage', { name: crud.deleteConfirm.name });
+    if (deleteRelated && deleteRelated.transactionCount > 0) {
+      msg += '\n\n' + t('projects.deleteRelatedTransactions', { count: deleteRelated.transactionCount });
+    }
+    if (deleteRelated && deleteRelated.linkedTransactionCount > 0) {
+      msg += '\n\n' + t('projects.deleteUnlinkedTransactions', { count: deleteRelated.linkedTransactionCount });
+    }
+    msg += '\n\n' + t('projects.deleteRestorable');
+    return msg;
+  }, [crud.deleteConfirm, deleteRelated, t]);
 
   return (
     <div className="page-container">
@@ -293,7 +307,14 @@ function Projects() {
                             variant="ghost-danger"
                             size="icon"
                             icon={FiTrash2}
-                            onClick={() => crud.setDeleteConfirm(project)}
+                            onClick={async () => {
+                              crud.setDeleteConfirm(project);
+                              try {
+                                setDeleteRelated(await window.electronAPI.project.getRelatedCounts(project.id));
+                              } catch {
+                                setDeleteRelated(null);
+                              }
+                            }}
                             title={t('common.delete')}
                           />
                         </div>
@@ -325,10 +346,13 @@ function Projects() {
       {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={!!crud.deleteConfirm}
-        onClose={() => crud.setDeleteConfirm(null)}
+        onClose={() => {
+          crud.setDeleteConfirm(null);
+          setDeleteRelated(null);
+        }}
         onConfirm={crud.handleDelete}
         title={t('projects.deleteTitle')}
-        message={t('projects.deleteMessage', { name: crud.deleteConfirm?.name })}
+        message={deleteMessage}
         type="danger"
         confirmText={t('common.delete')}
       />

@@ -12,6 +12,7 @@ import {
   Button,
 } from '../../components/ui';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { categoryLabel } from '../../utils/categories';
 import {
   getTransactionColor,
   getTransactionTextColor,
@@ -40,6 +41,7 @@ export interface TransactionDetailFormData {
   category_id: string;
   amount: string;
   currency: 'TRY' | 'USD' | 'EUR';
+  exchange_rate: number;
   description: string;
   document_no: string;
 }
@@ -225,7 +227,7 @@ export const TransactionDetailModal = memo(function TransactionDetailModal({
             ) : (
               <p className={`text-lg font-bold ${getTransactionTextColor(formData.type)}`}>
                 {isPositiveTransaction(formData.type) ? '+' : '-'}
-                {formatCurrency(parseFloat(formData.amount))}
+                {formatCurrency(parseFloat(formData.amount), formData.currency)}
               </p>
             )}
           </div>
@@ -252,7 +254,10 @@ export const TransactionDetailModal = memo(function TransactionDetailModal({
               />
             ) : (
               <p className="py-2 text-gray-900 dark:text-gray-100">
-                {categories.find((c) => c.id === parseInt(formData.category_id))?.name || '-'}
+                {(() => {
+                  const category = categories.find((c) => c.id === parseInt(formData.category_id));
+                  return category ? categoryLabel(t, category.name) : '-';
+                })()}
               </p>
             )}
           </div>

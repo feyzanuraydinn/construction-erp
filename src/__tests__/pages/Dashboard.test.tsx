@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '../../i18n';
 import Dashboard from '../../pages/Dashboard';
+import { clearAllCache } from '../../hooks/useDataCache';
 import type { DashboardStats, TransactionWithDetails, DebtorCreditor, ProjectWithSummary } from '../../types';
 
 // ==================== MOCKS ====================
@@ -86,8 +87,8 @@ const mockDebtors: DebtorCreditor[] = [
 ];
 
 const mockCreditors: DebtorCreditor[] = [
-  { id: 3, name: 'Alacaklı Firma X', type: 'company', account_type: 'supplier', balance: -30000 },
-  { id: 4, name: 'Alacaklı Firma Y', type: 'company', account_type: 'supplier', balance: -20000 },
+  { id: 3, name: 'Alacaklı Firma X', type: 'company', account_type: 'supplier', balance: 30000 },
+  { id: 4, name: 'Alacaklı Firma Y', type: 'company', account_type: 'supplier', balance: 20000 },
 ];
 
 const mockProjects: ProjectWithSummary[] = [
@@ -149,7 +150,38 @@ function setupMocksEmpty() {
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearAllCache();
     setupMocksEmpty();
+  });
+
+  it('shows what we owe in red and what we are owed in green', async () => {
+    setupMocksWithData();
+    await act(async () => {
+      render(<Dashboard />);
+    });
+
+    const creditor = await screen.findByText('Alacaklı Firma X');
+    const creditorBadge = creditor.closest('button')?.querySelector('span[class*="bg-"]:last-child');
+    expect(creditorBadge?.className).toContain('bg-red-100');
+
+    const debtor = screen.getByText('Borçlu Firma B');
+    const debtorBadge = debtor.closest('button')?.querySelector('span[class*="bg-"]:last-child');
+    expect(debtorBadge?.className).toContain('bg-green-100');
+  });
+
+  it('keeps the page on screen when the date filter reloads the debtor lists', async () => {
+    await act(async () => {
+      render(<Dashboard />);
+    });
+    await waitFor(() => expect(screen.getByText('Gösterge Paneli')).toBeInTheDocument());
+
+    (window.electronAPI.dashboard.getTopDebtors as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (window.electronAPI.dashboard.getTopCreditors as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    await act(async () => {
+      fireEvent.click(screen.getByText('Bu Hafta'));
+    });
+
+    expect(screen.getByText('Gösterge Paneli')).toBeInTheDocument();
   });
 
   // ---------- Initial render ----------

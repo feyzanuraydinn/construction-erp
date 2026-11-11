@@ -17,6 +17,7 @@ import {
   Select,
 } from '../ui';
 import { ACCOUNT_TYPES } from '../../utils/constants';
+import { normalizePhoneInput, removeLastPhoneDigit } from '../../utils/phone';
 
 // Form field type matches the Zod schema input (before transforms)
 type CompanyFormFields = z.input<typeof companySchema>;
@@ -101,23 +102,6 @@ export function CompanyModal({ isOpen, onClose, company, onSave }: CompanyModalP
     [t]
   );
 
-  // Phone formatting helper
-  const formatPhoneDigits = (digits: string): string => {
-    let formatted = '';
-    if (digits.length >= 1) formatted += digits[0];
-    if (digits.length >= 2) formatted += '(' + digits[1];
-    if (digits.length >= 3) formatted += digits[2];
-    if (digits.length >= 4) formatted += digits[3] + ') ';
-    if (digits.length >= 5) formatted += digits[4];
-    if (digits.length >= 6) formatted += digits[5];
-    if (digits.length >= 7) formatted += digits[6] + ' ';
-    if (digits.length >= 8) formatted += digits[7];
-    if (digits.length >= 9) formatted += digits[8] + ' ';
-    if (digits.length >= 10) formatted += digits[9];
-    if (digits.length >= 11) formatted += digits[10];
-    return formatted;
-  };
-
   // IBAN formatting helper
   const formatIbanNumbers = (numbers: string): string => {
     if (numbers.length === 0) return '';
@@ -188,10 +172,10 @@ export function CompanyModal({ isOpen, onClose, company, onSave }: CompanyModalP
                 value="person"
                 checked={type === 'person'}
                 onChange={() => setValue('type', 'person')}
-                className="sr-only"
+                className="sr-only peer"
               />
               <div
-                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                className={`peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-800 p-4 border-2 rounded-lg cursor-pointer transition-all ${
                   type === 'person'
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
@@ -216,10 +200,10 @@ export function CompanyModal({ isOpen, onClose, company, onSave }: CompanyModalP
                 value="company"
                 checked={type === 'company'}
                 onChange={() => setValue('type', 'company')}
-                className="sr-only"
+                className="sr-only peer"
               />
               <div
-                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                className={`peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-800 p-4 border-2 rounded-lg cursor-pointer transition-all ${
                   type === 'company'
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
@@ -321,36 +305,13 @@ export function CompanyModal({ isOpen, onClose, company, onSave }: CompanyModalP
               type="tel"
               value={phone || ''}
               onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                if (e.key === 'Backspace') {
+                if (e.key === 'Backspace' && phone) {
                   e.preventDefault();
-                  const currentDigits = (phone || '').replace(/\D/g, '');
-                  if (currentDigits.length > 0) {
-                    const newDigits = currentDigits.slice(0, -1);
-                    if (newDigits.length === 0) {
-                      setValue('phone', '', { shouldValidate: true });
-                    } else {
-                      setValue('phone', formatPhoneDigits(newDigits), { shouldValidate: true });
-                    }
-                  }
+                  setValue('phone', removeLastPhoneDigit(phone), { shouldValidate: true });
                 }
               }}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                const newDigits = e.target.value.replace(/\D/g, '');
-                if (newDigits.length === 0) {
-                  setValue('phone', '', { shouldValidate: true });
-                  return;
-                }
-
-                let digits = newDigits;
-                if (!digits.startsWith('0')) {
-                  digits = '0' + digits;
-                }
-                if (digits.length > 1 && digits[1] !== '5') {
-                  digits = '05' + digits.slice(2);
-                }
-                digits = digits.slice(0, 11);
-
-                setValue('phone', formatPhoneDigits(digits), { shouldValidate: true });
+                setValue('phone', normalizePhoneInput(e.target.value), { shouldValidate: true });
               }}
               error={errors.phone?.message}
               placeholder={t('companies.form.phonePlaceholder')}

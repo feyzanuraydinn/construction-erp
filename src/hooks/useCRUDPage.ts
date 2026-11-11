@@ -162,7 +162,7 @@ export function useCRUDPage<T extends { id: number }, F extends Record<string, s
   }, [toast, t]);
 
   // ---- Hooks ----
-  const { selectedIds, handleSelectAll, handleSelectOne, clearSelection } = useSelection();
+  const { selectedIds, setSelectedIds, handleSelectAll, handleSelectOne, clearSelection } = useSelection();
   const { bulkDeleteConfirm, setBulkDeleteConfirm, handleBulkDelete: bulkDeleteAction } = useBulkDelete({
     deleteFn,
     entityKey,
@@ -175,12 +175,6 @@ export function useCRUDPage<T extends { id: number }, F extends Record<string, s
   // ---- Keyboard shortcuts ----
   useKeyboardShortcuts({
     onNew: () => setModalOpen(true),
-    onEscape: () => {
-      if (modalOpen) {
-        setModalOpen(false);
-        setEditingItem(null);
-      }
-    },
   });
 
   useEffect(() => {
@@ -199,6 +193,14 @@ export function useCRUDPage<T extends { id: number }, F extends Record<string, s
     () => filterFnRef.current(data, debouncedSearch, filters),
     [data, debouncedSearch, filtersKey]
   );
+
+  useEffect(() => {
+    const visible = new Set(filteredData.map((item) => item.id));
+    setSelectedIds((prev) => {
+      const kept = new Set([...prev].filter((id) => visible.has(id)));
+      return kept.size === prev.size ? prev : kept;
+    });
+  }, [filteredData, setSelectedIds]);
 
   // ---- Pagination ----
   const pagination = usePagination({

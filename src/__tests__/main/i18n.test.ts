@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { t, setLocale, getLocale } from '../../main/i18n';
+import { projectSchema, validateInput } from '../../utils/schemas';
 
 describe('Main process i18n', () => {
   beforeEach(() => {
@@ -14,6 +15,18 @@ describe('Main process i18n', () => {
     it('should return English translation when locale is set to en', () => {
       setLocale('en');
       expect(t('main.errorTitle')).toBe('Error');
+    });
+
+    it('also switches the language of validation messages returned over IPC', async () => {
+      setLocale('en');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const english = validateInput(projectSchema, { code: '', name: 'P', ownership_type: 'own' });
+      expect(english.error).toContain('Project code is required');
+
+      setLocale('tr');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const turkish = validateInput(projectSchema, { code: '', name: 'P', ownership_type: 'own' });
+      expect(turkish.error).toContain('Proje kodu zorunludur');
     });
 
     it('should handle nested keys', () => {

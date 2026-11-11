@@ -33,6 +33,12 @@ export function registerProjectHandlers(getDbService: () => DatabaseService): vo
     return result;
   });
 
+  safeHandle('project:getRelatedCounts', (_: IpcMainInvokeEvent, id: unknown) => {
+    const validation = validateId(id);
+    if (!validation.success) throw new Error(validation.error);
+    return getDbService().projects.getRelatedCounts(validation.data!);
+  });
+
   safeHandle('project:delete', (_: IpcMainInvokeEvent, id: unknown) => {
     const validation = validateId(id);
     if (!validation.success) throw new Error(validation.error);

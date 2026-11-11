@@ -5,10 +5,10 @@ import {
   calculateTransactionTotals,
   calculateDashboardFinancials,
 } from '../../utils/financials';
-import type { Transaction } from '../../types';
+import type { TransactionWithDetails } from '../../types';
 
 // Minimal transaction factory — includes all required Transaction fields
-function makeTx(overrides: Partial<Transaction> = {}): Transaction {
+function makeTx(overrides: Partial<TransactionWithDetails> = {}): TransactionWithDetails {
   return {
     id: 1,
     scope: 'company',
@@ -64,6 +64,19 @@ describe('financials', () => {
       // netBalance = receivable - payable = (800 - 400) - (200 - 100) = 400 - 100 = 300
       expect(result.netBalance).toBe(300);
     });
+
+    it('counts only records with a company in the open balance', () => {
+      const transactions = [
+        makeTx({ type: 'invoice_in', amount_try: 1000, company_id: 3 }),
+        makeTx({ type: 'payment_out', amount_try: 400, company_id: 3 }),
+        makeTx({ type: 'invoice_out', amount_try: 250, company_id: 4 }),
+        makeTx({ type: 'invoice_in', amount_try: 9000, company_id: null, scope: 'company' }),
+        makeTx({ type: 'invoice_in', amount_try: 5000, company_id: null, scope: 'project' }),
+      ];
+
+      const result = calculateTransactionTotals(transactions);
+      expect(result.openBalance).toBe(-350);
+    });
   });
 
   describe('calculateProjectFinancials', () => {
@@ -83,14 +96,57 @@ describe('financials', () => {
       expect(result.totalIncome).toBe(1000);
     });
 
-    it('should include independent payment_in in income', () => {
+    it('does not count a collection without an invoice as income: it is an advance received', () => {
       const transactions = [
-        makeTx({ type: 'payment_in', amount_try: 500 }),
+        makeTx({ type: 'payment_in', amount_try: 500, company_id: 3 }),
       ];
 
       const result = calculateProjectFinancials(transactions);
-      // Independent payment (not allocated to invoice) should count as income
-      expect(result.totalIncome).toBe(500);
+      expect(result.totalIncome).toBe(0);
+      expect(result.unmatchedPaymentIn).toBe(500);
+      expect(result.advanceReceived).toBe(500);
+    });
+
+    it('does not count an unmatched payment and its invoice twice', () => {
+      const transactions = [
+        makeTx({ type: 'invoice_in', amount_try: 1000, company_id: 3 }),
+        makeTx({ type: 'payment_out', amount_try: 1000, company_id: 3 }),
+      ];
+
+      const result = calculateProjectFinancials(transactions);
+      expect(result.totalExpense).toBe(1000);
+      expect(result.projectDebt).toBe(0);
+      expect(result.advanceGiven).toBe(0);
+    });
+
+    it("keeps one supplier's advance from hiding the debt to another", () => {
+      const transactions = [
+        makeTx({ type: 'invoice_in', amount_try: 1000, company_id: 3 }),
+        makeTx({ type: 'payment_out', amount_try: 400, company_id: 4 }),
+      ];
+
+      const result = calculateProjectFinancials(transactions);
+      expect(result.projectDebt).toBe(1000);
+      expect(result.advanceGiven).toBe(400);
+    });
+
+    it('does not count costs entered without a company as debt', () => {
+      const transactions = [makeTx({ type: 'invoice_in', amount_try: 5000, company_id: null })];
+
+      const result = calculateProjectFinancials(transactions);
+      expect(result.totalExpense).toBe(5000);
+      expect(result.projectDebt).toBe(0);
+    });
+
+    it('uses what matched payments cover of each invoice', () => {
+      const transactions = [
+        makeTx({ type: 'invoice_out', amount_try: 1000, company_id: 3, settled_amount: 600 }),
+        makeTx({ type: 'payment_in', amount_try: 600, company_id: 3, allocated_amount: 600 }),
+      ];
+
+      const result = calculateProjectFinancials(transactions);
+      expect(result.clientReceivable).toBe(400);
+      expect(result.unmatchedPaymentIn).toBe(0);
     });
 
     it('should not double-count linked payments', () => {
@@ -113,11 +169,11 @@ describe('financials', () => {
       ];
 
       const result = calculateProjectFinancials(transactions);
-      // Income: 5000 + 500 = 5500
-      // Expense: 3000 + 200 = 3200
-      expect(result.totalIncome).toBe(5500);
-      expect(result.totalExpense).toBe(3200);
-      expect(result.projectProfit).toBe(2300);
+      expect(result.totalIncome).toBe(5000);
+      expect(result.totalExpense).toBe(3000);
+      expect(result.projectProfit).toBe(2000);
+      expect(result.totalPaymentIn).toBe(500);
+      expect(result.totalPaymentOut).toBe(200);
     });
 
     it('should handle budget usage', () => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, ReactNode } from 'react';
+import React, { useEffect, useId, useRef, ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiX } from 'react-icons/fi';
 
@@ -13,6 +13,7 @@ interface ModalProps {
   footer?: ReactNode;
   /** Override the dialog role (e.g. "alertdialog" for confirm dialogs) */
   role?: 'dialog' | 'alertdialog';
+  labelledBy?: string;
 }
 
 interface ModalHeaderProps {
@@ -38,22 +39,35 @@ const sizes: Record<ModalSize, string> = {
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function Modal({ isOpen, onClose, title, children, size = 'md', footer, role: dialogRole = 'dialog' }: ModalProps) {
-  const { t } = useTranslation();
-  const modalRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const titleId = useRef(`modal-title-${Math.random().toString(36).slice(2, 9)}`).current;
+const openModals: symbol[] = [];
 
-  // Focus trap: cycle focus within modal
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
+export function useModalLayer(
+  isOpen: boolean,
+  onEscape: () => void,
+  containerRef: RefObject<HTMLElement | null>
+): void {
+  const onEscapeRef = useRef(onEscape);
+  onEscapeRef.current = onEscape;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const token = Symbol('modal');
+    openModals.push(token);
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (openModals[openModals.length - 1] !== token) return;
+
       if (e.key === 'Escape') {
-        onClose();
+        onEscapeRef.current();
         return;
       }
 
-      if (e.key === 'Tab' && modalRef.current) {
-        const focusable = modalRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+      const container = containerRef.current;
+      if (e.key === 'Tab' && container) {
+        const focusable = container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
         if (focusable.length === 0) return;
 
         const first = focusable[0];
@@ -64,42 +78,44 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', footer, r
             e.preventDefault();
             last.focus();
           }
-        } else {
-          if (document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-          }
+        } else if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
         }
       }
-    },
-    [onClose]
-  );
+    };
+    document.addEventListener('keydown', handleKeyDown);
 
-  useEffect(() => {
-    if (isOpen) {
-      // Save previously focused element
-      previousFocusRef.current = document.activeElement as HTMLElement;
-
-      document.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
-
-      // Focus first focusable element inside modal
-      requestAnimationFrame(() => {
-        if (modalRef.current) {
-          const first = modalRef.current.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-          first?.focus();
-        }
-      });
-    }
+    const frame = requestAnimationFrame(() => {
+      containerRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus();
+    });
 
     return () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
-
-      // Restore focus when modal closes
-      previousFocusRef.current?.focus();
+      const index = openModals.indexOf(token);
+      if (index !== -1) openModals.splice(index, 1);
+      if (openModals.length === 0) document.body.style.overflow = '';
+      previousFocus?.focus();
     };
-  }, [isOpen, handleKeyDown]);
+  }, [isOpen, containerRef]);
+}
+
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  labelledBy,
+  children,
+  size = 'md',
+  footer,
+  role: dialogRole = 'dialog',
+}: ModalProps) {
+  const { t } = useTranslation();
+  const modalRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+
+  useModalLayer(isOpen, onClose, modalRef);
 
   if (!isOpen) return null;
 
@@ -113,7 +129,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', footer, r
         ref={modalRef}
         role={dialogRole}
         aria-modal="true"
-        aria-labelledby={title ? titleId : undefined}
+        aria-labelledby={title ? titleId : labelledBy}
         className={`
           relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full ${sizes[size]}
           max-h-[90vh] flex flex-col fade-in overflow-hidden

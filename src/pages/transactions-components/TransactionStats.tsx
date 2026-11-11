@@ -11,6 +11,7 @@ interface TransactionStatsProps {
   totalPaymentOut: number;
   netProfit: number;
   netCashFlow: number;
+  openBalance: number;
   filteredTransactions: TransactionWithDetails[];
 }
 
@@ -21,6 +22,7 @@ export const TransactionStats = memo(function TransactionStats({
   totalPaymentOut,
   netProfit,
   netCashFlow,
+  openBalance,
   filteredTransactions,
 }: TransactionStatsProps) {
   const { t } = useTranslation();
@@ -81,9 +83,9 @@ export const TransactionStats = memo(function TransactionStats({
         />
         <StatCard
           title={t('transactions.stats.netStatus')}
-          value={formatCurrency(netProfit + netCashFlow)}
+          value={formatCurrency(openBalance)}
           subtitle={t('transactions.stats.netStatusSubtitle')}
-          color={netProfit + netCashFlow >= 0 ? 'green' : 'red'}
+          color={openBalance >= 0 ? 'green' : 'red'}
           highlighted
         />
       </div>

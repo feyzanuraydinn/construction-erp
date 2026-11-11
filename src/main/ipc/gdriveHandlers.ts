@@ -1,4 +1,4 @@
-import { IpcMainInvokeEvent } from 'electron';
+import { IpcMainInvokeEvent, BrowserWindow } from 'electron';
 import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
@@ -24,7 +24,15 @@ export function registerGdriveHandlers(): void {
   );
 
   safeHandle('gdrive:connect', async () => {
-    return googleDriveService.startAuth();
+    const result = await googleDriveService.startAuth();
+    if (result.success) {
+      syncService.markConnected();
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (window.isMinimized()) window.restore();
+        window.focus();
+      }
+    }
+    return result;
   });
 
   safeHandle('gdrive:disconnect', async () => {

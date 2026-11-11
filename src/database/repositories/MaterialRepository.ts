@@ -2,6 +2,7 @@ import type { Database as SqlJsDatabase } from 'sql.js';
 import { BaseRepository } from './BaseRepository';
 import type { Material, StockMovementWithDetails, StockMovementFilters } from '../../types';
 import type { MaterialInput, StockMovementInput } from '../../utils/schemas';
+import { collectMaterialBundle, moveToTrash } from './trashBundle';
 
 export class MaterialRepository extends BaseRepository<Material> {
   constructor(db: SqlJsDatabase) {
@@ -49,9 +50,7 @@ export class MaterialRepository extends BaseRepository<Material> {
     if (!material) return { success: false };
     this.db.run('BEGIN TRANSACTION');
     try {
-      this.run(`INSERT INTO trash (type, data) VALUES ('material', ?)`, [JSON.stringify(material)]);
-      this.run(`DELETE FROM stock_movements WHERE material_id = ?`, [id]);
-      this.run(`DELETE FROM materials WHERE id = ?`, [id]);
+      moveToTrash(this.db, 'material', material, collectMaterialBundle(this.db, id));
       this.db.run('COMMIT');
       return { success: true };
     } catch (error) {

@@ -56,8 +56,6 @@ const mockProject: ProjectWithSummary = {
   total_invoice_in: 120000,
   total_collected: 180000,
   total_paid: 100000,
-  independent_payment_in: 30000,
-  independent_payment_out: 20000,
   total_income: 230000,
   total_expense: 140000,
   transaction_count: 5,
@@ -381,10 +379,7 @@ describe('ProjectDetail', () => {
       expect(nameElements.length).toBeGreaterThanOrEqual(1);
     });
 
-    // The tab labels use missing i18n keys, so they render as key strings
-    // t('projectDetail.transactionsTab') and t('projectDetail.partiesTab')
-    // These resolve to the key itself since they are not in tr.json
-    const partiesTab = screen.getByText('projectDetail.partiesTab');
+    const partiesTab = screen.getByRole('tab', { name: 'Paydaşlar' });
     await act(async () => {
       fireEvent.click(partiesTab);
     });

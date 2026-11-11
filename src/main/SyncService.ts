@@ -26,6 +26,7 @@ export interface SyncMeta {
   lastSyncSuccess: string | null; // ISO
   autoSyncEnabled: boolean;
   lastSnapshotDate: string | null; // YYYY-MM-DD
+  driveLinked: boolean | null;
 }
 
 export interface SyncStatusEvent {
@@ -34,6 +35,8 @@ export interface SyncStatusEvent {
   lastSyncSuccess?: string | null;
   nextCheckSeconds?: number | null;
   error?: string;
+  driveRequired?: boolean;
+  reason?: 'expired';
 }
 
 /** The part of the main window the sync service uses (BrowserWindow satisfies it). */
@@ -78,8 +81,11 @@ export class SyncService {
     lastSyncSuccess: null,
     autoSyncEnabled: true,
     lastSnapshotDate: null,
+    driveLinked: null,
   };
   private status: SyncStatus = 'disconnected';
+  private authExpired = false;
+  private unsubscribeAuthLost: (() => void) | null = null;
   private lastError: string | null = null;
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
   private pingHandle: ReturnType<typeof setInterval> | null = null;
@@ -92,9 +98,29 @@ export class SyncService {
     this.userDataPath = userDataPath;
     this.metaPath = path.join(userDataPath, 'sync-meta.json');
     this.loadMeta();
+    if (this.meta.driveLinked === null) {
+      this.meta.driveLinked = googleDriveService.isConnected() || this.meta.lastSyncSuccess !== null;
+      if (this.meta.driveLinked) this.saveMeta();
+    }
+    this.unsubscribeAuthLost?.();
+    this.unsubscribeAuthLost = googleDriveService.onAuthLost(() => {
+      this.authExpired = true;
+      mainLogger.warn('Google Drive sign-in expired or was revoked', 'Sync');
+      this.setStatus('disconnected');
+    });
     this.removeStaleTempFiles();
     this.recomputeStatus();
     this.emitStatus();
+  }
+
+  markConnected(): void {
+    this.meta.driveLinked = true;
+    this.saveMeta();
+    this.authExpired = false;
+    this.isOnline = true;
+    this.recomputeStatus();
+    this.emitStatus();
+    void this.checkAndSync().catch(() => undefined);
   }
 
   updateMainWindow(mainWindow: SyncWindow): void {
@@ -155,10 +181,16 @@ export class SyncService {
   }
 
   getStatus(): SyncStatusEvent {
+    return this.statusEvent();
+  }
+
+  private statusEvent(): SyncStatusEvent {
     return {
       status: this.status,
       lastSyncSuccess: this.meta.lastSyncSuccess,
       error: this.lastError || undefined,
+      driveRequired: this.meta.driveLinked === true,
+      reason: this.status === 'disconnected' && this.authExpired ? 'expired' : undefined,
     };
   }
 
@@ -181,11 +213,7 @@ export class SyncService {
 
   private emitStatus(): void {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
-    const payload: SyncStatusEvent = {
-      status: this.status,
-      lastSyncSuccess: this.meta.lastSyncSuccess,
-      error: this.lastError || undefined,
-    };
+    const payload = this.statusEvent();
     try {
       this.mainWindow.webContents.send('sync:status', payload);
     } catch {
@@ -194,8 +222,9 @@ export class SyncService {
   }
 
   private setStatus(status: SyncStatus, error?: string): void {
-    this.status = status;
-    this.lastError = error || null;
+    const disconnected = status === 'error' && !googleDriveService.isConnected();
+    this.status = disconnected ? 'disconnected' : status;
+    this.lastError = disconnected ? null : error || null;
     this.emitStatus();
   }
 
@@ -269,6 +298,12 @@ export class SyncService {
 
       this.isOnline = true;
 
+      if (this.meta.remoteFileId !== null && remote.id !== this.meta.remoteFileId) {
+        this.setStatus('conflict');
+        this.emitConflict(remote);
+        return;
+      }
+
       const remoteChanged =
         this.meta.remoteModTimeAtLastSync === null ||
         (remote.modifiedTime !== this.meta.remoteModTimeAtLastSync &&
@@ -310,14 +345,14 @@ export class SyncService {
   }
 
   async resolveConflict(choice: 'use-local' | 'use-remote' | 'cancel'): Promise<{ success: boolean; error?: string }> {
-    if (!this.dbService) return { success: false, error: 'DB servisi başlatılmamış.' };
+    if (!this.dbService) return { success: false, error: t('main.sync.dbNotReady') };
 
     if (choice === 'cancel') {
       this.setStatus('pending');
       return { success: true };
     }
 
-    if (this.isSyncing) return { success: false, error: 'Senkronizasyon zaten devam ediyor.' };
+    if (this.isSyncing) return { success: false, error: t('main.sync.busy') };
 
     this.isSyncing = true;
     try {
@@ -325,7 +360,7 @@ export class SyncService {
         return await this.doUpload();
       }
       const remote = await googleDriveService.getLatestFile();
-      if (!remote) return { success: false, error: 'Buluttaki dosya bulunamadı.' };
+      if (!remote) return { success: false, error: t('main.sync.remoteNotFound') };
       return await this.doDownload(remote);
     } catch (error) {
       const msg = errorMessage(error);
@@ -351,7 +386,7 @@ export class SyncService {
   }
 
   private async doUpload(): Promise<{ success: boolean; error?: string }> {
-    if (!this.dbService) return { success: false, error: 'DB servisi başlatılmamış.' };
+    if (!this.dbService) return { success: false, error: t('main.sync.dbNotReady') };
 
     this.setStatus('uploading');
     let uploadPath: string | null = null;
@@ -360,7 +395,7 @@ export class SyncService {
       this.dbService.save();
       const dbPath = this.dbService.getDbPath();
       if (!dbPath || !fs.existsSync(dbPath)) {
-        const error = 'Veritabanı dosyası bulunamadı.';
+        const error = t('main.sync.dbFileMissing');
         this.setStatus('error', error);
         return { success: false, error };
       }
@@ -416,7 +451,7 @@ export class SyncService {
   }
 
   private async doDownload(remote: RemoteFile): Promise<{ success: boolean; error?: string }> {
-    if (!this.dbService) return { success: false, error: 'DB servisi başlatılmamış.' };
+    if (!this.dbService) return { success: false, error: t('main.sync.dbNotReady') };
 
     this.setStatus('downloading');
     const tempPath = path.join(this.tempDir(), `download-${process.pid}-${Date.now()}.db`);
@@ -570,7 +605,7 @@ export class SyncService {
 
   /** Manual force upload (button in Settings) */
   async manualUpload(): Promise<{ success: boolean; error?: string }> {
-    if (this.isSyncing) return { success: false, error: 'Senkronizasyon zaten devam ediyor.' };
+    if (this.isSyncing) return { success: false, error: t('main.sync.busy') };
     this.isSyncing = true;
     try {
       return await this.doUpload();
@@ -581,11 +616,11 @@ export class SyncService {
 
   /** Manual force download (button in Settings) */
   async manualDownload(): Promise<{ success: boolean; error?: string }> {
-    if (this.isSyncing) return { success: false, error: 'Senkronizasyon zaten devam ediyor.' };
+    if (this.isSyncing) return { success: false, error: t('main.sync.busy') };
     this.isSyncing = true;
     try {
       const remote = await googleDriveService.getLatestFile();
-      if (!remote) return { success: false, error: 'Buluttaki dosya bulunamadı.' };
+      if (!remote) return { success: false, error: t('main.sync.remoteNotFound') };
       return await this.doDownload(remote);
     } catch (error) {
       const msg = errorMessage(error);
@@ -607,6 +642,7 @@ export class SyncService {
       lastSyncSuccess: null,
       autoSyncEnabled: this.meta.autoSyncEnabled,
       lastSnapshotDate: null,
+      driveLinked: this.meta.driveLinked,
     };
     this.saveMeta();
     this.setStatus('disconnected');

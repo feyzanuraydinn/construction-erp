@@ -79,8 +79,6 @@ export interface ProjectWithSummary extends Project {
   total_invoice_in: number;
   total_collected: number;
   total_paid: number;
-  independent_payment_in: number;
-  independent_payment_out: number;
   total_income: number;
   total_expense: number;
   transaction_count?: number;
@@ -123,6 +121,7 @@ export interface TransactionWithDetails extends Transaction {
   category_name?: string | null;
   category_color?: string | null;
   allocated_amount?: number;
+  settled_amount?: number;
 }
 
 export interface Material {
@@ -333,15 +332,44 @@ export interface PaymentAllocationWithDetails extends PaymentAllocation {
   payment_document_no?: string | null;
 }
 
-export interface InvoiceWithBalance {
+export interface MatchCandidate {
   id: number;
   type: TransactionType;
   description: string;
   amount: number;
+  currency: Currency;
   amount_try: number;
   date: string;
   document_no: string | null;
-  company_name?: string | null;
-  total_allocated: number;
+  company_id: number | null;
+  company_name: string | null;
+  project_id: number | null;
+  project_name: string | null;
   remaining: number;
+  allocated_here: number;
+}
+
+export interface SaveTransactionRequest {
+  id?: number;
+  data: TransactionFormData;
+  paymentAllocations?: { invoiceId: number; amount: number }[];
+  invoiceAllocations?: { paymentId: number; amount: number }[];
+  remainderDocument?: { categoryId: number };
+}
+
+export interface SaveTransactionResult {
+  transaction: TransactionWithDetails;
+  documentId: number | null;
+}
+
+export interface MatchCandidatesRequest {
+  type: TransactionType;
+  companyId: number | null;
+  projectId: number | null;
+  selfId: number | null;
+}
+
+export interface MatchPool {
+  companyId: number | null;
+  projectId: number | null;
 }

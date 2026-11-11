@@ -12,24 +12,47 @@ function sumByType(transactions: AnyTransaction[], type: string): number {
     .reduce((sum, t) => sum + (t.amount_try || t.amount), 0);
 }
 
-/** Transaction listesinden tip bazlı allocated_amount toplamı hesaplar */
-function sumAllocatedByType(transactions: AnyTransaction[], type: string): number {
-  return transactions
-    .filter((t) => t.type === type)
-    .reduce((sum, t) => sum + (('allocated_amount' in t && t.allocated_amount) || 0), 0);
+function amountTry(t: AnyTransaction): number {
+  return t.amount_try || t.amount;
 }
 
-/** Bağımsız ödeme toplamını hesaplar (toplam - eşleştirilmiş kısım) */
-function sumIndependentByType(transactions: AnyTransaction[], type: string): number {
-  return transactions
-    .filter((t) => t.type === type)
-    .reduce((sum, t) => {
-      const total = t.amount_try || t.amount;
-      const allocated = ('allocated_amount' in t && t.allocated_amount) || 0;
-      if (allocated > 0) return sum + Math.max(0, total - allocated);
-      if (t.linked_invoice_id) return sum; // Eski veri — tam bağlı
-      return sum + total;
-    }, 0);
+function openOnInvoice(t: AnyTransaction): number {
+  const settled = ('settled_amount' in t && t.settled_amount) || 0;
+  return Math.max(0, amountTry(t) - settled);
+}
+
+function unmatchedOnPayment(t: AnyTransaction): number {
+  const allocated = ('allocated_amount' in t && t.allocated_amount) || 0;
+  return Math.max(0, amountTry(t) - allocated);
+}
+
+interface OpenBalances {
+  receivable: number;
+  debt: number;
+  advanceReceived: number;
+  advanceGiven: number;
+}
+
+function calculateOpenBalances(transactions: AnyTransaction[]): OpenBalances {
+  const groups = new Map<number, { openOut: number; openIn: number; unmatchedIn: number; unmatchedOut: number }>();
+  for (const t of transactions) {
+    if (t.company_id == null) continue;
+    const key = t.company_id;
+    const group = groups.get(key) ?? { openOut: 0, openIn: 0, unmatchedIn: 0, unmatchedOut: 0 };
+    if (t.type === 'invoice_out') group.openOut += openOnInvoice(t);
+    else if (t.type === 'invoice_in') group.openIn += openOnInvoice(t);
+    else if (t.type === 'payment_in') group.unmatchedIn += unmatchedOnPayment(t);
+    else if (t.type === 'payment_out') group.unmatchedOut += unmatchedOnPayment(t);
+    groups.set(key, group);
+  }
+  const result: OpenBalances = { receivable: 0, debt: 0, advanceReceived: 0, advanceGiven: 0 };
+  for (const group of groups.values()) {
+    result.receivable += Math.max(0, group.openOut - group.unmatchedIn);
+    result.advanceReceived += Math.max(0, group.unmatchedIn - group.openOut);
+    result.debt += Math.max(0, group.openIn - group.unmatchedOut);
+    result.advanceGiven += Math.max(0, group.unmatchedOut - group.openIn);
+  }
+  return result;
 }
 
 // ==================== TYPES ====================
@@ -37,8 +60,6 @@ function sumIndependentByType(transactions: AnyTransaction[], type: string): num
 export interface ProjectFinancials {
   totalInvoiceOut: number;
   totalInvoiceIn: number;
-  independentPaymentIn: number;
-  independentPaymentOut: number;
   totalPaymentIn: number;
   totalPaymentOut: number;
   totalIncome: number;
@@ -47,8 +68,12 @@ export interface ProjectFinancials {
   estimatedProfit: number | null;
   budgetUsed: number;
   ownershipType: OwnershipType;
-  projectDebt: number;
   clientReceivable: number;
+  projectDebt: number;
+  advanceReceived: number;
+  advanceGiven: number;
+  unmatchedPaymentIn: number;
+  unmatchedPaymentOut: number;
 }
 
 export interface CompanyFinancials {
@@ -79,20 +104,11 @@ export interface TransactionTotals {
   netProfit: number;
   netCashFlow: number;
   netBalance: number;
+  openBalance: number;
 }
 
 // ==================== PURE FUNCTIONS ====================
 
-/**
- * Proje finansal hesaplamalarını yapar.
- * allocated_amount kullanarak kısmi bağımsız ödeme tutarlarını hesaplar.
- * ownershipType parametresi ile müşteri projesi ayrımı yapar.
- *
- * Gelir = Satış faturaları + Bağımsız tahsilatlar
- * Gider = Alış faturaları + Bağımsız ödemeler
- * Müşteri Alacağı = Satış faturaları - Eşleştirilmiş tahsilatlar
- * Proje Borcu = Alış faturaları - Eşleştirilmiş ödemeler
- */
 export function calculateProjectFinancials(
   transactions: AnyTransaction[],
   ownershipType: OwnershipType = 'own',
@@ -103,26 +119,19 @@ export function calculateProjectFinancials(
   const totalPaymentIn = sumByType(transactions, 'payment_in');
   const totalPaymentOut = sumByType(transactions, 'payment_out');
 
-  const independentPaymentIn = sumIndependentByType(transactions, 'payment_in');
-  const independentPaymentOut = sumIndependentByType(transactions, 'payment_out');
-
-  const totalIncome = totalInvoiceOut + independentPaymentIn;
-  const totalExpense = totalInvoiceIn + independentPaymentOut;
+  const totalIncome = totalInvoiceOut;
+  const totalExpense = totalInvoiceIn;
   const projectProfit = totalIncome - totalExpense;
   const estimatedProfit = estimatedBudget ? estimatedBudget - totalExpense : null;
   const budgetUsed = estimatedBudget ? (totalExpense / estimatedBudget) * 100 : 0;
 
-  // Müşteri projesi: sadece eşleştirilmiş ödemeler borç/alacaktan düşer
-  const allocatedPaymentIn = sumAllocatedByType(transactions, 'payment_in');
-  const allocatedPaymentOut = sumAllocatedByType(transactions, 'payment_out');
-  const clientReceivable = totalInvoiceOut - allocatedPaymentIn;
-  const projectDebt = totalInvoiceIn - allocatedPaymentOut;
+  const open = calculateOpenBalances(transactions);
+  const unmatched = (type: string) =>
+    transactions.filter((t) => t.type === type).reduce((sum, t) => sum + unmatchedOnPayment(t), 0);
 
   return {
     totalInvoiceOut,
     totalInvoiceIn,
-    independentPaymentIn,
-    independentPaymentOut,
     totalPaymentIn,
     totalPaymentOut,
     totalIncome,
@@ -131,8 +140,12 @@ export function calculateProjectFinancials(
     estimatedProfit,
     budgetUsed,
     ownershipType,
-    projectDebt: Math.max(0, projectDebt),
-    clientReceivable: Math.max(0, clientReceivable),
+    clientReceivable: open.receivable,
+    projectDebt: open.debt,
+    advanceReceived: open.advanceReceived,
+    advanceGiven: open.advanceGiven,
+    unmatchedPaymentIn: unmatched('payment_in'),
+    unmatchedPaymentOut: unmatched('payment_out'),
   };
 }
 
@@ -208,6 +221,11 @@ export function calculateTransactionTotals(transactions: AnyTransaction[]): Tran
 
   const receivable = totalInvoiceOut - totalPaymentIn;
   const payable = totalInvoiceIn - totalPaymentOut;
+  const withCompany = transactions.filter((t) => t.company_id != null);
+  const openBalance =
+    sumByType(withCompany, 'invoice_out') -
+    sumByType(withCompany, 'payment_in') -
+    (sumByType(withCompany, 'invoice_in') - sumByType(withCompany, 'payment_out'));
 
   return {
     totalInvoiceOut,
@@ -219,6 +237,6 @@ export function calculateTransactionTotals(transactions: AnyTransaction[]): Tran
     netProfit: totalInvoiceOut - totalInvoiceIn,
     netCashFlow: totalPaymentIn - totalPaymentOut,
     netBalance: receivable - payable,
+    openBalance,
   };
 }
-

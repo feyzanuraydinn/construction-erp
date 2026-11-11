@@ -33,16 +33,19 @@ import {
   Divider,
   SelectAllCheckbox,
   RowCheckbox,
+  MatchStatusBadge,
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
-import { formatCurrency, formatDate, formatDateForInput } from '../utils/formatters';
+import { ipcErrorMessage } from '../utils/ipcError';
+import { formatCurrency, formatDate, formatDateForInput, toLocalDateString } from '../utils/formatters';
 import {
   getTransactionColor,
   getTransactionTextColor,
   isPositiveTransaction,
+  deleteTransactionMessage,
 } from '../utils/transactionHelpers';
 import { TRANSACTION_TYPE_LABELS } from '../utils/constants';
-import { getTransactionColumns, buildTransactionSummary, formatRecordsForExport, exportToExcel, shareExcel } from '../utils/exportUtils';
+import { getTransactionColumns, buildTransactionSummary, formatRecordsForExport } from '../utils/exportUtils';
 import { TRANSACTION_TYPES, TRANSACTION_SCOPES } from '../utils/constants';
 import { ExportPreviewModal } from '../components/modals';
 import {
@@ -84,6 +87,7 @@ function Transactions() {
     null
   );
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [typeChangeWarning, setTypeChangeWarning] = useState<{ count: number; total: number } | null>(null);
   const [formData, setFormData] = useState<TransactionDetailFormData>({
     date: '',
     type: 'invoice_out',
@@ -93,6 +97,7 @@ function Transactions() {
     category_id: '',
     amount: '',
     currency: 'TRY',
+    exchange_rate: 1,
     description: '',
     document_no: '',
   });
@@ -146,6 +151,7 @@ function Transactions() {
     category_id: tx.category_id ? String(tx.category_id) : '',
     amount: tx.amount.toString(),
     currency: (tx.currency || 'TRY') as TransactionDetailFormData['currency'],
+    exchange_rate: tx.exchange_rate,
     description: tx.description,
     document_no: tx.document_no || '',
   });
@@ -166,10 +172,30 @@ function Transactions() {
 
   const handleSaveTransaction = async () => {
     if (!selectedTransaction) return;
+    if (formData.type !== selectedTransaction.type) {
+      try {
+        const isPayment = selectedTransaction.type === 'payment_in' || selectedTransaction.type === 'payment_out';
+        const linked = isPayment
+          ? await window.electronAPI.transaction.getAllocationsForPayment(selectedTransaction.id)
+          : await window.electronAPI.transaction.getAllocationsForInvoice(selectedTransaction.id);
+        if (linked.length > 0) {
+          setTypeChangeWarning({ count: linked.length, total: linked.reduce((sum, a) => sum + a.amount, 0) });
+          return;
+        }
+      } catch (error) {
+        console.error('Allocation check failed:', error);
+      }
+    }
+    await saveTransaction();
+  };
+
+  const saveTransaction = async () => {
+    if (!selectedTransaction) return;
     try {
       await window.electronAPI.transaction.update(selectedTransaction.id, {
         ...formData,
         amount: parseFloat(formData.amount),
+        exchange_rate: formData.currency === 'TRY' ? 1 : formData.exchange_rate,
         company_id: formData.company_id || undefined,
         project_id: formData.project_id || undefined,
         category_id: formData.category_id || undefined,
@@ -180,7 +206,7 @@ function Transactions() {
       loadData();
     } catch (error) {
       console.error('Update error:', error);
-      toast.error(t('transactions.updateError'));
+      toast.error(`${t('transactions.updateError')}: ${ipcErrorMessage(error)}`);
     }
   };
 
@@ -294,6 +320,7 @@ function Transactions() {
     totalPaymentOut,
     netProfit,
     netCashFlow,
+    openBalance,
   } = calculateTransactionTotals(filteredTransactions);
 
   const getScopeLabel = (scope: string): { label: string; variant: BadgeVariant } => {
@@ -331,11 +358,9 @@ function Transactions() {
           </Button>
           <Button variant="secondary" icon={FiShare2} onClick={() => {
             const cols = getTransactionColumns(t);
-            const formatted = formatRecordsForExport(filteredTransactions, cols);
-            const { rows: summaryRows, metadata } = buildTransactionSummary(filteredTransactions, t, formatted.length);
-            formatted.push(...summaryRows);
-            const filename = `${t('export.filenames.transactions')}_${new Date().toISOString().split('T')[0]}`;
-            shareExcel(filename, formatted, filename, metadata);
+            const { rows: summaryRows, metadata } = buildTransactionSummary(filteredTransactions, t, filteredTransactions.length);
+            const filename = `${t('export.filenames.transactions')}_${toLocalDateString()}`;
+            void shareAction(filename, filteredTransactions, cols, summaryRows, metadata);
           }} title={t('common.share')}>
             {t('common.share')}
           </Button>
@@ -350,6 +375,7 @@ function Transactions() {
         totalPaymentOut={totalPaymentOut}
         netProfit={netProfit}
         netCashFlow={netCashFlow}
+        openBalance={openBalance}
         filteredTransactions={filteredTransactions}
       />
 
@@ -445,7 +471,10 @@ function Transactions() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <p className="font-medium">{tx.description}</p>
+                        <p className="font-medium flex items-center gap-2">
+                          <span>{tx.description}</span>
+                          <MatchStatusBadge transaction={tx} />
+                        </p>
                         {tx.document_no && (
                           <p className="text-xs text-gray-500 dark:text-gray-400">
                             {t('transactions.table.document', { no: tx.document_no })}
@@ -514,13 +543,30 @@ function Transactions() {
         onFormChange={setFormData}
       />
 
+      <ConfirmDialog
+        isOpen={typeChangeWarning !== null}
+        onClose={() => setTypeChangeWarning(null)}
+        onConfirm={async () => {
+          setTypeChangeWarning(null);
+          await saveTransaction();
+        }}
+        title={t('transactionModal.typeChangeWarningTitle')}
+        message={t('transactionModal.typeChangeWarningMessage', {
+          count: typeChangeWarning?.count ?? 0,
+          total: formatCurrency(typeChangeWarning?.total ?? 0),
+        })}
+        type="warning"
+        confirmText={t('transactionModal.removeAllocations')}
+        cancelText={t('common.cancel')}
+      />
+
       {/* Delete Confirm Dialog */}
       <ConfirmDialog
         isOpen={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={handleDeleteConfirm}
         title={t('transactions.deleteTitle')}
-        message={t('transactions.deleteMessage')}
+        message={deleteTransactionMessage(t, selectedTransaction, 'transactions.deleteMessage')}
         type="danger"
         confirmText={t('common.delete')}
         cancelText={t('common.cancel')}
@@ -545,11 +591,9 @@ function Transactions() {
         data={exportPreviewData}
         onExport={() => {
           const cols = getTransactionColumns(t);
-          const formatted = formatRecordsForExport(exportFilteredTransactions, cols);
-          const { rows: summaryRows, metadata } = buildTransactionSummary(exportFilteredTransactions, t, formatted.length);
-          formatted.push(...summaryRows);
-          const filename = `${t('export.filenames.transactions')}_${new Date().toISOString().split('T')[0]}`;
-          exportToExcel(filename, formatted, filename, metadata);
+          const { rows: summaryRows, metadata } = buildTransactionSummary(exportFilteredTransactions, t, exportFilteredTransactions.length);
+          const filename = `${t('export.filenames.transactions')}_${toLocalDateString()}`;
+          void exportAction(filename, exportFilteredTransactions, cols, summaryRows, metadata);
         }}
         mode="filter"
       >

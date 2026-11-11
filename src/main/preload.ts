@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (data: unknown) => ipcRenderer.invoke('project:create', data),
     update: (id: number, data: unknown) => ipcRenderer.invoke('project:update', id, data),
     delete: (id: number) => ipcRenderer.invoke('project:delete', id),
+    getRelatedCounts: (id: number) => ipcRenderer.invoke('project:getRelatedCounts', id),
     generateCode: () => ipcRenderer.invoke('project:generateCode'),
     getParties: (projectId: number) => ipcRenderer.invoke('project:getParties', projectId),
     addParty: (data: unknown) => ipcRenderer.invoke('project:addParty', data),
@@ -62,14 +63,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('transaction:getInvoicesForProject', projectId),
     getInvoicesForCompany: (companyId: number) =>
       ipcRenderer.invoke('transaction:getInvoicesForCompany', companyId),
-    getInvoicesWithBalance: (entityId: number, entityType: string, invoiceType: string) =>
-      ipcRenderer.invoke('transaction:getInvoicesWithBalance', entityId, entityType, invoiceType),
+    save: (request: unknown) => ipcRenderer.invoke('transaction:save', request),
+    getMatchCandidates: (request: unknown) => ipcRenderer.invoke('transaction:getMatchCandidates', request),
     setAllocations: (paymentId: number, allocations: { invoiceId: number; amount: number }[]) =>
       ipcRenderer.invoke('transaction:setAllocations', paymentId, allocations),
     getAllocationsForPayment: (paymentId: number) =>
       ipcRenderer.invoke('transaction:getAllocationsForPayment', paymentId),
     getAllocationsForInvoice: (invoiceId: number) =>
       ipcRenderer.invoke('transaction:getAllocationsForInvoice', invoiceId),
+  },
+
+  review: {
+    getStatus: () => ipcRenderer.invoke('review:getStatus'),
+    getReport: () => ipcRenderer.invoke('review:getReport'),
+    applyRepairs: (request: unknown) => ipcRenderer.invoke('review:applyRepairs', request),
+    applyRates: (request: unknown) => ipcRenderer.invoke('review:applyRates', request),
+    applyAllocationFixes: (request: unknown) => ipcRenderer.invoke('review:applyAllocationFixes', request),
+    applyUnmatched: (request: unknown) => ipcRenderer.invoke('review:applyUnmatched', request),
+    complete: () => ipcRenderer.invoke('review:complete'),
   },
 
   // Material operations

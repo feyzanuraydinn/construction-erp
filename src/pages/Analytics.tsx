@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../contexts/ToastContext';
 import { FiBarChart2, FiAlertTriangle, FiTrendingUp } from 'react-icons/fi';
 import { Select, TabGroup, LoadingSpinner } from '../components/ui';
 import type { TabItem } from '../components/ui';
 import { MONTHS } from '../utils/constants';
+import { categoryLabel } from '../utils/categories';
 import type {
   ProjectWithSummary,
   CompanyWithBalance,
@@ -37,6 +38,7 @@ function Analytics() {
   const [companies, setCompanies] = useState<CompanyWithBalance[]>([]);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
+  const monthlyRequestRef = useRef(0);
   const [selectedProject, setSelectedProject] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('');
   const [projectBreakdown, setProjectBreakdown] = useState<CategoryBreakdown[]>([]);
@@ -77,11 +79,16 @@ function Analytics() {
   };
 
   const loadMonthlyStats = async () => {
+    const requestId = ++monthlyRequestRef.current;
+    const isLatest = () => requestId === monthlyRequestRef.current;
     try {
       if (selectedYear === 'all') {
         const allData: MonthlyStats[] = [];
-        for (const year of availableYears) {
-          const data = await window.electronAPI.analytics.getMonthlyStats(year);
+        const perYear = await Promise.all(
+          availableYears.map((year) => window.electronAPI.analytics.getMonthlyStats(year))
+        );
+        if (!isLatest()) return;
+        for (const data of perYear) {
           data.forEach((d: MonthlyStats) => {
             const existing = allData.find((a) => a.month === d.month);
             if (existing) {
@@ -112,6 +119,7 @@ function Analytics() {
         setMonthlyStats(formattedData);
       } else {
         const data = await window.electronAPI.analytics.getMonthlyStats(selectedYear);
+        if (!isLatest()) return;
         const formattedData = MONTHS.map((month) => {
           const found = data.find((d: MonthlyStats) => d.month === month.value);
           return {
@@ -134,9 +142,9 @@ function Analytics() {
       const projectId =
         typeof selectedProject === 'string' ? parseInt(selectedProject, 10) : selectedProject;
       const data = await window.electronAPI.analytics.getProjectCategoryBreakdown(projectId);
-      const sorted = [...data].sort(
-        (a: CategoryBreakdown, b: CategoryBreakdown) => b.total - a.total
-      );
+      const sorted = data
+        .map((item: CategoryBreakdown) => ({ ...item, category: categoryLabel(t, item.category) }))
+        .sort((a: CategoryBreakdown, b: CategoryBreakdown) => b.total - a.total);
       if (sorted.length > 8) {
         const top7 = sorted.slice(0, 7);
         const others = sorted.slice(7);

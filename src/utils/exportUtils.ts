@@ -1,5 +1,12 @@
 import { formatCurrency, formatDate } from './formatters';
 import type { TFunction } from 'i18next';
+import type { Currency } from '../types';
+
+function rowCurrency(row: unknown): Currency {
+  if (typeof row !== 'object' || row === null || !('currency' in row)) return 'TRY';
+  const { currency } = row;
+  return currency === 'USD' || currency === 'EUR' ? currency : 'TRY';
+}
 
 // Column definitions for different data types
 export interface ExportColumn {
@@ -35,7 +42,11 @@ export function getTransactionColumns(t: TFunction): ExportColumn[] {
     { key: 'company_name', label: t('export.columns.companyAccount') },
     { key: 'project_name', label: t('export.columns.project') },
     { key: 'category_name', label: t('export.columns.category') },
-    { key: 'amount', label: t('export.columns.amount'), format: (v) => formatCurrency(v as number) },
+    {
+      key: 'amount',
+      label: t('export.columns.amount'),
+      format: (v, row) => formatCurrency(v as number, rowCurrency(row)),
+    },
     { key: 'currency', label: t('export.columns.currency') },
     { key: 'document_no', label: t('export.columns.documentNo') },
   ];
@@ -149,16 +160,16 @@ export function buildTransactionSummary(
       amountColumnLabel: amtKey,
       typeColumnLabel: t('export.columns.type'),
       expenseTypeValues: [
-        t('enums.transactionType.invoice_out'),
+        t('enums.transactionType.invoice_in'),
         t('enums.transactionType.payment_out'),
       ],
       redSummaryLabels: [
-        t('export.summary.invoiceOut'),
+        t('export.summary.invoiceIn'),
         t('export.summary.paymentOut'),
         t('export.summary.payable'),
       ],
       greenSummaryLabels: [
-        t('export.summary.invoiceIn'),
+        t('export.summary.invoiceOut'),
         t('export.summary.paymentIn'),
         t('export.summary.receivable'),
       ],

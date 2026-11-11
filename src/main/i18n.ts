@@ -1,5 +1,6 @@
 import tr from '../i18n/locales/tr.json';
 import en from '../i18n/locales/en.json';
+import sharedI18n from '../i18n';
 
 type Translations = Record<string, unknown>;
 
@@ -30,6 +31,7 @@ export function t(key: string, params?: Record<string, string | number>): string
 export function setLocale(locale: string): void {
   if (locales[locale]) {
     currentLocale = locale;
+    void sharedI18n.changeLanguage(locale);
   }
 }
 

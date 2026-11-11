@@ -42,3 +42,7 @@ tmpclaude-*
 
 # Coverage
 coverage/
+
+# Playwright output
+test-results/
+playwright-report/

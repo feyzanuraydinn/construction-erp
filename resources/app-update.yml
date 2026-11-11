@@ -1,0 +1,5 @@
+owner: feyzanuraydinn
+repo: construction-erp
+provider: github
+releaseType: release
+updaterCacheDirName: construction-erp-updater

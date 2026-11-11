@@ -1,5 +1,6 @@
 import type { Database as SqlJsDatabase } from 'sql.js';
 import type { TrashItem } from '../../types';
+import { readBundle, restoreBundle, RESTORE_PARENT_MISSING, type TrashBundle } from './trashBundle';
 
 export class TrashRepository {
   constructor(private db: SqlJsDatabase) {}
@@ -31,6 +32,43 @@ export class TrashRepository {
     const item = this.queryOne<TrashItem>(`SELECT * FROM trash WHERE id = ?`, [trashId]);
     if (!item) return { success: false, error: 'Öğe bulunamadı' };
 
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(item.data);
+    } catch {
+      return { success: false, error: 'Geçersiz yedek verisi' };
+    }
+    const bundle = readBundle(parsed);
+    return bundle ? this.restoreFromBundle(trashId, bundle) : this.restoreLegacy(trashId, item);
+  }
+
+  private restoreFromBundle(trashId: number, bundle: TrashBundle): { success: boolean; error?: string } {
+    this.db.run('BEGIN TRANSACTION');
+    try {
+      restoreBundle(this.db, bundle);
+      this.run(`DELETE FROM trash WHERE id = ?`, [trashId]);
+      this.db.run('COMMIT');
+      return { success: true };
+    } catch (error: unknown) {
+      try { this.db.run('ROLLBACK'); } catch { /* already rolled back */ }
+      const message = error instanceof Error ? error.message : String(error);
+      if (/FOREIGN KEY constraint failed/i.test(message)) {
+        return { success: false, error: RESTORE_PARENT_MISSING };
+      }
+      return { success: false, error: message };
+    }
+  }
+
+  private restoreLegacy(trashId: number, item: TrashItem): { success: boolean; error?: string } {
+    this.db.run('PRAGMA foreign_keys = OFF');
+    try {
+      return this.restoreLegacyRow(trashId, item);
+    } finally {
+      this.db.run('PRAGMA foreign_keys = ON');
+    }
+  }
+
+  private restoreLegacyRow(trashId: number, item: TrashItem): { success: boolean; error?: string } {
     try {
       const data = JSON.parse(item.data);
       // Validate parsed data has required id field
@@ -86,6 +124,7 @@ export class TrashRepository {
           break;
         }
         default:
+          this.db.run('ROLLBACK');
           return { success: false, error: `Bilinmeyen tür: ${item.type}` };
       }
       this.run(`DELETE FROM trash WHERE id = ?`, [trashId]);

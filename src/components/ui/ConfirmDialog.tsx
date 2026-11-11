@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiAlertTriangle, FiAlertCircle, FiCheckCircle } from 'react-icons/fi';
 import type { IconType } from 'react-icons';
@@ -60,18 +60,19 @@ export function ConfirmDialog({
   loading = false,
 }: ConfirmDialogProps) {
   const { t } = useTranslation();
+  const titleId = useId();
   const config = types[type];
   const Icon = config.icon;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="sm" role="alertdialog">
+    <Modal isOpen={isOpen} onClose={onClose} size="sm" role="alertdialog" labelledBy={titleId}>
       <div className="text-center p-6">
         <div
           className={`mx-auto w-14 h-14 rounded-full ${config.iconBg} flex items-center justify-center mb-4`}
         >
           <Icon className={`w-7 h-7 ${config.iconColor}`} />
         </div>
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">{title}</h3>
+        <h3 id={titleId} className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">{title}</h3>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{message}</p>
         <div className="flex gap-3 justify-center">
           <Button variant="secondary" onClick={onClose} disabled={loading}>

@@ -1,11 +1,13 @@
 import { drive_v3 } from '@googleapis/drive';
-import { OAuth2Client } from 'google-auth-library';
+import { OAuth2Client, CodeChallengeMethod } from 'google-auth-library';
 import { shell, safeStorage } from 'electron';
+import crypto from 'crypto';
 import http from 'http';
 import fs from 'fs';
 import { pipeline } from 'stream/promises';
 import path from 'path';
-import { t } from './i18n';
+import { t, getLocale } from './i18n';
+import { renderAuthPage } from './authPage';
 
 // OAuth credentials - build sırasında veya config dosyasından yüklenir
 let CLIENT_ID = '';
@@ -16,6 +18,35 @@ const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/oauth2callback`;
 const BACKUP_FOLDER_NAME = 'ConstructionERP_Backups';
 const LATEST_FILE_NAME = 'latest_backup.db';
 const SNAPSHOT_PREFIX = 'snapshot-';
+
+function errorPage(title: string, message: string): string {
+  return renderAuthPage({
+    variant: 'error',
+    lang: getLocale(),
+    brand: t('main.gdrive.brand'),
+    pageTitle: t('main.errorTitle'),
+    title,
+    message,
+    hint: t('main.gdrive.errorHint'),
+  });
+}
+
+const AUTH_ERROR_PATTERN =
+  /invalid_grant|invalid_token|unauthorized_client|Invalid Credentials|Token has been expired or revoked|No refresh token is set/i;
+
+export function isAuthError(error: unknown): boolean {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = error.response;
+    if (typeof response === 'object' && response !== null && 'status' in response && response.status === 401) {
+      return true;
+    }
+    if (typeof response === 'object' && response !== null && 'data' in response) {
+      if (AUTH_ERROR_PATTERN.test(JSON.stringify(response.data ?? ''))) return true;
+    }
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return AUTH_ERROR_PATTERN.test(message);
+}
 
 interface DriveFile {
   id: string;
@@ -29,6 +60,27 @@ class GoogleDriveService {
   private oauth2Client: OAuth2Client | null = null;
   private tokenPath: string = '';
   private configPath: string = '';
+  private authLostListeners: Array<() => void> = [];
+
+  onAuthLost(listener: () => void): () => void {
+    this.authLostListeners.push(listener);
+    return () => {
+      this.authLostListeners = this.authLostListeners.filter((l) => l !== listener);
+    };
+  }
+
+  private handleError(error: unknown): string {
+    if (isAuthError(error) && this.isConnected()) {
+      this.oauth2Client?.setCredentials({});
+      try {
+        if (fs.existsSync(this.tokenPath)) fs.unlinkSync(this.tokenPath);
+      } catch (unlinkError) {
+        console.warn('Could not remove the expired Drive token:', unlinkError);
+      }
+      for (const listener of this.authLostListeners) listener();
+    }
+    return this.formatError(error);
+  }
 
   init(userDataPath: string): void {
     this.tokenPath = path.join(userDataPath, 'google-drive-token.json');
@@ -171,12 +223,30 @@ class GoogleDriveService {
     if (!this.oauth2Client) {
       return { success: false, error: t('main.gdrive.configMissing') };
     }
+    const client = this.oauth2Client;
+
+    const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
+    const state = crypto.randomBytes(16).toString('hex');
 
     return new Promise((resolve) => {
-      const authUrl = this.oauth2Client!.generateAuthUrl({
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let settled = false;
+      const finish = (result: { success: boolean; error?: string }) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        server.close();
+        server.closeAllConnections();
+        resolve(result);
+      };
+
+      const authUrl = client.generateAuthUrl({
         access_type: 'offline',
         scope: SCOPES,
         prompt: 'consent',
+        state,
+        code_challenge_method: CodeChallengeMethod.S256,
+        code_challenge: codeChallenge,
       });
 
       // Create temporary HTTP server to receive OAuth callback
@@ -186,7 +256,13 @@ class GoogleDriveService {
           const code = url.searchParams.get('code');
           const error = url.searchParams.get('error');
 
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          if (url.searchParams.get('state') !== state) {
+            res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8', Connection: 'close' });
+            res.end(errorPage(t('main.gdrive.connectionError'), t('main.gdrive.invalidState')));
+            return;
+          }
+
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Connection: 'close' });
 
           // Handle OAuth error (access_denied, etc.)
           if (error) {
@@ -194,89 +270,61 @@ class GoogleDriveService {
               error === 'access_denied'
                 ? t('main.gdrive.accessDenied')
                 : t('main.gdrive.oauthError', { error });
-            res.end(`
-              <html>
-                <head><title>${t('main.errorTitle')}</title></head>
-                <body style="font-family: Arial; text-align: center; padding: 50px;">
-                  <h1 style="color: #ef4444;">✕ ${t('main.gdrive.connectionDenied')}</h1>
-                  <p>${errorMsg}</p>
-                </body>
-              </html>
-            `);
-            server.close();
-            resolve({ success: false, error: errorMsg });
+            res.end(errorPage(t('main.gdrive.connectionDenied'), errorMsg));
+            finish({ success: false, error: errorMsg });
             return;
           }
 
           if (code) {
             try {
-              const { tokens } = await this.oauth2Client!.getToken(code);
-              this.oauth2Client!.setCredentials(tokens);
+              const { tokens } = await client.getToken({ code, codeVerifier });
+              client.setCredentials(tokens);
 
               // Save tokens (encrypted)
               this.saveToken(tokens as Record<string, unknown>);
 
-              res.end(`
-                <html>
-                  <head><title>${t('main.gdrive.successTitle')}</title></head>
-                  <body style="font-family: Arial; text-align: center; padding: 50px;">
-                    <h1 style="color: #22c55e;">✓ ${t('main.gdrive.connectionSuccess')}</h1>
-                    <p>${t('main.gdrive.closeWindow')}</p>
-                    <script>setTimeout(() => window.close(), 2000);</script>
-                  </body>
-                </html>
-              `);
+              res.end(
+                renderAuthPage({
+                  variant: 'success',
+                  lang: getLocale(),
+                  brand: t('main.gdrive.brand'),
+                  pageTitle: t('main.gdrive.successTitle'),
+                  title: t('main.gdrive.connectionSuccess'),
+                  message: t('main.gdrive.successMessage'),
+                  hint: t('main.gdrive.closeWindow'),
+                })
+              );
 
-              server.close();
-              resolve({ success: true });
+              finish({ success: true });
             } catch (error) {
-              res.end(`
-                <html>
-                  <head><title>${t('main.errorTitle')}</title></head>
-                  <body style="font-family: Arial; text-align: center; padding: 50px;">
-                    <h1 style="color: #ef4444;">✕ ${t('main.gdrive.connectionError')}</h1>
-                    <p>${String(error).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')}</p>
-                  </body>
-                </html>
-              `);
-              server.close();
-              resolve({ success: false, error: String(error) });
+              res.end(errorPage(t('main.gdrive.connectionError'), String(error)));
+              finish({ success: false, error: String(error) });
             }
           } else {
-            res.end(`
-              <html>
-                <head><title>${t('main.errorTitle')}</title></head>
-                <body style="font-family: Arial; text-align: center; padding: 50px;">
-                  <h1 style="color: #ef4444;">✕ ${t('main.gdrive.noAuthCode')}</h1>
-                </body>
-              </html>
-            `);
-            server.close();
-            resolve({ success: false, error: t('main.gdrive.noAuthCode') });
+            res.end(errorPage(t('main.gdrive.noAuthCode'), t('main.gdrive.noAuthCodeMessage')));
+            finish({ success: false, error: t('main.gdrive.noAuthCode') });
           }
         }
       });
 
       server.on('error', (err: NodeJS.ErrnoException) => {
         if (err.code === 'EADDRINUSE') {
-          resolve({
+          finish({
             success: false,
             error: t('main.gdrive.portInUse', { port: REDIRECT_PORT }),
           });
         } else {
-          resolve({ success: false, error: t('main.gdrive.serverError', { error: err.message }) });
+          finish({ success: false, error: t('main.gdrive.serverError', { error: err.message }) });
         }
       });
 
       server.listen(REDIRECT_PORT, '127.0.0.1', () => {
         // Open browser for authentication
-        shell.openExternal(authUrl);
+        void shell.openExternal(authUrl);
       });
 
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        server.close();
-        resolve({ success: false, error: t('main.gdrive.authTimeout') });
+      timer = setTimeout(() => {
+        finish({ success: false, error: t('main.gdrive.authTimeout') });
       }, 300000);
     });
   }
@@ -345,6 +393,7 @@ class GoogleDriveService {
       return createResponse.data.id || null;
     } catch (error) {
       console.error('Folder error:', error);
+      this.handleError(error);
       return null;
     }
   }
@@ -377,6 +426,7 @@ class GoogleDriveService {
       }));
     } catch (error) {
       console.error('List error:', error);
+      this.handleError(error);
       return [];
     }
   }
@@ -404,7 +454,7 @@ class GoogleDriveService {
       return { success: true };
     } catch (error) {
       console.error('Delete error:', error);
-      return { success: false, error: this.formatError(error) };
+      return { success: false, error: this.handleError(error) };
     }
   }
 
@@ -445,7 +495,7 @@ class GoogleDriveService {
       };
     } catch (error) {
       console.error('getLatestFile error:', error);
-      throw new Error(this.formatError(error));
+      throw new Error(this.handleError(error));
     }
   }
 
@@ -492,7 +542,7 @@ class GoogleDriveService {
       }
     } catch (error) {
       console.error('uploadLatest error:', error);
-      return { success: false, error: this.formatError(error) };
+      return { success: false, error: this.handleError(error) };
     }
   }
 
@@ -526,7 +576,7 @@ class GoogleDriveService {
       return { success: true };
     } catch (error) {
       console.error('uploadSnapshot error:', error);
-      return { success: false, error: this.formatError(error) };
+      return { success: false, error: this.handleError(error) };
     }
   }
 
@@ -552,6 +602,7 @@ class GoogleDriveService {
       }));
     } catch (error) {
       console.error('listSnapshots error:', error);
+      this.handleError(error);
       return [];
     }
   }
@@ -574,6 +625,7 @@ class GoogleDriveService {
       }
     } catch (error) {
       console.error('rotateSnapshots error:', error);
+      this.handleError(error);
     }
   }
 
@@ -600,7 +652,7 @@ class GoogleDriveService {
     } catch (error) {
       console.error('downloadFile error:', error);
       fs.rmSync(destPath, { force: true });
-      return { success: false, error: this.formatError(error) };
+      return { success: false, error: this.handleError(error) };
     }
   }
 
@@ -611,7 +663,8 @@ class GoogleDriveService {
       const drive = new drive_v3.Drive({ auth: this.oauth2Client });
       await drive.about.get({ fields: 'user' });
       return true;
-    } catch {
+    } catch (error) {
+      this.handleError(error);
       return false;
     }
   }

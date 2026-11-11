@@ -2,6 +2,7 @@ import type { Database as SqlJsDatabase } from 'sql.js';
 import { BaseRepository } from './BaseRepository';
 import type { Project, ProjectWithSummary, ProjectParty, ProjectPartyWithDetails } from '../../types';
 import type { ProjectInput, ProjectPartyInput } from '../../utils/schemas';
+import { collectProjectBundle, moveToTrash } from './trashBundle';
 
 export class ProjectRepository extends BaseRepository<Project> {
   constructor(db: SqlJsDatabase) {
@@ -16,22 +17,13 @@ export class ProjectRepository extends BaseRepository<Project> {
         COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_invoice_in,
         COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_collected,
         COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_paid,
-        COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) - COALESCE(alloc.allocated_amount, 0) ELSE 0 END), 0) as independent_payment_in,
-        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) - COALESCE(alloc.allocated_amount, 0) ELSE 0 END), 0) as independent_payment_out,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) +
-        COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) - COALESCE(alloc.allocated_amount, 0) ELSE 0 END), 0) as total_income,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) +
-        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) - COALESCE(alloc.allocated_amount, 0) ELSE 0 END), 0) as total_expense,
+        COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_income,
+        COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_expense,
         COUNT(DISTINCT t.id) as transaction_count,
         (SELECT COUNT(DISTINCT pp.company_id) FROM project_parties pp WHERE pp.project_id = p.id) as party_count
       FROM projects p
       LEFT JOIN companies c ON c.id = p.client_company_id
       LEFT JOIN transactions t ON t.project_id = p.id
-      LEFT JOIN (
-        SELECT payment_id, SUM(amount) as allocated_amount
-        FROM payment_allocations
-        GROUP BY payment_id
-      ) alloc ON alloc.payment_id = t.id
       WHERE p.is_active = 1
       GROUP BY p.id
       ORDER BY p.created_at DESC
@@ -90,15 +82,24 @@ export class ProjectRepository extends BaseRepository<Project> {
     if (!project) return { success: false };
     this.db.run('BEGIN TRANSACTION');
     try {
-      this.run(`INSERT INTO trash (type, data) VALUES ('project', ?)`, [JSON.stringify(project)]);
-      this.run(`DELETE FROM project_parties WHERE project_id = ?`, [id]);
-      this.run(`DELETE FROM projects WHERE id = ?`, [id]);
+      moveToTrash(this.db, 'project', project, collectProjectBundle(this.db, id));
       this.db.run('COMMIT');
       return { success: true };
     } catch (error) {
       this.db.run('ROLLBACK');
       throw error;
     }
+  }
+
+  getRelatedCounts(id: number): { transactionCount: number; linkedTransactionCount: number } {
+    const row = this.queryOne<{ own: number; linked: number }>(
+      `SELECT
+         COALESCE(SUM(CASE WHEN scope = 'project' THEN 1 ELSE 0 END), 0) as own,
+         COALESCE(SUM(CASE WHEN scope != 'project' THEN 1 ELSE 0 END), 0) as linked
+       FROM transactions WHERE project_id = ?`,
+      [id]
+    );
+    return { transactionCount: row?.own ?? 0, linkedTransactionCount: row?.linked ?? 0 };
   }
 
   getParties(projectId: number): ProjectPartyWithDetails[] {

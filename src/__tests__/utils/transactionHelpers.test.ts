@@ -64,14 +64,14 @@ describe('transactionHelpers', () => {
 
   describe('getTransactionTextColor', () => {
     it('should return correct text colors for each type', () => {
-      expect(getTransactionTextColor('invoice_out')).toBe('text-green-600');
-      expect(getTransactionTextColor('payment_in')).toBe('text-blue-600');
-      expect(getTransactionTextColor('invoice_in')).toBe('text-red-600');
-      expect(getTransactionTextColor('payment_out')).toBe('text-orange-600');
+      expect(getTransactionTextColor('invoice_out')).toBe('text-green-600 dark:text-green-400');
+      expect(getTransactionTextColor('payment_in')).toBe('text-blue-600 dark:text-blue-400');
+      expect(getTransactionTextColor('invoice_in')).toBe('text-red-600 dark:text-red-400');
+      expect(getTransactionTextColor('payment_out')).toBe('text-orange-600 dark:text-orange-400');
     });
 
     it('should return gray for unknown type', () => {
-      expect(getTransactionTextColor('unknown' as TransactionType)).toBe('text-gray-600');
+      expect(getTransactionTextColor('unknown' as TransactionType)).toBe('text-gray-600 dark:text-gray-400');
     });
   });
 
@@ -95,13 +95,13 @@ describe('transactionHelpers', () => {
 
   describe('getSimpleTransactionTextColor', () => {
     it('should return green for income types', () => {
-      expect(getSimpleTransactionTextColor('invoice_out')).toBe('text-green-600');
-      expect(getSimpleTransactionTextColor('payment_in')).toBe('text-green-600');
+      expect(getSimpleTransactionTextColor('invoice_out')).toBe('text-green-600 dark:text-green-400');
+      expect(getSimpleTransactionTextColor('payment_in')).toBe('text-green-600 dark:text-green-400');
     });
 
     it('should return red for expense types', () => {
-      expect(getSimpleTransactionTextColor('invoice_in')).toBe('text-red-600');
-      expect(getSimpleTransactionTextColor('payment_out')).toBe('text-red-600');
+      expect(getSimpleTransactionTextColor('invoice_in')).toBe('text-red-600 dark:text-red-400');
+      expect(getSimpleTransactionTextColor('payment_out')).toBe('text-red-600 dark:text-red-400');
     });
   });
 

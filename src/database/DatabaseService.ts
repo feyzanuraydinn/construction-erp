@@ -26,6 +26,7 @@ import path from 'path';
 import fs from 'fs';
 import { dbLogger } from '../utils/logger';
 import { writeFileAtomic, fileTimestamp, localDateStamp, pruneBackupFiles } from './fileUtils';
+import { ensureBaseline } from './dataReview';
 
 // Import repositories
 import {
@@ -202,6 +203,7 @@ export class DatabaseService {
     this.createRepositories(this.db);
 
     this.initialized = true;
+    if (ensureBaseline(this.db)) this.save();
     dbLogger.info('DatabaseService initialized successfully', 'DatabaseService');
   }
 
@@ -227,12 +229,18 @@ export class DatabaseService {
     this._paymentAllocations = new PaymentAllocationRepository(db);
   }
 
+  private exportBytes(): Uint8Array {
+    const data = this.db!.export();
+    this.db!.run('PRAGMA foreign_keys = ON');
+    return data;
+  }
+
   /**
    * Save database to disk
    */
   save(): void {
     if (this.db && this.dbPath) {
-      writeFileAtomic(this.dbPath, this.db.export());
+      writeFileAtomic(this.dbPath, this.exportBytes());
       // NOTE: do NOT clear `dirty` here. `dirty` means "there are local changes
       // that have not been pushed to the cloud yet" — only sync.doUpload (and
       // download, which replaces local state with remote) should clear it via
@@ -352,7 +360,7 @@ export class DatabaseService {
 
     let size = 0;
     if (this.db) {
-      const data = this.db.export();
+      const data = this.exportBytes();
       size = data.length;
     }
 
@@ -370,7 +378,7 @@ export class DatabaseService {
     }
 
     const backupPath = path.join(backupDir, 'latest_backup.db');
-    const data = this.db!.export();
+    const data = this.exportBytes();
     writeFileAtomic(backupPath, data);
 
     const metaPath = path.join(backupDir, 'backup_meta.json');
@@ -413,7 +421,7 @@ export class DatabaseService {
     fs.mkdirSync(safetyDir, { recursive: true });
     const prefix = `${label}-`;
     const copyPath = path.join(safetyDir, `${prefix}${fileTimestamp()}.db`);
-    writeFileAtomic(copyPath, this.db!.export());
+    writeFileAtomic(copyPath, this.exportBytes());
     pruneBackupFiles(safetyDir, prefix, SAFETY_COPY_KEEP);
     dbLogger.info(`Safety copy created: ${copyPath}`, 'DatabaseService');
     return copyPath;
@@ -483,6 +491,7 @@ export class DatabaseService {
     this.db = candidate;
     this.createRepositories(candidate);
     previous?.close();
+    ensureBaseline(candidate);
     this.save();
     dbLogger.info('Database loaded from buffer', 'DatabaseService');
   }
@@ -492,7 +501,7 @@ export class DatabaseService {
    */
   exportBuffer(): Buffer {
     this.ensureInitialized();
-    return Buffer.from(this.db!.export());
+    return Buffer.from(this.exportBytes());
   }
 
   /**
@@ -727,6 +736,14 @@ export class DatabaseService {
       }
       db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_code ON companies(code)`);
     }
+
+    applyMigration(4, 'create_app_meta', `
+      CREATE TABLE IF NOT EXISTS app_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
   }
 
   private initializeDefaultCategories(db: SqlJsDatabase): void {

@@ -117,10 +117,10 @@ export function MovementModal({
                   onChange={() =>
                     setValue('movement_type', type.value as 'in' | 'out' | 'adjustment' | 'waste', { shouldValidate: true })
                   }
-                  className="sr-only"
+                  className="sr-only peer"
                 />
                 <div
-                  className={`p-2 border-2 rounded-lg cursor-pointer text-center text-sm transition-all ${
+                  className={`peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-800 p-2 border-2 rounded-lg cursor-pointer text-center text-sm transition-all ${
                     movementType === type.value
                       ? type.value === 'in'
                         ? 'border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'

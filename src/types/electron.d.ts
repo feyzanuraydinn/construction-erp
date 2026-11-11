@@ -30,8 +30,22 @@ import type {
   DriveBackupFile,
   DriveOperationResult,
   PaymentAllocationWithDetails,
-  InvoiceWithBalance,
+  MatchCandidate,
+  MatchCandidatesRequest,
+  SaveTransactionRequest,
+  SaveTransactionResult,
 } from './index';
+import type {
+  ApplyResult,
+  DataReviewReport,
+  LegacyFirmChoice,
+  UnmatchedChoice,
+} from '../database/dataReview';
+
+export interface ReviewStepResult {
+  result: ApplyResult;
+  report: DataReviewReport;
+}
 
 export interface ElectronAPI {
   company: {
@@ -51,6 +65,7 @@ export interface ElectronAPI {
     create: (data: ProjectFormData) => Promise<Project>;
     update: (id: number, data: ProjectFormData) => Promise<Project>;
     delete: (id: number) => Promise<{ success: boolean }>;
+    getRelatedCounts: (id: number) => Promise<{ transactionCount: number; linkedTransactionCount: number }>;
     generateCode: () => Promise<string>;
     getParties: (projectId: number) => Promise<ProjectPartyWithDetails[]>;
     addParty: (data: {
@@ -77,10 +92,21 @@ export interface ElectronAPI {
     delete: (id: number) => Promise<{ success: boolean }>;
     getInvoicesForProject: (projectId: number) => Promise<TransactionWithDetails[]>;
     getInvoicesForCompany: (companyId: number) => Promise<TransactionWithDetails[]>;
-    getInvoicesWithBalance: (entityId: number, entityType: 'project' | 'company', invoiceType: 'invoice_out' | 'invoice_in') => Promise<InvoiceWithBalance[]>;
+    save: (request: SaveTransactionRequest) => Promise<SaveTransactionResult>;
+    getMatchCandidates: (request: MatchCandidatesRequest) => Promise<MatchCandidate[]>;
     setAllocations: (paymentId: number, allocations: { invoiceId: number; amount: number }[]) => Promise<{ success: boolean }>;
     getAllocationsForPayment: (paymentId: number) => Promise<PaymentAllocationWithDetails[]>;
     getAllocationsForInvoice: (invoiceId: number) => Promise<PaymentAllocationWithDetails[]>;
+  };
+
+  review: {
+    getStatus: () => Promise<{ completed: boolean; pending: number }>;
+    getReport: () => Promise<DataReviewReport>;
+    applyRepairs: (request: { orphanIds: number[] }) => Promise<ReviewStepResult>;
+    applyRates: (request: { rates: { id: number; rate: number }[] }) => Promise<ReviewStepResult>;
+    applyAllocationFixes: (request: { keys: string[] }) => Promise<ReviewStepResult>;
+    applyUnmatched: (request: { choices: UnmatchedChoice[]; firmChoices: LegacyFirmChoice[] }) => Promise<ReviewStepResult>;
+    complete: () => Promise<DataReviewReport>;
   };
 
   material: {
@@ -185,6 +211,8 @@ export interface SyncStatusPayload {
   lastSyncSuccess?: string | null;
   nextCheckSeconds?: number | null;
   error?: string;
+  driveRequired?: boolean;
+  reason?: 'expired';
 }
 
 export interface SyncConflictPayload {

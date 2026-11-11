@@ -22,7 +22,7 @@ A full-featured desktop ERP application for construction companies. Manage curre
 - **Dark Mode** - Light, dark, and system-follow theme options
 - **Command Palette** - Quick navigation with Ctrl+K
 - **Print Support** - Print-ready views for transactions and reports
-- **Auto Updates** - Built-in update checker with download and install
+- **Auto Updates** - Checks GitHub Releases, downloads on approval and installs on restart
 
 ## Tech Stack
 
@@ -60,8 +60,22 @@ npm run dev
 # Full build: compile + package + installer
 npm run build
 
-# Output: dist/Construction ERP Setup 3.0.0.exe
+# Output: dist/Construction-ERP-Setup-3.1.0.exe
 ```
+
+### Releasing an Update
+
+Installed apps check GitHub Releases at startup and every 6 hours, ask before downloading, and install on restart (a local backup and cloud upload run first).
+
+1. Raise `version` in `package.json` (e.g. `3.1.0` → `3.2.0`).
+2. Publish with a GitHub token that can create releases:
+
+```bash
+set GH_TOKEN=<token>
+npm run release
+```
+
+Or run `npm run build` and upload `dist/Construction-ERP-Setup-<version>.exe`, its `.blockmap` and `dist/latest.yml` to a new GitHub release tagged `v<version>`.
 
 ### Available Scripts
 
@@ -69,6 +83,7 @@ npm run build
 |--------|-------------|
 | `npm run dev` | Start development mode (Vite + Electron) |
 | `npm run build` | Full production build with installer |
+| `npm run release` | Build and publish the installer as a GitHub release (needs `GH_TOKEN`) |
 | `npm run build:react` | Build React frontend only (Vite) |
 | `npm run build:electron` | Build Electron main process only |
 | `npm test` | Run unit tests (Vitest) |

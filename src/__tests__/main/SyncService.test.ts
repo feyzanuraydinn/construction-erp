@@ -15,7 +15,12 @@ const drive = vi.hoisted(() => ({
   uploadSnapshot: vi.fn(),
   rotateSnapshots: vi.fn(),
   ping: vi.fn(),
+  onAuthLost: vi.fn((listener: () => void) => {
+    authLost.listener = listener;
+    return () => undefined;
+  }),
 }));
+const authLost = vi.hoisted(() => ({ listener: null as null | (() => void) }));
 
 vi.mock('electron', () => ({ app: { getPath: () => state.tempDir } }));
 vi.mock('../../main/googleDrive', () => ({ googleDriveService: drive }));
@@ -221,5 +226,66 @@ describe('SyncService errors', () => {
 
     expect(sentChannels()).toContain('sync:conflict');
     expect(drive.uploadLatest).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SyncService and the Drive connection', () => {
+  const metaFile = () => JSON.parse(fs.readFileSync(path.join(userDataPath, 'sync-meta.json'), 'utf-8'));
+  const lastStatus = () => {
+    const calls = send.mock.calls.filter((call) => call[0] === 'sync:status');
+    return calls[calls.length - 1]?.[1];
+  };
+
+  it('treats a device that has a sign-in as linked to Drive', () => {
+    expect(sync.getStatus().driveRequired).toBe(true);
+    expect(metaFile().driveLinked).toBe(true);
+  });
+
+  it('does not require Drive on a device that was never connected', () => {
+    fs.rmSync(path.join(userDataPath, 'sync-meta.json'), { force: true });
+    drive.isConnected.mockReturnValue(false);
+    const fresh = new SyncService();
+    fresh.init(db, { isDestroyed: () => false, webContents: { send } }, userDataPath);
+    expect(fresh.getStatus()).toMatchObject({ status: 'disconnected', driveRequired: false });
+    expect(fs.existsSync(path.join(userDataPath, 'sync-meta.json'))).toBe(false);
+  });
+
+  it('reports an expired sign-in as a disconnect that needs reconnecting', async () => {
+    drive.getLatestFile.mockImplementationOnce(async () => {
+      drive.isConnected.mockReturnValue(false);
+      authLost.listener?.();
+      throw new Error('Oturum süresi doldu. Lütfen tekrar bağlanın.');
+    });
+    await sync.checkAndSync();
+    expect(sync.getStatus()).toMatchObject({ status: 'disconnected', driveRequired: true, reason: 'expired' });
+    expect(lastStatus()).toMatchObject({ status: 'disconnected', driveRequired: true, reason: 'expired' });
+  });
+
+  it('keeps a network failure an error, not a disconnect', async () => {
+    drive.getLatestFile.mockRejectedValueOnce(new Error('getaddrinfo ENOTFOUND www.googleapis.com'));
+    await sync.checkAndSync();
+    expect(sync.getStatus().status).toBe('error');
+  });
+
+  it('stays required after a manual disconnect, and clears after reconnecting', async () => {
+    drive.isConnected.mockReturnValue(false);
+    sync.resetMeta();
+    expect(sync.getStatus()).toMatchObject({ status: 'disconnected', driveRequired: true });
+    expect(metaFile().driveLinked).toBe(true);
+
+    drive.isConnected.mockReturnValue(true);
+    drive.getLatestFile.mockResolvedValueOnce(null);
+    sync.markConnected();
+    expect(sync.getStatus().status).not.toBe('disconnected');
+    await vi.waitFor(() => expect(drive.uploadLatest).toHaveBeenCalled());
+  });
+
+  it('asks instead of syncing when the cloud file is not the one synced before (another account)', async () => {
+    await syncOnceToEmptyCloud();
+    drive.getLatestFile.mockResolvedValueOnce({ ...remoteFile(T2), id: 'other-account-file' });
+    await sync.checkAndSync();
+    expect(sentChannels()).toContain('sync:conflict');
+    expect(drive.downloadFile).not.toHaveBeenCalled();
+    expect(companyNames(db)).toEqual(['Local']);
   });
 });

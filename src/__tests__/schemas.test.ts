@@ -64,7 +64,7 @@ describe('Zod Validation Schemas', () => {
         type: 'person',
         account_type: 'customer',
         name: 'Test',
-        tc_number: '12345678901',
+        tc_number: '10000000146',
       };
 
       const result = validateInput(companySchema, validCompany);
@@ -147,6 +147,26 @@ describe('Zod Validation Schemas', () => {
 
       const result = validateInput(transactionSchema, validTransaction);
       expect(result.success).toBe(true);
+    });
+
+    it('should require an exchange rate for foreign currencies', () => {
+      const base = { scope: 'project', type: 'invoice_in', date: '2024-01-15', description: 'USD', amount: 100, currency: 'USD' };
+
+      expect(validateInput(transactionSchema, base).success).toBe(false);
+      expect(validateInput(transactionSchema, { ...base, exchange_rate: 0 }).success).toBe(false);
+      expect(validateInput(transactionSchema, { ...base, exchange_rate: -2 }).success).toBe(false);
+
+      const ok = validateInput(transactionSchema, { ...base, exchange_rate: '34.25' });
+      expect(ok.success).toBe(true);
+      expect(ok.data?.exchange_rate).toBe(34.25);
+    });
+
+    it('should not invent a rate of 1 when none is given', () => {
+      const result = validateInput(transactionSchema, {
+        scope: 'cari', type: 'invoice_out', date: '2024-01-15', description: 'TL', amount: 100, currency: 'TRY',
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.exchange_rate).toBeNull();
     });
 
     it('should reject zero amount', () => {

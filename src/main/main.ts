@@ -21,8 +21,23 @@ import { t } from './i18n';
 let mainWindow: BrowserWindow | null = null;
 let dbService: DatabaseService;
 let isQuitting = false;
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+async function saveBeforeQuit(): Promise<void> {
+  localBackup();
+  try {
+    const cloudResult = await syncService.beforeQuit();
+    if (!cloudResult.canQuit && cloudResult.error && cloudResult.error !== 'timeout') {
+      mainLogger.warn(`Cloud upload on close failed: ${cloudResult.error}`, 'Sync');
+    }
+  } catch (err) {
+    mainLogger.error('Cloud upload on close error', 'Sync', err);
+  }
+  isQuitting = true;
+}
 
 const isDev = !app.isPackaged;
+const DEV_SERVER_ORIGIN = 'http://localhost:3000';
 
 // EPIPE gibi stream hatalarını yakala — Google Drive bağlantı kopması vb.
 (process as NodeJS.EventEmitter).on('uncaughtException', (error: Error) => {
@@ -99,16 +114,15 @@ function createWindow(): void {
     mainWindow?.maximize();
     mainWindow?.show();
 
-    // Initialize auto-updater (only in production)
     if (!isDev) {
-      initAutoUpdater(mainWindow!);
-      // Check for updates after a short delay
+      initAutoUpdater(mainWindow!, saveBeforeQuit);
       setTimeout(() => checkForUpdates(), 5000);
+      setInterval(() => checkForUpdates(), UPDATE_CHECK_INTERVAL_MS);
     }
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:3000');
+    mainWindow.loadURL(DEV_SERVER_ORIGIN);
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../../build/index.html'));
@@ -144,27 +158,36 @@ async function startApp(): Promise<void> {
         'Content-Security-Policy': [
           isDev
             ? "default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ws://localhost:* http://localhost:*; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;"
-            : "default-src 'self'; script-src 'self'; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://api.exchangerate-api.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;",
+            : "default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;",
         ],
       },
     });
   });
 
-  // Disable navigation to external URLs
+  const isAppUrl = (rawUrl: string): boolean => {
+    try {
+      const url = new URL(rawUrl);
+      return isDev ? url.origin === DEV_SERVER_ORIGIN : url.protocol === 'file:';
+    } catch {
+      return false;
+    }
+  };
+
   app.on('web-contents-created', (_, contents) => {
     contents.on('will-navigate', (event, navigationUrl) => {
-      const parsedUrl = new URL(navigationUrl);
-      if (parsedUrl.origin !== 'file://' && !navigationUrl.startsWith('http://localhost')) {
+      if (!isAppUrl(navigationUrl)) {
         event.preventDefault();
         mainLogger.warn(`Blocked navigation to: ${navigationUrl}`, 'Security');
       }
     });
 
-    // Block new window creation
     contents.setWindowOpenHandler(({ url }) => {
-      // Allow opening external links in system browser
-      if (url.startsWith('https://') || url.startsWith('http://')) {
-        shell.openExternal(url);
+      try {
+        const { protocol } = new URL(url);
+        if (protocol === 'https:' || protocol === 'http:') {
+          void shell.openExternal(url);
+        }
+      } catch {
       }
       return { action: 'deny' };
     });
@@ -180,19 +203,8 @@ async function startApp(): Promise<void> {
     () => mainWindow
   );
 
-  // Renderer says "user chose to actually close" — do the heavy lifting
-  // (local backup + cloud upload) here, then quit for real.
   ipcMain.handle('app:close-confirmed', async () => {
-    localBackup();
-    try {
-      const cloudResult = await syncService.beforeQuit();
-      if (!cloudResult.canQuit && cloudResult.error && cloudResult.error !== 'timeout') {
-        mainLogger.warn(`Cloud upload on close failed: ${cloudResult.error}`, 'Sync');
-      }
-    } catch (err) {
-      mainLogger.error('Cloud upload on close error', 'Sync', err);
-    }
-    isQuitting = true;
+    await saveBeforeQuit();
     mainWindow?.close();
     return { success: true };
   });

@@ -15,14 +15,18 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       // Check if we're typing in an input, textarea, or contenteditable
       const target = event.target as HTMLElement;
       const isTyping =
-        target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable;
+      const dialogOpen = document.querySelector('[aria-modal="true"]') !== null;
 
-      // Ctrl+N - New (works everywhere except when typing)
       // Use event.code for consistent detection regardless of Caps Lock or Shift
       if (
         event.ctrlKey &&
         (event.code === 'KeyN' || event.key.toLowerCase() === 'n') &&
-        !isTyping
+        !isTyping &&
+        !dialogOpen
       ) {
         event.preventDefault();
         event.stopPropagation();

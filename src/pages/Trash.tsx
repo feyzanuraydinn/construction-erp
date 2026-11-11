@@ -18,6 +18,7 @@ import {
   LoadingSpinner,
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
+import { RESTORE_PARENT_MISSING } from '../database/repositories/trashBundle';
 import { formatDate, formatCurrency } from '../utils/formatters';
 import type { TrashItem, BadgeVariant } from '../types';
 
@@ -75,8 +76,16 @@ function Trash() {
   const handleRestoreConfirm = async () => {
     if (!confirmDialog.item) return;
     try {
-      await window.electronAPI.trash.restore(confirmDialog.item.id);
+      const result = await window.electronAPI.trash.restore(confirmDialog.item.id);
       setConfirmDialog({ open: false, type: '', item: null });
+      if (!result.success) {
+        toast.error(
+          result.error === RESTORE_PARENT_MISSING
+            ? t('trash.restoreParentMissing')
+            : t('trash.restoreError')
+        );
+        return;
+      }
       toast.success(t('trash.restoreSuccess'));
       loadTrash();
     } catch (error) {
@@ -119,7 +128,7 @@ function Trash() {
         case 'project':
           return data.name;
         case 'transaction':
-          return `${data.description || t('trash.transactionLabel')} - ${formatCurrency(data.amount)}`;
+          return `${data.description || t('trash.transactionLabel')} - ${formatCurrency(data.amount, data.currency || 'TRY')}`;
         case 'material':
           return data.name;
         default:

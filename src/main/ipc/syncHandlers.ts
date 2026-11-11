@@ -1,6 +1,7 @@
 import { IpcMainInvokeEvent } from 'electron';
 import { syncService } from '../SyncService';
 import { safeHandle } from './safeHandle';
+import { t } from '../i18n';
 
 export function registerSyncHandlers(): void {
   safeHandle('sync:getStatus', () => syncService.getStatus());
@@ -27,7 +28,7 @@ export function registerSyncHandlers(): void {
 
   safeHandle('sync:resolveConflict', async (_: IpcMainInvokeEvent, choice: unknown) => {
     if (choice !== 'use-local' && choice !== 'use-remote' && choice !== 'cancel') {
-      throw new Error('Geçersiz seçim.');
+      throw new Error(t('main.sync.invalidChoice'));
     }
     return syncService.resolveConflict(choice);
   });
