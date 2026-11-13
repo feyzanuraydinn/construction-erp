@@ -1,50 +1,41 @@
-/**
- * File-based Logger for Electron Main Process
- *
- * Features:
- * - Writes logs to files in the app data directory
- * - Automatic log rotation based on file size
- * - Console output (optional)
- * - Multiple log levels (debug, info, warn, error)
- *
- * @module logger
- */
-
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { LIMITS } from '../utils/constants';
-
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+import {
+  DEFAULT_LOG_LEVEL,
+  consoleFor,
+  formatLogLine,
+  isLevelEnabled,
+  withContext,
+  type ContextLogger,
+  type LevelLogger,
+  type LogLevel,
+} from '../utils/logger';
 
 interface LogConfig {
-  /** Minimum log level to record */
   level: LogLevel;
-  /** Maximum log file size in bytes before rotation */
   maxFileSize: number;
-  /** Maximum number of rotated log files to keep */
   maxFiles: number;
-  /** Whether to also output logs to console */
   logToConsole: boolean;
 }
 
-// Default configuration
 const DEFAULT_CONFIG: LogConfig = {
-  level: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
+  level: DEFAULT_LOG_LEVEL,
   maxFileSize: LIMITS.MAX_LOG_FILE_SIZE,
   maxFiles: LIMITS.MAX_LOG_FILES,
   logToConsole: true,
 };
 
-// Log level priority
-const LOG_LEVELS: Record<LogLevel, number> = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3,
-};
+function describe(data: unknown): string {
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return String(data);
+  }
+}
 
-class FileLogger {
+class FileLogger implements LevelLogger {
   private config: LogConfig;
   private logDir: string;
   private currentLogFile: string;
@@ -57,27 +48,20 @@ class FileLogger {
     this.currentLogFile = '';
   }
 
-  /**
-   * Initialize the logger (must be called after app.ready)
-   */
   init(): void {
     if (this.initialized) return;
 
     try {
       this.logDir = path.join(app.getPath('userData'), 'logs');
 
-      // Create logs directory if it doesn't exist
       if (!fs.existsSync(this.logDir)) {
         fs.mkdirSync(this.logDir, { recursive: true });
       }
 
-      // Set current log file
       this.currentLogFile = path.join(this.logDir, 'app.log');
 
-      // Check if rotation is needed
       this.rotateIfNeeded();
 
-      // Open write stream
       this.writeStream = fs.createWriteStream(this.currentLogFile, { flags: 'a' });
 
       this.initialized = true;
@@ -87,9 +71,6 @@ class FileLogger {
     }
   }
 
-  /**
-   * Rotate log files if current file exceeds max size
-   */
   private rotateIfNeeded(): void {
     try {
       if (!fs.existsSync(this.currentLogFile)) return;
@@ -97,79 +78,49 @@ class FileLogger {
       const stats = fs.statSync(this.currentLogFile);
       if (stats.size < this.config.maxFileSize) return;
 
-      // Close current stream
+      const wasWriting = this.writeStream !== null;
       if (this.writeStream) {
-        this.writeStream.close();
+        this.writeStream.end();
         this.writeStream = null;
       }
 
-      // Rotate files
       for (let i = this.config.maxFiles - 1; i >= 0; i--) {
         const oldFile = i === 0 ? this.currentLogFile : path.join(this.logDir, `app.${i}.log`);
         const newFile = path.join(this.logDir, `app.${i + 1}.log`);
 
         if (fs.existsSync(oldFile)) {
           if (i === this.config.maxFiles - 1) {
-            // Delete oldest file
             fs.unlinkSync(oldFile);
           } else {
-            // Rename file
             fs.renameSync(oldFile, newFile);
           }
         }
+      }
+
+      if (wasWriting) {
+        this.writeStream = fs.createWriteStream(this.currentLogFile, { flags: 'a' });
       }
     } catch (error) {
       console.error('Log rotation failed:', error);
     }
   }
 
-  /**
-   * Format log message
-   */
-  private formatMessage(level: LogLevel, message: string, context?: string): string {
-    const timestamp = new Date().toISOString();
-    const contextStr = context ? `[${context}] ` : '';
-    return `${timestamp} [${level.toUpperCase().padEnd(5)}] ${contextStr}${message}\n`;
-  }
-
-  /**
-   * Check if should log this level
-   */
-  private shouldLog(level: LogLevel): boolean {
-    return LOG_LEVELS[level] >= LOG_LEVELS[this.config.level];
-  }
-
-  /**
-   * Write to log file
-   */
   private write(level: LogLevel, message: string, context?: string, data?: unknown): void {
-    if (!this.shouldLog(level)) return;
+    if (!isLevelEnabled(level, this.config.level)) return;
 
-    const formatted = this.formatMessage(level, message, context);
+    const line = formatLogLine(level, message, context);
 
-    // Write to file
     if (this.writeStream) {
-      this.writeStream.write(formatted);
+      this.writeStream.write(`${line}\n`);
       if (data !== undefined) {
-        this.writeStream.write(`  Data: ${JSON.stringify(data)}\n`);
+        this.writeStream.write(`  Data: ${describe(data)}\n`);
       }
     }
 
-    // Write to console
     if (this.config.logToConsole) {
-      const consoleFn =
-        level === 'error'
-          ? console.error
-          : level === 'warn'
-            ? console.warn
-            : level === 'debug'
-              ? console.debug
-              : console.log;
-
-      consoleFn(formatted.trim(), data !== undefined ? data : '');
+      consoleFor(level)(line, data !== undefined ? data : '');
     }
 
-    // Check rotation after write
     this.rotateIfNeeded();
   }
 
@@ -185,7 +136,7 @@ class FileLogger {
     this.write('warn', message, context, data);
   }
 
-  error(message: string, context?: string, error?: Error | unknown): void {
+  error(message: string, context?: string, error?: unknown): void {
     this.write('error', message, context);
     if (error) {
       if (error instanceof Error) {
@@ -194,84 +145,14 @@ class FileLogger {
           this.write('error', `  Stack: ${error.stack}`, context);
         }
       } else {
-        this.write('error', `  Error data: ${JSON.stringify(error)}`, context);
+        this.write('error', `  Error data: ${describe(error)}`, context);
       }
     }
   }
 
-  /**
-   * Log IPC call
-   */
-  ipc(channel: string, args?: unknown): void {
-    this.debug(`IPC: ${channel}`, 'IPC', args);
-  }
-
-  /**
-   * Log database operation
-   */
-  db(operation: string, details?: unknown): void {
-    this.debug(`DB: ${operation}`, 'Database', details);
-  }
-
-  /**
-   * Create a timed logger
-   */
-  time(label: string, context?: string): () => void {
-    const start = Date.now();
-    return () => {
-      const duration = Date.now() - start;
-      this.debug(`${label} completed in ${duration}ms`, context);
-    };
-  }
-
-  /**
-   * Get log file path
-   */
-  getLogPath(): string {
-    return this.currentLogFile;
-  }
-
-  /**
-   * Get log directory
-   */
-  getLogDir(): string {
-    return this.logDir;
-  }
-
-  /**
-   * Read recent logs from file
-   */
-  async getRecentLogs(lines = 100): Promise<string[]> {
-    if (!fs.existsSync(this.currentLogFile)) {
-      return [];
-    }
-
-    const content = await fs.promises.readFile(this.currentLogFile, 'utf-8');
-    const allLines = content.split('\n').filter(Boolean);
-    return allLines.slice(-lines);
-  }
-
-  /**
-   * Close the logger
-   */
-  close(): void {
-    if (this.writeStream) {
-      this.writeStream.close();
-      this.writeStream = null;
-    }
-    this.initialized = false;
-  }
-
-  /**
-   * Set log level
-   */
-  setLevel(level: LogLevel): void {
-    this.config.level = level;
+  forContext(context: string): ContextLogger {
+    return withContext(this, context);
   }
 }
 
-// Export singleton instance
 export const mainLogger = new FileLogger();
-
-// Export for direct use
-export default mainLogger;

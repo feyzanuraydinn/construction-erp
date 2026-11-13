@@ -4,8 +4,6 @@ import '../../i18n';
 import Companies from '../../pages/Companies';
 import type { CompanyWithBalance } from '../../types';
 
-// ==================== MOCKS ====================
-
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
@@ -18,8 +16,6 @@ const mockToast = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi
 vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
-
-// ==================== HELPERS ====================
 
 const mockCompanies: CompanyWithBalance[] = [
   {
@@ -66,15 +62,11 @@ const mockCompanies: CompanyWithBalance[] = [
   } as CompanyWithBalance,
 ];
 
-// ==================== TESTS ====================
-
 describe('Companies', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   });
-
-  // ---------- Initial render ----------
 
   it('should render page title and subtitle', async () => {
     await act(async () => {
@@ -107,20 +99,17 @@ describe('Companies', () => {
     });
   });
 
-  // ---------- Loading state ----------
-
   it('should show loading spinner while data is loading', async () => {
-    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
 
     await act(async () => {
       render(<Companies />);
     });
 
-    // Title should be visible but table should be loading
     expect(screen.getByText('Cari Hesaplar')).toBeInTheDocument();
   });
-
-  // ---------- Empty state ----------
 
   it('should show empty state when no companies exist', async () => {
     await act(async () => {
@@ -133,10 +122,10 @@ describe('Companies', () => {
     });
   });
 
-  // ---------- Data rendering ----------
-
   it('should render companies in the table', async () => {
-    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue(mockCompanies);
+    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCompanies
+    );
 
     await act(async () => {
       render(<Companies />);
@@ -150,7 +139,9 @@ describe('Companies', () => {
   });
 
   it('should render table column headers', async () => {
-    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue(mockCompanies);
+    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCompanies
+    );
 
     await act(async () => {
       render(<Companies />);
@@ -165,8 +156,6 @@ describe('Companies', () => {
     });
   });
 
-  // ---------- Search interaction ----------
-
   it('should have a search input with correct placeholder', async () => {
     await act(async () => {
       render(<Companies />);
@@ -178,7 +167,9 @@ describe('Companies', () => {
   });
 
   it('should filter companies when searching', async () => {
-    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue(mockCompanies);
+    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCompanies
+    );
 
     await act(async () => {
       render(<Companies />);
@@ -193,16 +184,15 @@ describe('Companies', () => {
       fireEvent.change(searchInput, { target: { value: 'Mehmet' } });
     });
 
-    // After debounce, only matching company should remain
     await waitFor(() => {
       expect(screen.getByText('Mehmet Yılmaz')).toBeInTheDocument();
     });
   });
 
-  // ---------- Navigation ----------
-
   it('should navigate to company detail when a row is clicked', async () => {
-    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue(mockCompanies);
+    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCompanies
+    );
 
     await act(async () => {
       render(<Companies />);
@@ -212,7 +202,6 @@ describe('Companies', () => {
       expect(screen.getByText('ABC İnşaat A.Ş.')).toBeInTheDocument();
     });
 
-    // Click on the company name cell (which is inside a table row)
     await act(async () => {
       fireEvent.click(screen.getByText('ABC İnşaat A.Ş.'));
     });
@@ -220,21 +209,19 @@ describe('Companies', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/companies/1');
   });
 
-  // ---------- Error handling ----------
-
   it('should show error toast when loading fails', async () => {
-    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('DB Error'));
+    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('DB Error')
+    );
 
     await act(async () => {
       render(<Companies />);
     });
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith('Veriler yüklenirken hata oluştu');
+      expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('Veriler yüklenemedi:'));
     });
   });
-
-  // ---------- Empty state action button ----------
 
   it('should show add new button in empty state', async () => {
     await act(async () => {

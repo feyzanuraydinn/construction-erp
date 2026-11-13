@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useBulkDelete } from '../../hooks/useBulkDelete';
 
-// Mock react-i18next
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
@@ -13,7 +12,6 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock toast context
 const mockToast = {
   success: vi.fn(),
   error: vi.fn(),

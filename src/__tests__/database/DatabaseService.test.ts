@@ -1,11 +1,11 @@
 // @vitest-environment node
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import initSqlJs from 'sql.js';
 import { DatabaseService, InvalidDatabaseError } from '../../database/DatabaseService';
-import { localDateStamp } from '../../database/fileUtils';
+import { toLocalDateString } from '../../utils/dates';
 
 let userDataPath: string;
 let service: DatabaseService;
@@ -55,7 +55,7 @@ describe('DatabaseService.save', () => {
 });
 
 describe('DatabaseService.createBackup', () => {
-  it('writes latest_backup.db, its meta file and one archive per day', () => {
+  it('writes latest_backup.db and one archive per day', () => {
     const backupDir = path.join(userDataPath, 'backups');
     insertCompany(service, 'First');
     service.createBackup(backupDir);
@@ -63,10 +63,10 @@ describe('DatabaseService.createBackup', () => {
     service.createBackup(backupDir);
 
     expect(fs.existsSync(path.join(backupDir, 'latest_backup.db'))).toBe(true);
-    expect(fs.existsSync(path.join(backupDir, 'backup_meta.json'))).toBe(true);
+    expect(fs.existsSync(path.join(backupDir, 'backup_meta.json'))).toBe(false);
 
     const archives = fs.readdirSync(path.join(backupDir, 'daily'));
-    expect(archives).toEqual([`daily-${localDateStamp()}.db`]);
+    expect(archives).toEqual([`daily-${toLocalDateString()}.db`]);
   });
 
   it('keeps the first state of the day in the daily archive', async () => {
@@ -78,7 +78,7 @@ describe('DatabaseService.createBackup', () => {
 
     const SQL = await initSqlJs();
     const archive = new SQL.Database(
-      fs.readFileSync(path.join(backupDir, 'daily', `daily-${localDateStamp()}.db`))
+      fs.readFileSync(path.join(backupDir, 'daily', `daily-${toLocalDateString()}.db`))
     );
     const names = archive.exec('SELECT name FROM companies')[0].values.map((row) => String(row[0]));
     archive.close();
@@ -112,7 +112,6 @@ describe('DatabaseService.loadFromBuffer', () => {
     const garbage = Buffer.from('<html>error page</html>'.repeat(100));
     await expect(service.loadFromBuffer(garbage)).rejects.toBeInstanceOf(InvalidDatabaseError);
     expect(companyNames(service)).toEqual(['Keep me']);
-    // The service must still be usable after a rejected load.
     insertCompany(service, 'Still works');
     expect(companyNames(service)).toEqual(['Keep me', 'Still works']);
   });
@@ -135,7 +134,6 @@ describe('DatabaseService.loadFromBuffer', () => {
     await service.loadFromBuffer(snapshot);
 
     expect(companyNames(service)).toEqual(['Before']);
-    // Repositories must point at the new database.
     expect(service.companies.getAll().map((c) => c.name)).toEqual(['Before']);
   });
 
@@ -143,7 +141,6 @@ describe('DatabaseService.loadFromBuffer', () => {
     const snapshot = service.exportBuffer();
     const SQL = await initSqlJs();
     const old = new SQL.Database(snapshot);
-    // Roll the schema back to version 1 (before payment_allocations and company codes).
     old.run('DROP TABLE payment_allocations');
     old.run('DROP INDEX IF EXISTS idx_companies_code');
     old.run('ALTER TABLE companies DROP COLUMN code');
@@ -173,5 +170,22 @@ describe('DatabaseService.loadFromBuffer', () => {
 
     service = new DatabaseService();
     await service.init(userDataPath);
+  });
+});
+
+describe('DatabaseService logging', () => {
+  it('writes its messages to the logger it was given', async () => {
+    const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-log-'));
+    const logged = new DatabaseService(log);
+    await logged.init(dir);
+    logged.createBackup(path.join(dir, 'backups'));
+    logged.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+
+    const messages = log.info.mock.calls.map(([message]) => message);
+    expect(messages).toContain('New database created');
+    expect(messages.some((message) => message.startsWith('Backup created:'))).toBe(true);
+    expect(log.error).not.toHaveBeenCalled();
   });
 });

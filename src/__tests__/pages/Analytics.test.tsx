@@ -3,14 +3,11 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import '../../i18n';
 import Analytics from '../../pages/Analytics';
 
-// ==================== MOCKS ====================
-
 const mockToast = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() };
 vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
 
-// Mock recharts to avoid rendering issues in JSDOM
 vi.mock('recharts', () => ({
   LineChart: ({ children }: any) => <div data-testid="line-chart">{children}</div>,
   Line: () => null,
@@ -26,20 +23,58 @@ vi.mock('recharts', () => ({
   CartesianGrid: () => null,
   Tooltip: () => null,
   Legend: () => null,
-  ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
+  ResponsiveContainer: ({ children }: any) => (
+    <div data-testid="responsive-container">{children}</div>
+  ),
   ReferenceLine: () => null,
 }));
 
-// ==================== HELPERS ====================
-
 const mockTransactions = [
-  { id: 1, type: 'invoice_out', scope: 'cari', amount: 100000, currency: 'TRY', date: '2025-03-15', description: 'Test', company_id: 1, company_name: 'A', project_id: null, project_name: null },
-  { id: 2, type: 'invoice_in', scope: 'project', amount: 50000, currency: 'TRY', date: '2025-06-10', description: 'Test2', company_id: null, company_name: null, project_id: 1, project_name: 'B' },
+  {
+    id: 1,
+    type: 'invoice_out',
+    scope: 'cari',
+    amount: 100000,
+    currency: 'TRY',
+    date: '2025-03-15',
+    description: 'Test',
+    company_id: 1,
+    company_name: 'A',
+    project_id: null,
+    project_name: null,
+  },
+  {
+    id: 2,
+    type: 'invoice_in',
+    scope: 'project',
+    amount: 50000,
+    currency: 'TRY',
+    date: '2025-06-10',
+    description: 'Test2',
+    company_id: null,
+    company_name: null,
+    project_id: 1,
+    project_name: 'B',
+  },
 ];
 
 const mockProjects = [
-  { id: 1, code: 'P-001', name: 'Konut Projesi', status: 'active', total_income: 500000, total_expense: 300000 },
-  { id: 2, code: 'P-002', name: 'Villa Projesi', status: 'active', total_income: 800000, total_expense: 600000 },
+  {
+    id: 1,
+    code: 'P-001',
+    name: 'Konut Projesi',
+    status: 'active',
+    total_income: 500000,
+    total_expense: 300000,
+  },
+  {
+    id: 2,
+    code: 'P-002',
+    name: 'Villa Projesi',
+    status: 'active',
+    total_income: 800000,
+    total_expense: 600000,
+  },
 ];
 
 const mockCompanies = [
@@ -58,24 +93,46 @@ function setupMocksEmpty() {
   (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (window.electronAPI.analytics.getMonthlyStats as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-  (window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-  (window.electronAPI.analytics.getCompanyMonthlyStats as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-  (window.electronAPI.analytics.getCashFlowReport as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-  (window.electronAPI.analytics.getAgingReceivables as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  (
+    window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>
+  ).mockResolvedValue([]);
+  (
+    window.electronAPI.analytics.getCompanyMonthlyStats as ReturnType<typeof vi.fn>
+  ).mockResolvedValue([]);
+  (window.electronAPI.analytics.getCashFlowReport as ReturnType<typeof vi.fn>).mockResolvedValue(
+    []
+  );
+  (window.electronAPI.analytics.getAgingReceivables as ReturnType<typeof vi.fn>).mockResolvedValue(
+    []
+  );
 }
 
 function setupMocksWithData() {
-  (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
-  (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue(mockCompanies);
-  (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockTransactions);
-  (window.electronAPI.analytics.getMonthlyStats as ReturnType<typeof vi.fn>).mockResolvedValue(mockMonthlyStats);
-  (window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-  (window.electronAPI.analytics.getCompanyMonthlyStats as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-  (window.electronAPI.analytics.getCashFlowReport as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-  (window.electronAPI.analytics.getAgingReceivables as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockProjects
+  );
+  (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockCompanies
+  );
+  (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockTransactions
+  );
+  (window.electronAPI.analytics.getMonthlyStats as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockMonthlyStats
+  );
+  (
+    window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>
+  ).mockResolvedValue([]);
+  (
+    window.electronAPI.analytics.getCompanyMonthlyStats as ReturnType<typeof vi.fn>
+  ).mockResolvedValue([]);
+  (window.electronAPI.analytics.getCashFlowReport as ReturnType<typeof vi.fn>).mockResolvedValue(
+    []
+  );
+  (window.electronAPI.analytics.getAgingReceivables as ReturnType<typeof vi.fn>).mockResolvedValue(
+    []
+  );
 }
-
-// ==================== TESTS ====================
 
 describe('Analytics', () => {
   beforeEach(() => {
@@ -83,22 +140,23 @@ describe('Analytics', () => {
     setupMocksEmpty();
   });
 
-  // ---------- Loading state ----------
-
   it('should show loading spinner while initial data is loading', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.company.getWithBalance as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
 
     await act(async () => {
       render(<Analytics />);
     });
 
-    // While loading, the page title should NOT be visible (Analytics returns LoadingSpinner early)
     expect(screen.queryByText('Analizler & Raporlar')).not.toBeInTheDocument();
   });
-
-  // ---------- Initial render ----------
 
   it('should render page title and subtitle after loading', async () => {
     await act(async () => {
@@ -129,12 +187,9 @@ describe('Analytics', () => {
     });
 
     await waitFor(() => {
-      // "Tüm Zamanlar" is the "all" option in the year filter
       expect(screen.getByText('Tüm Zamanlar')).toBeInTheDocument();
     });
   });
-
-  // ---------- Empty state ----------
 
   it('should show empty state for charts when no data exists', async () => {
     await act(async () => {
@@ -142,7 +197,6 @@ describe('Analytics', () => {
     });
 
     await waitFor(() => {
-      // When no monthly stats, charts show "Veri bulunamadı"
       const noDataElements = screen.getAllByText('Veri bulunamadı');
       expect(noDataElements.length).toBeGreaterThanOrEqual(1);
     });
@@ -170,8 +224,6 @@ describe('Analytics', () => {
     });
   });
 
-  // ---------- Data rendering ----------
-
   it('should render summary cards with income, expense, and profit labels', async () => {
     setupMocksWithData();
 
@@ -180,8 +232,6 @@ describe('Analytics', () => {
     });
 
     await waitFor(() => {
-      // Since the transactions have year 2025, the selected year becomes 2025
-      // so the labels are the yearly variants
       const incomeLabels = screen.getAllByText(/Gelir/);
       expect(incomeLabels.length).toBeGreaterThanOrEqual(1);
       const expenseLabels = screen.getAllByText(/Gider/);
@@ -202,8 +252,6 @@ describe('Analytics', () => {
     });
   });
 
-  // ---------- Tab switching ----------
-
   it('should switch to cash flow tab', async () => {
     setupMocksWithData();
 
@@ -220,8 +268,6 @@ describe('Analytics', () => {
       fireEvent.click(cashFlowTab);
     });
 
-    // Cash flow tab content should now be visible
-    // When selectedYear is a specific year, it will try to load cash flow data
     await waitFor(() => {
       expect(window.electronAPI.analytics.getCashFlowReport).toHaveBeenCalled();
     });
@@ -248,17 +294,17 @@ describe('Analytics', () => {
     });
   });
 
-  // ---------- Error handling ----------
-
   it('should show error toast when initial loading fails', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API Error'));
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('API Error')
+    );
 
     await act(async () => {
       render(<Analytics />);
     });
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith('Veriler yüklenirken hata oluştu');
+      expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('Veriler yüklenemedi:'));
     });
   });
 });

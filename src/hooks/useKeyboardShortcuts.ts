@@ -1,27 +1,24 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
+import { useLatest } from './useLatest';
 
 interface ShortcutHandlers {
   onNew?: () => void;
-  onEscape?: () => void;
 }
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
-  // Use ref to always access latest handlers without re-registering listener
-  const handlersRef = useRef(handlers);
-  handlersRef.current = handlers;
+  const handlersRef = useLatest(handlers);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Check if we're typing in an input, textarea, or contenteditable
-      const target = event.target as HTMLElement;
+      const target = event.target instanceof HTMLElement ? event.target : null;
       const isTyping =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.tagName === 'SELECT' ||
-        target.isContentEditable;
+        target !== null &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
       const dialogOpen = document.querySelector('[aria-modal="true"]') !== null;
 
-      // Use event.code for consistent detection regardless of Caps Lock or Shift
       if (
         event.ctrlKey &&
         (event.code === 'KeyN' || event.key.toLowerCase() === 'n') &&
@@ -31,21 +28,10 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         event.preventDefault();
         event.stopPropagation();
         handlersRef.current.onNew?.();
-        return;
-      }
-
-      // Escape - Close modal/cancel (only when not in input or when input is empty)
-      if (event.key === 'Escape') {
-        // Don't prevent default for Escape when typing - let it work normally
-        if (!isTyping || (target as HTMLInputElement).value === '') {
-          handlersRef.current.onEscape?.();
-        }
-        return;
       }
     };
 
-    // Use capture phase to catch event before browser default actions
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
-  }, []); // Empty deps - listener registered once, uses ref for latest handlers
+  }, [handlersRef]);
 }

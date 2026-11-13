@@ -1,27 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useToast } from '../../contexts/ToastContext';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import {
-  Modal,
-  ModalBody,
-  ModalFooter,
-  Button,
-  Input,
-  Select,
-  Textarea,
-} from '../ui';
+import { Modal, ModalBody, ModalFooter } from '../ui/Modal';
+import { Button } from '../ui/Button';
+import { Input, Select, Textarea } from '../ui/Input';
+import { AmountField } from '../ui/AmountField';
 import { MATERIAL_CATEGORIES, MATERIAL_UNITS } from '../../utils/constants';
-import { materialSchema } from '../../utils/schemas';
-import type { MaterialFormInput } from '../../utils/schemas';
+import { materialSchema, type MaterialFormInput } from '../../utils/schemas';
 import type { Material } from '../../types';
+import { useTranslatedOptions } from '../../hooks/useTranslatedOptions';
+import { useSaveAction } from '../../hooks/useSaveAction';
 
 export interface MaterialModalProps {
   isOpen: boolean;
   onClose: () => void;
   material: Material | null;
   onSave: (isNew: boolean) => void;
+  className?: string;
 }
 
 const materialDefaults: MaterialFormInput = {
@@ -34,13 +30,21 @@ const materialDefaults: MaterialFormInput = {
   notes: '',
 };
 
-export function MaterialModal({ isOpen, onClose, material, onSave }: MaterialModalProps) {
+export function MaterialModal({
+  isOpen,
+  onClose,
+  material,
+  onSave,
+  className,
+}: MaterialModalProps) {
   const { t } = useTranslation();
-  const toast = useToast();
-  const [loading, setLoading] = useState(false);
+  const categoryOptions = useTranslatedOptions(MATERIAL_CATEGORIES);
+  const unitOptions = useTranslatedOptions(MATERIAL_UNITS);
+  const { saving: loading, runSave } = useSaveAction();
 
   const {
     register,
+    control,
     handleSubmit: rhfHandleSubmit,
     setValue,
     watch,
@@ -75,9 +79,8 @@ export function MaterialModal({ isOpen, onClose, material, onSave }: MaterialMod
     if (isOpen) initForm();
   }, [material, isOpen, reset]);
 
-  const onSubmit = async (formValues: MaterialFormInput) => {
-    setLoading(true);
-    try {
+  const onSubmit = (formValues: MaterialFormInput) =>
+    runSave(async () => {
       const parsed = materialSchema.parse(formValues);
       const data = {
         ...parsed,
@@ -92,17 +95,19 @@ export function MaterialModal({ isOpen, onClose, material, onSave }: MaterialMod
         await window.electronAPI.material.create(data);
         onSave(true);
       }
-    } catch (error) {
-      console.error('Save error:', error);
-      toast.error(t('common.saveError'));
-    } finally {
-      setLoading(false);
-    }
-  };
+    });
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={material ? t('stock.editMaterial') : t('stock.newMaterial')}>
-      <form onSubmit={rhfHandleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+    <Modal
+      className={className}
+      isOpen={isOpen}
+      onClose={onClose}
+      title={material ? t('stock.editMaterial') : t('stock.newMaterial')}
+    >
+      <form
+        onSubmit={rhfHandleSubmit(onSubmit)}
+        className="flex flex-col flex-1 min-h-0 overflow-hidden"
+      >
         <ModalBody className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Input
@@ -113,7 +118,7 @@ export function MaterialModal({ isOpen, onClose, material, onSave }: MaterialMod
             />
             <Select
               label={t('stock.form.category')}
-              options={MATERIAL_CATEGORIES}
+              options={categoryOptions}
               value={category ?? ''}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                 setValue('category', e.target.value, { shouldValidate: true })
@@ -133,7 +138,7 @@ export function MaterialModal({ isOpen, onClose, material, onSave }: MaterialMod
           <div className="grid grid-cols-3 gap-4">
             <Select
               label={t('stock.form.unit')}
-              options={MATERIAL_UNITS}
+              options={unitOptions}
               value={unit}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                 setValue('unit', e.target.value, { shouldValidate: true })
@@ -141,19 +146,17 @@ export function MaterialModal({ isOpen, onClose, material, onSave }: MaterialMod
               error={errors.unit?.message}
               required
             />
-            <Input
+            <AmountField
+              control={control}
+              name="min_stock"
               label={t('stock.form.minStock')}
-              type="number"
-              step="0.01"
-              {...register('min_stock')}
               error={errors.min_stock?.message}
             />
             {!material && (
-              <Input
+              <AmountField
+                control={control}
+                name="current_stock"
                 label={t('stock.form.currentStock')}
-                type="number"
-                step="0.01"
-                {...register('current_stock')}
                 error={errors.current_stock?.message}
               />
             )}

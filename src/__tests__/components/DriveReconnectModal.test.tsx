@@ -1,11 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '../../i18n';
-import type { SyncStatusPayload } from '../../types/electron';
+import type { SyncStatusPayload } from '../../types/sync';
 
 const sync = vi.hoisted(() => ({
   status: { status: 'disconnected' } as SyncStatusPayload,
   refresh: vi.fn(async () => undefined),
+}));
+
+const toast = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+}));
+
+vi.mock('../../contexts/ToastContext', () => ({
+  useToast: () => toast,
 }));
 
 vi.mock('../../contexts/SyncContext', () => ({
@@ -61,7 +72,9 @@ describe('DriveReconnectModal', () => {
 
   it('shows why connecting failed and allows another try', async () => {
     sync.status = { status: 'disconnected', driveRequired: true };
-    window.electronAPI.gdrive.connect = vi.fn().mockResolvedValue({ success: false, error: 'Bağlantı reddedildi' });
+    window.electronAPI.gdrive.connect = vi
+      .fn()
+      .mockResolvedValue({ success: false, error: 'Bağlantı reddedildi' });
     render(<DriveReconnectModal />);
     const connect = await screen.findByRole('button', { name: /Google ile yeniden bağlan/ });
     await waitFor(() => expect(connect).toBeEnabled());
@@ -77,12 +90,19 @@ describe('DriveReconnectModal', () => {
     expect(await screen.findByText(/Client ID \/ Client Secret/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Google ile yeniden bağlan/ })).toBeDisabled();
 
-    fireEvent.change(screen.getByPlaceholderText('xxxx.apps.googleusercontent.com'), { target: { value: 'id.apps.googleusercontent.com' } });
+    fireEvent.change(screen.getByPlaceholderText('xxxx.apps.googleusercontent.com'), {
+      target: { value: 'id.apps.googleusercontent.com' },
+    });
     fireEvent.change(screen.getByPlaceholderText('GOCSPX-...'), { target: { value: 'secret' } });
     fireEvent.click(screen.getByRole('button', { name: 'Bilgileri kaydet' }));
     await waitFor(() =>
-      expect(window.electronAPI.gdrive.saveCredentials).toHaveBeenCalledWith('id.apps.googleusercontent.com', 'secret')
+      expect(window.electronAPI.gdrive.saveCredentials).toHaveBeenCalledWith(
+        'id.apps.googleusercontent.com',
+        'secret'
+      )
     );
-    await waitFor(() => expect(screen.getByRole('button', { name: /Google ile yeniden bağlan/ })).toBeEnabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Google ile yeniden bağlan/ })).toBeEnabled()
+    );
   });
 });

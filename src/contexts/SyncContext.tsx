@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import type { SyncStatusPayload, SyncConflictPayload } from '../types/electron';
+import type { SyncStatusPayload, SyncConflictPayload } from '../types/sync';
+import { clearAllCache } from '../hooks/useDataCache';
 
 interface SyncContextType {
   status: SyncStatusPayload;
   conflict: SyncConflictPayload | null;
   clearConflict: () => void;
   refresh: () => Promise<void>;
-  triggerReload: number; // counter that increments when remote data was pulled — pages can useEffect on this
+  triggerReload: number;
 }
 
 const defaultStatus: SyncStatusPayload = { status: 'disconnected' };
@@ -31,15 +32,18 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const s = await window.electronAPI.sync.getStatus();
       setStatus(s);
-    } catch {
-      // ignore
+    } catch (error) {
+      console.error('Sync status load error:', error);
     }
   }, []);
 
   useEffect(() => {
     if (!window.electronAPI?.sync) return;
 
-    void refresh();
+    window.electronAPI.sync
+      .getStatus()
+      .then(setStatus)
+      .catch((error: unknown) => console.error('Sync status load error:', error));
 
     const offStatus = window.electronAPI.sync.onStatus((payload) => {
       setStatus(payload);
@@ -48,6 +52,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setConflict(payload);
     });
     const offReload = window.electronAPI.sync.onReloadRequired(() => {
+      clearAllCache();
       setTriggerReload((n) => n + 1);
     });
 
@@ -56,7 +61,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       offConflict();
       offReload();
     };
-  }, [refresh]);
+  }, []);
 
   const clearConflict = useCallback(() => setConflict(null), []);
 

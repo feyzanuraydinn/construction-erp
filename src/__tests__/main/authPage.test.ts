@@ -12,7 +12,11 @@ const base = {
 
 describe('Google sign-in result page', () => {
   it('renders a self-contained success page', () => {
-    const html = renderAuthPage({ ...base, variant: 'success', hint: 'Bu sekmeyi kapatabilirsiniz.' });
+    const html = renderAuthPage({
+      ...base,
+      variant: 'success',
+      hint: 'Bu sekmeyi kapatabilirsiniz.',
+    });
     expect(html).toMatch(/^<!doctype html>/);
     expect(html).toContain('<html lang="tr">');
     expect(html).toContain('<body class="success">');
@@ -22,7 +26,12 @@ describe('Google sign-in result page', () => {
   });
 
   it('escapes every text it is given and leaves the hint out when there is none', () => {
-    const html = renderAuthPage({ ...base, variant: 'error', message: '<img src=x onerror=alert(1)>', title: 'a & b' });
+    const html = renderAuthPage({
+      ...base,
+      variant: 'error',
+      message: '<img src=x onerror=alert(1)>',
+      title: 'a & b',
+    });
     expect(html).toContain('<body class="error">');
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).toContain('<h1>a &amp; b</h1>');

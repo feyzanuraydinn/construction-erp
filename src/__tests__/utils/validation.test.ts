@@ -58,27 +58,57 @@ describe('schemas', () => {
     expect(validateInput(companySchema, { ...company, iban: '' }).success).toBe(true);
     expect(validateInput(companySchema, { ...company, iban: 'TR' }).success).toBe(true);
     expect(validateInput(companySchema, { ...company, iban: 'TR12 34' }).success).toBe(false);
-    expect(validateInput(companySchema, { ...company, iban: 'TR33 0006 1005 1978 6457 8413 26' }).success).toBe(true);
+    expect(
+      validateInput(companySchema, { ...company, iban: 'TR33 0006 1005 1978 6457 8413 26' }).success
+    ).toBe(true);
   });
 
   it('rejects a TC number with wrong check digits', () => {
-    expect(validateInput(companySchema, { ...company, type: 'person', tc_number: '12345678901' }).success).toBe(false);
-    expect(validateInput(companySchema, { ...company, type: 'person', tc_number: '10000000146' }).success).toBe(true);
+    expect(
+      validateInput(companySchema, { ...company, type: 'person', tc_number: '12345678901' }).success
+    ).toBe(false);
+    expect(
+      validateInput(companySchema, { ...company, type: 'person', tc_number: '10000000146' }).success
+    ).toBe(true);
   });
 
   const project = { code: 'P1', name: 'P', ownership_type: 'own' };
 
   it('rejects a project that ends before it starts', () => {
-    expect(validateInput(projectSchema, { ...project, planned_start: '2026-05-01', planned_end: '2026-04-01' }).success).toBe(false);
-    expect(validateInput(projectSchema, { ...project, actual_start: '2026-05-01', actual_end: '2026-04-30' }).success).toBe(false);
-    expect(validateInput(projectSchema, { ...project, planned_start: '2026-05-01', planned_end: '2026-05-01' }).success).toBe(true);
+    expect(
+      validateInput(projectSchema, {
+        ...project,
+        planned_start: '2026-05-01',
+        planned_end: '2026-04-01',
+      }).success
+    ).toBe(false);
+    expect(
+      validateInput(projectSchema, {
+        ...project,
+        actual_start: '2026-05-01',
+        actual_end: '2026-04-30',
+      }).success
+    ).toBe(false);
+    expect(
+      validateInput(projectSchema, {
+        ...project,
+        planned_start: '2026-05-01',
+        planned_end: '2026-05-01',
+      }).success
+    ).toBe(true);
   });
 
   it('rejects negative budgets, areas and unit prices', () => {
     expect(validateInput(projectSchema, { ...project, estimated_budget: -1 }).success).toBe(false);
     expect(validateInput(projectSchema, { ...project, total_area: '-5' }).success).toBe(false);
     expect(
-      validateInput(stockMovementSchema, { material_id: 1, movement_type: 'in', quantity: 1, unit_price: -3, date: '2026-01-01' }).success
+      validateInput(stockMovementSchema, {
+        material_id: 1,
+        movement_type: 'in',
+        quantity: 1,
+        unit_price: -3,
+        date: '2026-01-01',
+      }).success
     ).toBe(false);
   });
 

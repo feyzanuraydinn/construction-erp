@@ -1,9 +1,12 @@
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiSearch } from 'react-icons/fi';
-import { Card, CardBody, Input, Select } from '../../components/ui';
+import { Card, CardBody } from '../../components/ui/Card';
+import { Input, Select } from '../../components/ui/Input';
 import { TRANSACTION_TYPES, TRANSACTION_SCOPES } from '../../utils/constants';
 import type { Company } from '../../types';
+import { cn } from '../../utils/cn';
+import { useTranslatedOptions } from '../../hooks/useTranslatedOptions';
 
 export interface TransactionUIFilters {
   search: string;
@@ -19,21 +22,25 @@ interface TransactionFiltersPanelProps {
   filters: TransactionUIFilters;
   onFiltersChange: (filters: TransactionUIFilters) => void;
   companies: Company[];
+  className?: string;
 }
 
 export const TransactionFiltersPanel = memo(function TransactionFiltersPanel({
   filters,
   onFiltersChange,
   companies,
+  className,
 }: TransactionFiltersPanelProps) {
   const { t } = useTranslation();
+  const scopeOptions = useTranslatedOptions(TRANSACTION_SCOPES);
+  const typeOptions = useTranslatedOptions(TRANSACTION_TYPES);
 
   const updateFilter = (key: keyof TransactionUIFilters, value: string) => {
     onFiltersChange({ ...filters, [key]: value });
   };
 
   return (
-    <Card className="mb-6">
+    <Card className={cn('mb-6', className)}>
       <CardBody>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-7">
           <div className="col-span-2">
@@ -47,7 +54,7 @@ export const TransactionFiltersPanel = memo(function TransactionFiltersPanel({
             />
           </div>
           <Select
-            options={TRANSACTION_SCOPES.map((o) => ({ ...o, label: t(o.label) }))}
+            options={scopeOptions}
             value={filters.scope}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
               updateFilter('scope', e.target.value)
@@ -55,7 +62,7 @@ export const TransactionFiltersPanel = memo(function TransactionFiltersPanel({
             placeholder={t('transactions.filterSource')}
           />
           <Select
-            options={TRANSACTION_TYPES.map((o) => ({ ...o, label: t(o.label) }))}
+            options={typeOptions}
             value={filters.type}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
               updateFilter('type', e.target.value)

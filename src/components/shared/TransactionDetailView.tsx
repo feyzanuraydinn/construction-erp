@@ -1,33 +1,38 @@
-import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiEdit2 } from 'react-icons/fi';
-import { Modal, ModalBody, ModalFooter, Button, Badge } from '../ui';
+import { Modal, ModalBody, ModalFooter } from '../ui/Modal';
+import { Button } from '../ui/Button';
+import { SignedAmount } from '../ui/SignedAmount';
+import { TransactionTypeBadge } from './TransactionTypeBadge';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { getTransactionTextColor, getTransactionBadgeVariant, isIncomeType, isExpenseType } from '../../utils/transactionHelpers';
-import { TRANSACTION_TYPE_LABELS } from '../../utils/constants';
+import { getTransactionTextColor, transactionSign } from '../../utils/transactionHelpers';
 import type { TransactionWithDetails, PaymentAllocationWithDetails } from '../../types';
+import { allocationCounterpart } from '../../utils/allocations';
+import { isPaymentType } from '../../utils/transactionKinds';
+import { categoryLabel } from '../../utils/categories';
+import { DetailField } from './DetailFields';
 
 interface TransactionDetailViewProps {
   transaction: TransactionWithDetails | null;
   allocations: PaymentAllocationWithDetails[];
   onClose: () => void;
-  onEdit: (transaction: TransactionWithDetails) => void;
+  onEdit?: (transaction: TransactionWithDetails) => void;
+  className?: string;
 }
 
-/**
- * Shared transaction detail view modal.
- * Used across ProjectDetail, CompanyDetail, CompanyAccount, and Dashboard.
- */
 export function TransactionDetailView({
   transaction,
   allocations,
   onClose,
   onEdit,
+  className,
 }: TransactionDetailViewProps) {
   const { t } = useTranslation();
+  const viewingPayment = transaction ? isPaymentType(transaction.type) : false;
 
   return (
     <Modal
+      className={className}
       isOpen={!!transaction}
       onClose={onClose}
       title={t('shared.transactionDetail.title')}
@@ -37,80 +42,81 @@ export function TransactionDetailView({
         <ModalBody>
           <div className="space-y-4">
             <div className="flex items-center justify-between pb-4 border-b dark:border-gray-700">
-              <Badge
-                variant={getTransactionBadgeVariant(transaction.type)}
-                className="text-sm px-3 py-1.5"
-              >
-                {t(TRANSACTION_TYPE_LABELS[transaction.type])}
-              </Badge>
-              <span
-                className={`text-xl font-bold ${getTransactionTextColor(transaction.type)}`}
-              >
-                {isIncomeType(transaction.type) ? '+' : isExpenseType(transaction.type) ? '-' : ''}
-                {formatCurrency(transaction.amount, transaction.currency)}
+              <TransactionTypeBadge type={transaction.type} size="md" />
+              <span className={`text-xl font-bold ${getTransactionTextColor(transaction.type)}`}>
+                <SignedAmount
+                  sign={transactionSign(transaction.type)}
+                  amount={transaction.amount}
+                  currency={transaction.currency}
+                />
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-gray-500 dark:text-gray-400">{t('shared.transactionDetail.date')}</p>
-                <p className="font-medium">{formatDate(transaction.date)}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 dark:text-gray-400">{t('shared.transactionDetail.category')}</p>
-                <p className="font-medium">
-                  {transaction.category_name ? t(`categories.${transaction.category_name}`, transaction.category_name) : '-'}
-                </p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-gray-500 dark:text-gray-400">{t('shared.transactionDetail.description')}</p>
-                <p className="font-medium">{transaction.description}</p>
-              </div>
+              <DetailField label={t('shared.transactionDetail.date')}>
+                {formatDate(transaction.date)}
+              </DetailField>
+              <DetailField label={t('shared.transactionDetail.category')}>
+                {transaction.category_name ? categoryLabel(t, transaction.category_name) : '-'}
+              </DetailField>
+              <DetailField label={t('shared.transactionDetail.description')} wide>
+                {transaction.description}
+              </DetailField>
               {transaction.company_name && (
-                <div className="col-span-2">
-                  <p className="text-gray-500 dark:text-gray-400">{t('shared.transactionDetail.company')}</p>
-                  <p className="font-medium">{transaction.company_name}</p>
-                </div>
+                <DetailField label={t('shared.transactionDetail.company')} wide>
+                  {transaction.company_name}
+                </DetailField>
               )}
               {transaction.project_name && (
-                <div className="col-span-2">
-                  <p className="text-gray-500 dark:text-gray-400">{t('shared.transactionDetail.project')}</p>
-                  <p className="font-medium">{transaction.project_name}</p>
-                </div>
+                <DetailField label={t('shared.transactionDetail.project')} wide>
+                  {transaction.project_name}
+                </DetailField>
               )}
               {transaction.document_no && (
-                <div>
-                  <p className="text-gray-500 dark:text-gray-400">{t('shared.transactionDetail.documentNo')}</p>
-                  <p className="font-medium">{transaction.document_no}</p>
-                </div>
+                <DetailField label={t('shared.transactionDetail.documentNo')}>
+                  {transaction.document_no}
+                </DetailField>
               )}
               {transaction.currency !== 'TRY' && (
-                <div>
-                  <p className="text-gray-500 dark:text-gray-400">{t('shared.transactionDetail.tryEquivalent')}</p>
-                  <p className="font-medium">{formatCurrency(transaction.amount_try)}</p>
-                </div>
+                <DetailField label={t('shared.transactionDetail.tryEquivalent')}>
+                  {formatCurrency(transaction.amount_try)}
+                </DetailField>
               )}
               {allocations.length > 0 && (
                 <div className="col-span-2 pt-2 border-t dark:border-gray-700">
-                  <p className="mb-2 text-gray-500 dark:text-gray-400">{t('shared.allocations.title')}</p>
+                  <p className="mb-2 text-gray-500 dark:text-gray-400">
+                    {t('shared.allocations.title')}
+                  </p>
                   <div className="space-y-1.5">
-                    {allocations.map((alloc) => (
-                      <div key={alloc.id} className="flex items-center justify-between p-2 text-sm rounded bg-purple-50 dark:bg-purple-900/20">
-                        <div>
-                          <span className="font-medium">{alloc.invoice_description}</span>
-                          {alloc.invoice_document_no && (
-                            <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">({alloc.invoice_document_no})</span>
-                          )}
-                          <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
-                            {alloc.invoice_date ? formatDate(alloc.invoice_date) : ''}
+                    {allocations.map((alloc) => {
+                      const other = allocationCounterpart(alloc, viewingPayment);
+                      return (
+                        <div
+                          key={alloc.id}
+                          className="flex items-center justify-between p-2 text-sm rounded bg-purple-50 dark:bg-purple-900/20"
+                        >
+                          <div>
+                            <span className="font-medium">{other.description}</span>
+                            {other.documentNo && (
+                              <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                                ({other.documentNo})
+                              </span>
+                            )}
+                            <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
+                              {other.date ? formatDate(other.date) : ''}
+                            </span>
+                          </div>
+                          <span className="font-medium text-purple-600 dark:text-purple-400">
+                            {formatCurrency(alloc.amount)}
                           </span>
                         </div>
-                        <span className="font-medium text-purple-600 dark:text-purple-400">{formatCurrency(alloc.amount)}</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   <div className="flex justify-between pt-2 mt-2 text-sm border-t border-purple-200 dark:border-purple-700">
-                    <span className="text-gray-600 dark:text-gray-400">{t('shared.allocations.total')}</span>
+                    <span className="text-gray-600 dark:text-gray-400">
+                      {t('shared.allocations.total')}
+                    </span>
                     <span className="font-semibold text-purple-600 dark:text-purple-400">
                       {formatCurrency(allocations.reduce((s, a) => s + a.amount, 0))}
                     </span>
@@ -118,10 +124,9 @@ export function TransactionDetailView({
                 </div>
               )}
               {transaction.notes && (
-                <div className="col-span-2">
-                  <p className="text-gray-500 dark:text-gray-400">{t('shared.transactionDetail.notes')}</p>
-                  <p className="font-medium">{transaction.notes}</p>
-                </div>
+                <DetailField label={t('shared.transactionDetail.notes')} wide>
+                  {transaction.notes}
+                </DetailField>
               )}
             </div>
           </div>
@@ -131,16 +136,18 @@ export function TransactionDetailView({
         <Button variant="secondary" onClick={onClose}>
           {t('common.close')}
         </Button>
-        <Button
-          onClick={() => {
-            if (transaction) {
-              onEdit(transaction);
-            }
-          }}
-        >
-          <FiEdit2 className="mr-2" size={16} />
-          {t('common.edit')}
-        </Button>
+        {onEdit && (
+          <Button
+            onClick={() => {
+              if (transaction) {
+                onEdit(transaction);
+              }
+            }}
+          >
+            <FiEdit2 className="mr-2" size={16} />
+            {t('common.edit')}
+          </Button>
+        )}
       </ModalFooter>
     </Modal>
   );

@@ -1,40 +1,16 @@
-import tr from '../i18n/locales/tr.json';
-import en from '../i18n/locales/en.json';
-import sharedI18n from '../i18n';
+import { i18n as sharedI18n, languageSchema } from '../i18n';
+import type { Language } from '../types';
 
-type Translations = Record<string, unknown>;
-
-const locales: Record<string, Translations> = { tr, en };
-let currentLocale = 'tr';
-
-/**
- * Simple i18n for the main process.
- * Reads the same JSON files used by the renderer's i18next.
- */
 export function t(key: string, params?: Record<string, string | number>): string {
-  const keys = key.split('.');
-  let value: unknown = locales[currentLocale] ?? locales.tr;
-  for (const k of keys) {
-    if (typeof value === 'object' && value !== null) {
-      value = (value as Record<string, unknown>)[k];
-    } else {
-      return key;
-    }
-  }
-  if (typeof value !== 'string') return key;
-  if (params) {
-    return value.replace(/\{\{(\w+)\}\}/g, (_, k) => String(params[k] ?? ''));
-  }
-  return value;
+  return sharedI18n.t(key, params);
 }
 
 export function setLocale(locale: string): void {
-  if (locales[locale]) {
-    currentLocale = locale;
-    void sharedI18n.changeLanguage(locale);
-  }
+  const parsed = languageSchema.safeParse(locale);
+  if (!parsed.success) return;
+  void sharedI18n.changeLanguage(parsed.data);
 }
 
-export function getLocale(): string {
-  return currentLocale;
+export function getLocale(): Language {
+  return languageSchema.catch('tr').parse(sharedI18n.language);
 }

@@ -53,9 +53,13 @@ describe('TransactionRepository exchange rates', () => {
     expect(() => db.transactions.create({ ...base, exchange_rate: null })).toThrow();
   });
 
-  it('keeps the transaction\'s own rate when an edit sends no rate', () => {
+  it("keeps the transaction's own rate when an edit sends no rate", () => {
     const tx = db.transactions.create(base);
-    const updated = db.transactions.update(tx.id, { ...base, description: 'Steel (fixed typo)', exchange_rate: null });
+    const updated = db.transactions.update(tx.id, {
+      ...base,
+      description: 'Steel (fixed typo)',
+      exchange_rate: null,
+    });
     expect(updated?.exchange_rate).toBe(34.5678);
     expect(updated?.amount_try).toBe(34567.8);
   });
@@ -68,12 +72,18 @@ describe('TransactionRepository exchange rates', () => {
 
   it('refuses switching to another foreign currency without a new rate', () => {
     const tx = db.transactions.create(base);
-    expect(() => db.transactions.update(tx.id, { ...base, currency: 'EUR', exchange_rate: null })).toThrow();
+    expect(() =>
+      db.transactions.update(tx.id, { ...base, currency: 'EUR', exchange_rate: null })
+    ).toThrow();
   });
 
   it('uses rate 1 after switching to TRY', () => {
     const tx = db.transactions.create(base);
-    const updated = db.transactions.update(tx.id, { ...base, currency: 'TRY', exchange_rate: null });
+    const updated = db.transactions.update(tx.id, {
+      ...base,
+      currency: 'TRY',
+      exchange_rate: null,
+    });
     expect(updated?.exchange_rate).toBe(1);
     expect(updated?.amount_try).toBe(1000);
   });
@@ -92,8 +102,12 @@ describe('saveWithMatching', () => {
   };
 
   beforeEach(() => {
-    db.rawDb.run("INSERT INTO companies (id, code, type, account_type, name) VALUES (1, 'C1', 'company', 'supplier', 'S')");
-    db.rawDb.run("INSERT INTO projects (id, code, name, ownership_type, status) VALUES (5, 'P5', 'P', 'own', 'active')");
+    db.rawDb.run(
+      "INSERT INTO companies (id, code, type, account_type, name) VALUES (1, 'C1', 'company', 'supplier', 'S')"
+    );
+    db.rawDb.run(
+      "INSERT INTO projects (id, code, name, ownership_type, status) VALUES (5, 'P5', 'P', 'own', 'active')"
+    );
     projectId = 5;
     supplierId = 1;
     expenseCategory = categoryNamed('İşçilik');
@@ -101,12 +115,24 @@ describe('saveWithMatching', () => {
   });
 
   const invoice = (amount: number) =>
-    db.transactions.create({ ...tryBase, project_id: projectId, company_id: supplierId, type: 'invoice_in', amount });
+    db.transactions.create({
+      ...tryBase,
+      project_id: projectId,
+      company_id: supplierId,
+      type: 'invoice_in',
+      amount,
+    });
 
   it('saves a payment with its matches in one step', () => {
     const inv = invoice(800);
     const { transaction } = db.transactions.saveWithMatching({
-      data: { ...tryBase, project_id: projectId, company_id: supplierId, type: 'payment_out', amount: 800 },
+      data: {
+        ...tryBase,
+        project_id: projectId,
+        company_id: supplierId,
+        type: 'payment_out',
+        amount: 800,
+      },
       paymentAllocations: [{ invoiceId: inv.id, amount: 800 }],
     });
     expect(transaction.allocated_amount).toBe(800);
@@ -119,7 +145,13 @@ describe('saveWithMatching', () => {
     const before = count();
     expect(() =>
       db.transactions.saveWithMatching({
-        data: { ...tryBase, project_id: projectId, company_id: supplierId, type: 'payment_out', amount: 800 },
+        data: {
+          ...tryBase,
+          project_id: projectId,
+          company_id: supplierId,
+          type: 'payment_out',
+          amount: 800,
+        },
         paymentAllocations: [{ invoiceId: inv.id, amount: 600 }],
       })
     ).toThrow('exceeds_invoice');
@@ -129,12 +161,24 @@ describe('saveWithMatching', () => {
   it('removes a match when the payment is saved with an empty set', () => {
     const inv = invoice(800);
     const { transaction } = db.transactions.saveWithMatching({
-      data: { ...tryBase, project_id: projectId, company_id: supplierId, type: 'payment_out', amount: 800 },
+      data: {
+        ...tryBase,
+        project_id: projectId,
+        company_id: supplierId,
+        type: 'payment_out',
+        amount: 800,
+      },
       paymentAllocations: [{ invoiceId: inv.id, amount: 800 }],
     });
     db.transactions.saveWithMatching({
       id: transaction.id,
-      data: { ...tryBase, project_id: projectId, company_id: supplierId, type: 'payment_out', amount: 800 },
+      data: {
+        ...tryBase,
+        project_id: projectId,
+        company_id: supplierId,
+        type: 'payment_out',
+        amount: 800,
+      },
       paymentAllocations: [],
     });
     expect(db.paymentAllocations.getForPayment(transaction.id)).toEqual([]);
@@ -143,13 +187,25 @@ describe('saveWithMatching', () => {
   it('refuses to lower a payment below its matches unless they are changed too', () => {
     const inv = invoice(800);
     const { transaction } = db.transactions.saveWithMatching({
-      data: { ...tryBase, project_id: projectId, company_id: supplierId, type: 'payment_out', amount: 800 },
+      data: {
+        ...tryBase,
+        project_id: projectId,
+        company_id: supplierId,
+        type: 'payment_out',
+        amount: 800,
+      },
       paymentAllocations: [{ invoiceId: inv.id, amount: 800 }],
     });
     expect(() =>
       db.transactions.saveWithMatching({
         id: transaction.id,
-        data: { ...tryBase, project_id: projectId, company_id: supplierId, type: 'payment_out', amount: 500 },
+        data: {
+          ...tryBase,
+          project_id: projectId,
+          company_id: supplierId,
+          type: 'payment_out',
+          amount: 500,
+        },
       })
     ).toThrow('exceeds_payment');
     expect(db.transactions.getDetails(transaction.id)?.amount).toBe(800);
@@ -158,7 +214,13 @@ describe('saveWithMatching', () => {
   it('books the unmatched rest of a payment as an expense record', () => {
     const inv = invoice(300);
     const { transaction, documentId } = db.transactions.saveWithMatching({
-      data: { ...tryBase, project_id: projectId, company_id: supplierId, type: 'payment_out', amount: 1000 },
+      data: {
+        ...tryBase,
+        project_id: projectId,
+        company_id: supplierId,
+        type: 'payment_out',
+        amount: 1000,
+      },
       paymentAllocations: [{ invoiceId: inv.id, amount: 300 }],
       remainderDocument: { categoryId: expenseCategory, note: 'with payment' },
     });
@@ -178,16 +240,34 @@ describe('saveWithMatching', () => {
 
   it('keeps currency and rate when the whole payment becomes the record', () => {
     const { documentId } = db.transactions.saveWithMatching({
-      data: { ...base, project_id: projectId, company_id: supplierId, type: 'payment_out', amount: 100, exchange_rate: 35 },
+      data: {
+        ...base,
+        project_id: projectId,
+        company_id: supplierId,
+        type: 'payment_out',
+        amount: 100,
+        exchange_rate: 35,
+      },
       remainderDocument: { categoryId: expenseCategory, note: null },
     });
-    expect(db.transactions.getDetails(documentId!)).toMatchObject({ amount: 100, currency: 'USD', exchange_rate: 35, amount_try: 3500 });
+    expect(db.transactions.getDetails(documentId!)).toMatchObject({
+      amount: 100,
+      currency: 'USD',
+      exchange_rate: 35,
+      amount_try: 3500,
+    });
   });
 
   it('rejects a category of the wrong type for the record', () => {
     expect(() =>
       db.transactions.saveWithMatching({
-        data: { ...tryBase, project_id: projectId, company_id: supplierId, type: 'payment_out', amount: 100 },
+        data: {
+          ...tryBase,
+          project_id: projectId,
+          company_id: supplierId,
+          type: 'payment_out',
+          amount: 100,
+        },
         remainderDocument: { categoryId: incomeCategory, note: null },
       })
     ).toThrow('invalid_category');
@@ -197,12 +277,24 @@ describe('saveWithMatching', () => {
   it('does not let a project payment without a company stay an advance', () => {
     expect(() =>
       db.transactions.saveWithMatching({
-        data: { ...tryBase, project_id: projectId, company_id: null, type: 'payment_out', amount: 100 },
+        data: {
+          ...tryBase,
+          project_id: projectId,
+          company_id: null,
+          type: 'payment_out',
+          amount: 100,
+        },
         paymentAllocations: [],
       })
     ).toThrow('needs_counterparty');
     const { documentId } = db.transactions.saveWithMatching({
-      data: { ...tryBase, project_id: projectId, company_id: null, type: 'payment_out', amount: 100 },
+      data: {
+        ...tryBase,
+        project_id: projectId,
+        company_id: null,
+        type: 'payment_out',
+        amount: 100,
+      },
       paymentAllocations: [],
       remainderDocument: { categoryId: expenseCategory, note: null },
     });
@@ -211,7 +303,13 @@ describe('saveWithMatching', () => {
 
   it('lets a company payment stay an advance', () => {
     const { transaction } = db.transactions.saveWithMatching({
-      data: { ...tryBase, project_id: projectId, company_id: supplierId, type: 'payment_out', amount: 100 },
+      data: {
+        ...tryBase,
+        project_id: projectId,
+        company_id: supplierId,
+        type: 'payment_out',
+        amount: 100,
+      },
       paymentAllocations: [],
     });
     expect(transaction.allocated_amount).toBe(0);
@@ -219,11 +317,23 @@ describe('saveWithMatching', () => {
 
   it('saves an invoice with the payments it is matched to', () => {
     const { transaction: payment } = db.transactions.saveWithMatching({
-      data: { ...tryBase, project_id: projectId, company_id: supplierId, type: 'payment_out', amount: 600 },
+      data: {
+        ...tryBase,
+        project_id: projectId,
+        company_id: supplierId,
+        type: 'payment_out',
+        amount: 600,
+      },
       paymentAllocations: [],
     });
     const { transaction: inv } = db.transactions.saveWithMatching({
-      data: { ...tryBase, project_id: projectId, company_id: supplierId, type: 'invoice_in', amount: 1000 },
+      data: {
+        ...tryBase,
+        project_id: projectId,
+        company_id: supplierId,
+        type: 'invoice_in',
+        amount: 1000,
+      },
       invoiceAllocations: [{ paymentId: payment.id, amount: 600 }],
     });
     expect(inv.settled_amount).toBe(600);
@@ -235,13 +345,25 @@ describe('updateChecked (edits that do not handle matches)', () => {
   const tryBase: TransactionInput = { ...base, currency: 'TRY', exchange_rate: 1 };
 
   beforeEach(() => {
-    db.rawDb.run("INSERT INTO companies (id, code, type, account_type, name) VALUES (1, 'C1', 'company', 'supplier', 'S')");
-    db.rawDb.run("INSERT INTO companies (id, code, type, account_type, name) VALUES (2, 'C2', 'company', 'supplier', 'T')");
-    db.rawDb.run("INSERT INTO projects (id, code, name, ownership_type, status) VALUES (5, 'P5', 'P', 'own', 'active')");
+    db.rawDb.run(
+      "INSERT INTO companies (id, code, type, account_type, name) VALUES (1, 'C1', 'company', 'supplier', 'S')"
+    );
+    db.rawDb.run(
+      "INSERT INTO companies (id, code, type, account_type, name) VALUES (2, 'C2', 'company', 'supplier', 'T')"
+    );
+    db.rawDb.run(
+      "INSERT INTO projects (id, code, name, ownership_type, status) VALUES (5, 'P5', 'P', 'own', 'active')"
+    );
   });
 
   const matchedPayment = () => {
-    const invoice = db.transactions.create({ ...tryBase, project_id: 5, company_id: 1, type: 'invoice_in', amount: 800 });
+    const invoice = db.transactions.create({
+      ...tryBase,
+      project_id: 5,
+      company_id: 1,
+      type: 'invoice_in',
+      amount: 800,
+    });
     const { transaction } = db.transactions.saveWithMatching({
       data: { ...tryBase, project_id: 5, company_id: 1, type: 'payment_out', amount: 800 },
       paymentAllocations: [{ invoiceId: invoice.id, amount: 800 }],
@@ -252,15 +374,27 @@ describe('updateChecked (edits that do not handle matches)', () => {
   it('refuses lowering a matched payment below its matches', () => {
     const payment = matchedPayment();
     expect(() =>
-      db.transactions.updateChecked(payment.id, { ...tryBase, project_id: 5, company_id: 1, type: 'payment_out', amount: 300 })
+      db.transactions.updateChecked(payment.id, {
+        ...tryBase,
+        project_id: 5,
+        company_id: 1,
+        type: 'payment_out',
+        amount: 300,
+      })
     ).toThrow('exceeds_payment');
     expect(db.transactions.getDetails(payment.id)?.amount).toBe(800);
   });
 
-  it("refuses moving a matched payment to another company", () => {
+  it('refuses moving a matched payment to another company', () => {
     const payment = matchedPayment();
     expect(() =>
-      db.transactions.updateChecked(payment.id, { ...tryBase, project_id: 5, company_id: 2, type: 'payment_out', amount: 800 })
+      db.transactions.updateChecked(payment.id, {
+        ...tryBase,
+        project_id: 5,
+        company_id: 2,
+        type: 'payment_out',
+        amount: 800,
+      })
     ).toThrow('counterparty_mismatch');
     expect(db.transactions.getDetails(payment.id)?.company_id).toBe(1);
   });
@@ -268,7 +402,12 @@ describe('updateChecked (edits that do not handle matches)', () => {
   it('allows ordinary edits', () => {
     const payment = matchedPayment();
     const updated = db.transactions.updateChecked(payment.id, {
-      ...tryBase, project_id: 5, company_id: 1, type: 'payment_out', amount: 800, description: 'renamed',
+      ...tryBase,
+      project_id: 5,
+      company_id: 1,
+      type: 'payment_out',
+      amount: 800,
+      description: 'renamed',
     });
     expect(updated?.description).toBe('renamed');
   });
@@ -280,7 +419,13 @@ describe('updateChecked (edits that do not handle matches)', () => {
       paymentAllocations: [],
     });
     expect(() =>
-      db.transactions.updateChecked(advance.id, { ...tryBase, project_id: 5, company_id: null, type: 'payment_out', amount: 100 })
+      db.transactions.updateChecked(advance.id, {
+        ...tryBase,
+        project_id: 5,
+        company_id: null,
+        type: 'payment_out',
+        amount: 100,
+      })
     ).toThrow('needs_counterparty');
 
     db.rawDb.run(
@@ -288,8 +433,14 @@ describe('updateChecked (edits that do not handle matches)', () => {
        VALUES (99, 'project', 5, 'payment_out', '2026-01-01', 'old', 50, 50)`
     );
     expect(
-      db.transactions.updateChecked(99, { ...tryBase, project_id: 5, company_id: null, type: 'payment_out', amount: 50, description: 'old, fixed' })
-        ?.description
+      db.transactions.updateChecked(99, {
+        ...tryBase,
+        project_id: 5,
+        company_id: null,
+        type: 'payment_out',
+        amount: 50,
+        description: 'old, fixed',
+      })?.description
     ).toBe('old, fixed');
     expect(payment.id).toBeGreaterThan(0);
   });

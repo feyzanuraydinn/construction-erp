@@ -1,17 +1,23 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useLatest } from './useLatest';
 
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
+interface CacheState<T> {
+  data: T | null;
+  timestamp: number | null;
+  fetching: boolean;
+  error: Error | null;
+  version: number;
+}
+
+export interface CacheKey<T> {
+  readonly name: string;
+  readonly listeners: Set<() => void>;
+  state: CacheState<T>;
+  inflight: Promise<void> | null;
 }
 
 interface CacheOptions {
-  /** Cache duration in milliseconds (default: 5 minutes) */
-  ttl?: number;
-  /** Auto-refresh interval in milliseconds (optional) */
   refreshInterval?: number;
-  /** Stale while revalidate - show stale data while fetching fresh (default: true) */
-  staleWhileRevalidate?: boolean;
 }
 
 interface UseDataCacheReturn<T> {
@@ -23,296 +29,135 @@ interface UseDataCacheReturn<T> {
   invalidate: () => void;
 }
 
-// Global cache storage with size limit
-const MAX_CACHE_SIZE = 100; // Maximum number of cache entries
-const globalCache = new Map<string, CacheEntry<unknown>>();
+interface RegisteredKey {
+  readonly name: string;
+  timestamp: () => number | null;
+  reset: (keepData: boolean) => void;
+}
 
-// Global cache invalidation callbacks
-const invalidationCallbacks = new Map<string, Set<() => void>>();
+const MAX_CACHE_SIZE = 100;
+const EMPTY_STATE = { data: null, timestamp: null, fetching: false, error: null, version: 0 };
+const registry = new Set<RegisteredKey>();
 
-/**
- * Enforce cache size limit using LRU-like eviction (oldest entries first)
- */
-function enforceCacheLimit(): void {
-  if (globalCache.size <= MAX_CACHE_SIZE) return;
+function update<T>(key: CacheKey<T>, patch: Partial<CacheState<T>>): void {
+  key.state = { ...key.state, ...patch };
+  key.listeners.forEach((listener) => listener());
+}
 
-  // Sort entries by timestamp (oldest first) and remove excess
-  const entries = Array.from(globalCache.entries()).sort((a, b) => a[1].timestamp - b[1].timestamp);
-
-  const toRemove = entries.slice(0, globalCache.size - MAX_CACHE_SIZE);
-  toRemove.forEach(([key]) => {
-    globalCache.delete(key);
-    invalidationCallbacks.delete(key);
+function markOutdated<T>(key: CacheKey<T>, keepData: boolean): void {
+  key.inflight = null;
+  update(key, {
+    fetching: false,
+    timestamp: null,
+    version: key.state.version + 1,
+    ...(keepData ? {} : { data: null, error: null }),
   });
 }
 
-/**
- * Register a callback to be called when a cache key is invalidated.
- * Returns a cleanup function that MUST be called on unmount.
- */
-function onCacheInvalidate(key: string, callback: () => void): () => void {
-  if (!invalidationCallbacks.has(key)) {
-    invalidationCallbacks.set(key, new Set());
-  }
-  invalidationCallbacks.get(key)!.add(callback);
-
-  // Return cleanup function
-  return () => {
-    const callbacks = invalidationCallbacks.get(key);
-    if (callbacks) {
-      callbacks.delete(callback);
-      // Clean up empty sets to prevent Map from growing unbounded
-      if (callbacks.size === 0) {
-        invalidationCallbacks.delete(key);
-      }
-    }
+export function createCacheKey<T>(name: string): CacheKey<T> {
+  const key: CacheKey<T> = {
+    name,
+    listeners: new Set(),
+    state: { ...EMPTY_STATE },
+    inflight: null,
   };
+  registry.add({
+    name,
+    timestamp: () => key.state.timestamp,
+    reset: (keepData) => markOutdated(key, keepData),
+  });
+  return key;
 }
 
-/**
- * Invalidate a specific cache key globally
- */
-export function invalidateCache(key: string): void {
-  globalCache.delete(key);
-  invalidationCallbacks.get(key)?.forEach((cb) => cb());
+function enforceCacheLimit(): void {
+  const filled = [...registry].filter((key) => key.timestamp() !== null);
+  if (filled.length <= MAX_CACHE_SIZE) return;
+  filled
+    .sort((a, b) => (a.timestamp() ?? 0) - (b.timestamp() ?? 0))
+    .slice(0, filled.length - MAX_CACHE_SIZE)
+    .forEach((key) => key.reset(false));
 }
 
-/**
- * Invalidate all cache entries matching a pattern
- */
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error('Unknown error');
+}
+
+function load<T>(key: CacheKey<T>, fetcher: () => Promise<T>): Promise<void> {
+  if (key.inflight) return key.inflight;
+  update(key, { fetching: true });
+  const request: Promise<void> = fetcher()
+    .then((data) => {
+      if (key.inflight !== request) return;
+      update(key, { data, timestamp: Date.now(), fetching: false, error: null });
+      enforceCacheLimit();
+    })
+    .catch((error: unknown) => {
+      if (key.inflight === request) update(key, { fetching: false, error: toError(error) });
+    })
+    .finally(() => {
+      if (key.inflight === request) key.inflight = null;
+    });
+  key.inflight = request;
+  return request;
+}
+
+function reload<T>(key: CacheKey<T>, fetcher: () => Promise<T>): Promise<void> {
+  key.inflight = null;
+  return load(key, fetcher);
+}
+
 export function invalidateCachePattern(pattern: string): void {
   const regex = new RegExp(pattern);
-  const keysToDelete: string[] = [];
-
-  globalCache.forEach((_, key) => {
-    if (regex.test(key)) {
-      keysToDelete.push(key);
-    }
-  });
-
-  keysToDelete.forEach((key) => {
-    globalCache.delete(key);
-    invalidationCallbacks.get(key)?.forEach((cb) => cb());
+  registry.forEach((key) => {
+    if (key.timestamp() !== null && regex.test(key.name)) key.reset(true);
   });
 }
 
-/**
- * Clear all cache entries
- */
 export function clearAllCache(): void {
-  // Notify all listeners before clearing
-  invalidationCallbacks.forEach((callbacks) => {
-    callbacks.forEach((cb) => cb());
-  });
-  globalCache.clear();
-  // Don't clear invalidationCallbacks here — active components still hold refs.
-  // They will be cleaned up when components unmount via their cleanup functions.
+  registry.forEach((key) => key.reset(false));
 }
 
-/**
- * Hook for caching data fetched from async functions
- */
 export function useDataCache<T>(
-  key: string,
+  key: CacheKey<T>,
   fetcher: () => Promise<T>,
   options: CacheOptions = {}
 ): UseDataCacheReturn<T> {
-  const {
-    ttl = 5 * 60 * 1000, // 5 minutes default
-    refreshInterval,
-    staleWhileRevalidate = true,
-  } = options;
-
-  const [data, setData] = useState<T | null>(() => {
-    const cached = globalCache.get(key) as CacheEntry<T> | undefined;
-    return cached?.data ?? null;
-  });
-  const [loading, setLoading] = useState<boolean>(!globalCache.has(key));
-  const [error, setError] = useState<Error | null>(null);
-  const [isStale, setIsStale] = useState<boolean>(() => {
-    const cached = globalCache.get(key);
-    if (!cached) return true;
-    return Date.now() - cached.timestamp > ttl;
-  });
-
-  const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
-
-  const fetchData = useCallback(
-    async (showLoading = true) => {
-      const cached = globalCache.get(key) as CacheEntry<T> | undefined;
-      const isCacheFresh = cached && Date.now() - cached.timestamp < ttl;
-
-      // If cache is fresh, just use it
-      if (isCacheFresh && !showLoading) {
-        setData(cached.data);
-        setIsStale(false);
-        return;
-      }
-
-      // If staleWhileRevalidate is enabled and we have cached data, show it immediately
-      if (staleWhileRevalidate && cached) {
-        setData(cached.data);
-        setIsStale(true);
-      }
-
-      if (showLoading && !cached) {
-        setLoading(true);
-      }
-
-      try {
-        const freshData = await fetcherRef.current();
-
-        // Update cache
-        globalCache.set(key, {
-          data: freshData,
-          timestamp: Date.now(),
-        });
-
-        // Enforce cache size limit
-        enforceCacheLimit();
-
-        setData(freshData);
-        setIsStale(false);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error('Unknown error'));
-        // Keep showing stale data if available
-        if (!cached) {
-          setData(null);
-        }
-      } finally {
-        setLoading(false);
-      }
+  const { refreshInterval } = options;
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      key.listeners.add(listener);
+      return () => {
+        key.listeners.delete(listener);
+      };
     },
-    [key, ttl, staleWhileRevalidate]
+    [key]
   );
+  const state = useSyncExternalStore(subscribe, () => key.state);
+  const fetcherRef = useLatest(fetcher);
 
-  // Initial fetch
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    void load(key, () => fetcherRef.current());
+  }, [key, state.version, fetcherRef]);
 
-  // Set up refresh interval
   useEffect(() => {
     if (!refreshInterval) return;
-
-    const intervalId = setInterval(() => {
-      fetchData(false);
-    }, refreshInterval);
-
+    const intervalId = setInterval(
+      () => void load(key, () => fetcherRef.current()),
+      refreshInterval
+    );
     return () => clearInterval(intervalId);
-  }, [fetchData, refreshInterval]);
+  }, [key, refreshInterval, fetcherRef]);
 
-  // Listen for cache invalidation
-  useEffect(() => {
-    return onCacheInvalidate(key, () => {
-      fetchData(true);
-    });
-  }, [key, fetchData]);
+  const refresh = useCallback(() => reload(key, () => fetcherRef.current()), [key, fetcherRef]);
 
-  const refresh = useCallback(async () => {
-    globalCache.delete(key);
-    await fetchData(true);
-  }, [key, fetchData]);
-
-  const invalidate = useCallback(() => {
-    invalidateCache(key);
-  }, [key]);
+  const invalidate = useCallback(() => markOutdated(key, true), [key]);
 
   return {
-    data,
-    loading,
-    error,
-    isStale,
+    data: state.data,
+    loading: state.data === null && state.error === null,
+    error: state.error,
+    isStale: state.fetching && state.data !== null,
     refresh,
     invalidate,
-  };
-}
-
-/**
- * Hook for caching multiple related data fetches.
- *
- * Uses stable key serialization to avoid infinite re-render loops
- * caused by unstable `fetchers` object references.
- */
-export function useMultiDataCache<T extends Record<string, unknown>>(
-  keyPrefix: string,
-  fetchers: { [K in keyof T]: () => Promise<T[K]> },
-  options: CacheOptions = {}
-): {
-  data: Partial<T>;
-  loading: boolean;
-  error: Error | null;
-  refresh: () => Promise<void>;
-} {
-  // Stabilize keys to avoid re-creating fetchAll on every render
-  const fetcherKeys = Object.keys(fetchers) as (keyof T)[];
-  const stableKeysStr = fetcherKeys.join(',');
-  // fetcherKeys is derived from stableKeysStr, so using stableKeysStr as dep is correct
-  const stableKeys = useMemo(() => stableKeysStr.split(',') as (keyof T)[], [stableKeysStr]);
-
-  // Keep fetchers in a ref to avoid dependency instability
-  const fetchersRef = useRef(fetchers);
-  fetchersRef.current = fetchers;
-
-  const ttl = options.ttl ?? 5 * 60 * 1000;
-
-  const [data, setData] = useState<Partial<T>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const results = await Promise.all(
-        stableKeys.map(async (key) => {
-          const cacheKey = `${keyPrefix}:${String(key)}`;
-          const cached = globalCache.get(cacheKey) as CacheEntry<T[keyof T]> | undefined;
-
-          if (cached && Date.now() - cached.timestamp < ttl) {
-            return [key, cached.data] as const;
-          }
-
-          const freshData = await fetchersRef.current[key]();
-          globalCache.set(cacheKey, {
-            data: freshData,
-            timestamp: Date.now(),
-          });
-
-          // Enforce cache size limit
-          enforceCacheLimit();
-
-          return [key, freshData] as const;
-        })
-      );
-
-      const newData = Object.fromEntries(results) as Partial<T>;
-      setData(newData);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Unknown error'));
-    } finally {
-      setLoading(false);
-    }
-  }, [keyPrefix, stableKeys, ttl]);
-
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
-
-  const refresh = useCallback(async () => {
-    stableKeys.forEach((key) => {
-      globalCache.delete(`${keyPrefix}:${String(key)}`);
-    });
-    await fetchAll();
-  }, [keyPrefix, stableKeys, fetchAll]);
-
-  return {
-    data,
-    loading,
-    error,
-    refresh,
   };
 }

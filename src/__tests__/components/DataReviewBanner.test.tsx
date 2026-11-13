@@ -28,7 +28,9 @@ describe('DataReviewBanner', () => {
   });
 
   it('asks for the review while records are pending, and opens the review page', async () => {
-    window.electronAPI.review.getStatus = vi.fn().mockResolvedValue({ completed: false, pending: 3 });
+    window.electronAPI.review.getStatus = vi
+      .fn()
+      .mockResolvedValue({ completed: false, pending: 3 });
     renderBanner();
     expect(await screen.findByText(/3 tanesinin gözden geçirilmesi gerekiyor/)).toBeInTheDocument();
     fireEvent.click(screen.getByText('Kayıtları incele'));
@@ -37,7 +39,9 @@ describe('DataReviewBanner', () => {
   });
 
   it('shows nothing once the review is completed', async () => {
-    window.electronAPI.review.getStatus = vi.fn().mockResolvedValue({ completed: true, pending: 0 });
+    window.electronAPI.review.getStatus = vi
+      .fn()
+      .mockResolvedValue({ completed: true, pending: 0 });
     renderBanner();
     await waitFor(() => expect(window.electronAPI.review.getStatus).toHaveBeenCalled());
     expect(screen.queryByText('Kayıtları incele')).not.toBeInTheDocument();

@@ -1,10 +1,20 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { IconType } from 'react-icons';
 import { FiCloudOff, FiLink, FiShield, FiAlertCircle, FiKey } from 'react-icons/fi';
 import { useSync } from '../contexts/SyncContext';
-import { useModalLayer } from './ui/Modal';
-import { Button, Input } from './ui';
+import { DialogShell } from './ui/BlockingDialog';
+import { Button } from './ui/Button';
+import {
+  DriveCredentialsFields,
+  EMPTY_DRIVE_CREDENTIALS,
+  trimmedDriveCredentials,
+  type DriveCredentials,
+} from './shared/DriveCredentialsFields';
+import { useLoadedData } from '../hooks/useLoadedData';
 import { ipcErrorMessage } from '../utils/ipcError';
+import { cn } from '../utils/cn';
+import { Notice } from './ui/Notice';
 
 interface DriveReconnectModalProps {
   className?: string;
@@ -12,40 +22,72 @@ interface DriveReconnectModalProps {
 
 const ignoreEscape = (): void => undefined;
 
-export function DriveReconnectModal({ className = '' }: DriveReconnectModalProps) {
-  const { t } = useTranslation();
-  const { status, refresh } = useSync();
+const loadHasCredentials = () =>
+  window.electronAPI.gdrive.hasCredentials().catch((error: unknown) => {
+    console.error('Drive credentials check error:', error);
+    return false;
+  });
+
+export function DriveReconnectModal({ className }: DriveReconnectModalProps) {
+  const { status } = useSync();
   const open = status.status === 'disconnected' && status.driveRequired === true;
-  const [hasCredentials, setHasCredentials] = useState<boolean | null>(null);
-  const [connecting, setConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
-  const [savingCredentials, setSavingCredentials] = useState(false);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descriptionId = useId();
 
-  useModalLayer(open, ignoreEscape, dialogRef);
+  return (
+    <DialogShell
+      open={open}
+      onDismiss={ignoreEscape}
+      labelledBy={titleId}
+      describedBy={descriptionId}
+      overlayClassName={cn('z-[110] bg-gray-900/70', className)}
+      className="max-w-md rounded-2xl fade-in"
+    >
+      <ReconnectBody titleId={titleId} descriptionId={descriptionId} />
+    </DialogShell>
+  );
+}
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setError(null);
-    window.electronAPI.gdrive
-      .hasCredentials()
-      .then((has) => {
-        if (!cancelled) setHasCredentials(has);
-      })
-      .catch(() => {
-        if (!cancelled) setHasCredentials(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
+function ReasonItem({
+  icon: Icon,
+  iconClassName,
+  children,
+  className,
+}: {
+  icon: IconType;
+  iconClassName: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <li className={cn('flex gap-2', className)}>
+      <Icon className={cn('mt-0.5 flex-shrink-0', iconClassName)} />
+      <span>{children}</span>
+    </li>
+  );
+}
 
-  if (!open) return null;
+function ReconnectBody({
+  titleId,
+  descriptionId,
+  className,
+}: {
+  titleId: string;
+  descriptionId: string;
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  const { status, refresh } = useSync();
+  const { data: storedCredentials } = useLoadedData(
+    loadHasCredentials,
+    'Drive credentials check error:'
+  );
+  const [savedNow, setSavedNow] = useState(false);
+  const hasCredentials = savedNow ? true : storedCredentials;
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<DriveCredentials>(EMPTY_DRIVE_CREDENTIALS);
+  const [savingCredentials, setSavingCredentials] = useState(false);
 
   const connect = async () => {
     setConnecting(true);
@@ -62,17 +104,17 @@ export function DriveReconnectModal({ className = '' }: DriveReconnectModalProps
   };
 
   const saveCredentials = async () => {
-    if (!clientId.trim() || !clientSecret.trim()) {
+    const trimmed = trimmedDriveCredentials(credentials);
+    if (!trimmed) {
       setError(t('settings.credentialsRequired'));
       return;
     }
     setSavingCredentials(true);
     setError(null);
     try {
-      await window.electronAPI.gdrive.saveCredentials(clientId.trim(), clientSecret.trim());
-      setHasCredentials(true);
-      setClientId('');
-      setClientSecret('');
+      await window.electronAPI.gdrive.saveCredentials(trimmed.clientId, trimmed.clientSecret);
+      setSavedNow(true);
+      setCredentials(EMPTY_DRIVE_CREDENTIALS);
     } catch (saveError) {
       setError(ipcErrorMessage(saveError));
     } finally {
@@ -81,83 +123,67 @@ export function DriveReconnectModal({ className = '' }: DriveReconnectModalProps
   };
 
   return (
-    <div className={`fixed inset-0 z-[110] flex items-center justify-center p-4 bg-gray-900/70 backdrop-blur-sm ${className}`}>
-      <div
-        ref={dialogRef}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-        className="w-full max-w-md overflow-hidden bg-white shadow-2xl rounded-2xl dark:bg-gray-800 fade-in"
-      >
-        <div className="px-6 pt-7 pb-5 text-center border-b border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-center mx-auto mb-4 rounded-full w-14 h-14 bg-amber-100 dark:bg-amber-900/40">
-            <FiCloudOff size={26} className="text-amber-600 dark:text-amber-400" />
-          </div>
-          <h2 id={titleId} className="text-lg font-semibold text-gray-900 dark:text-white">
-            {t('driveLock.title')}
-          </h2>
-          <p id={descriptionId} className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-            {status.reason === 'expired' ? t('driveLock.reasonExpired') : t('driveLock.reasonDisconnected')}
-          </p>
+    <div className={className}>
+      <div className="px-6 pt-7 pb-5 text-center border-b border-gray-100 dark:border-gray-700">
+        <div className="flex items-center justify-center mx-auto mb-4 rounded-full w-14 h-14 bg-amber-100 dark:bg-amber-900/40">
+          <FiCloudOff size={26} className="text-amber-600 dark:text-amber-400" />
         </div>
+        <h2 id={titleId} className="text-lg font-semibold text-gray-900 dark:text-white">
+          {t('driveLock.title')}
+        </h2>
+        <p id={descriptionId} className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+          {status.reason === 'expired'
+            ? t('driveLock.reasonExpired')
+            : t('driveLock.reasonDisconnected')}
+        </p>
+      </div>
 
-        <div className="px-6 py-5 space-y-4">
-          <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-            <li className="flex gap-2">
-              <FiShield className="mt-0.5 flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <span>{t('driveLock.dataSafe')}</span>
-            </li>
-            <li className="flex gap-2">
-              <FiAlertCircle className="mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-              <span>{t('driveLock.blocked')}</span>
-            </li>
-          </ul>
+      <div className="px-6 py-5 space-y-4">
+        <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+          <ReasonItem icon={FiShield} iconClassName="text-emerald-600 dark:text-emerald-400">
+            {t('driveLock.dataSafe')}
+          </ReasonItem>
+          <ReasonItem icon={FiAlertCircle} iconClassName="text-amber-600 dark:text-amber-400">
+            {t('driveLock.blocked')}
+          </ReasonItem>
+        </ul>
 
-          {hasCredentials === false && (
-            <div className="p-4 space-y-3 rounded-xl bg-gray-50 dark:bg-gray-700/50">
-              <p className="flex gap-2 text-xs text-gray-600 dark:text-gray-300">
-                <FiKey className="mt-0.5 flex-shrink-0" />
-                <span>{t('driveLock.credentialsMissing')}</span>
-              </p>
-              <Input
-                label="Client ID"
-                value={clientId}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClientId(e.target.value)}
-                placeholder="xxxx.apps.googleusercontent.com"
-              />
-              <Input
-                label="Client Secret"
-                type="password"
-                value={clientSecret}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClientSecret(e.target.value)}
-                placeholder="GOCSPX-..."
-              />
-              <Button size="sm" variant="secondary" onClick={() => void saveCredentials()} loading={savingCredentials}>
-                {t('driveLock.saveCredentials')}
-              </Button>
-            </div>
-          )}
-
-          {error && (
-            <p role="alert" className="p-3 text-sm text-red-700 rounded-lg bg-red-50 dark:bg-red-900/20 dark:text-red-300">
-              {t('driveLock.connectError', { error })}
+        {hasCredentials === false && (
+          <div className="p-4 space-y-3 rounded-xl bg-gray-50 dark:bg-gray-700/50">
+            <p className="flex gap-2 text-xs text-gray-600 dark:text-gray-300">
+              <FiKey className="mt-0.5 flex-shrink-0" />
+              <span>{t('driveLock.credentialsMissing')}</span>
             </p>
-          )}
+            <DriveCredentialsFields value={credentials} onChange={setCredentials} />
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void saveCredentials()}
+              loading={savingCredentials}
+            >
+              {t('driveLock.saveCredentials')}
+            </Button>
+          </div>
+        )}
 
-          <Button
-            className="w-full justify-center"
-            icon={FiLink}
-            onClick={() => void connect()}
-            loading={connecting}
-            disabled={hasCredentials !== true || savingCredentials}
-          >
-            {connecting ? t('driveLock.waiting') : t('driveLock.connect')}
-          </Button>
-          <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-            {connecting ? t('driveLock.waitingHint') : t('driveLock.sameAccountHint')}
-          </p>
-        </div>
+        {error && (
+          <Notice tone="danger" role="alert">
+            {t('driveLock.connectError', { error })}
+          </Notice>
+        )}
+
+        <Button
+          className="w-full justify-center"
+          icon={FiLink}
+          onClick={() => void connect()}
+          loading={connecting}
+          disabled={hasCredentials !== true || savingCredentials}
+        >
+          {connecting ? t('driveLock.waiting') : t('driveLock.connect')}
+        </Button>
+        <p className="text-xs text-center text-gray-500 dark:text-gray-400">
+          {connecting ? t('driveLock.waitingHint') : t('driveLock.sameAccountHint')}
+        </p>
       </div>
     </div>
   );

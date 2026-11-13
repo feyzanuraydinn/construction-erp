@@ -31,14 +31,10 @@ out/
 # Database
 *.db
 
-# Claude
-.claude/
-
 # Temp & output files
 *.tmp
 *.txt
 NUL
-tmpclaude-*
 
 # Coverage
 coverage/

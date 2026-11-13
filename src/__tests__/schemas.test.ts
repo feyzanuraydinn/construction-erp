@@ -7,7 +7,13 @@ import {
   categorySchema,
   validateInput,
   validateId,
+  parseInput,
+  parseId,
+  exportRequestSchema,
+  conflictChoiceSchema,
+  driveDownloadSchema,
 } from '../utils/schemas';
+import { i18n, languageSchema } from '../i18n';
 
 describe('Zod Validation Schemas', () => {
   describe('Company Schema', () => {
@@ -20,9 +26,7 @@ describe('Zod Validation Schemas', () => {
         email: 'test@example.com',
       };
 
-      const result = validateInput(companySchema, validCompany);
-      expect(result.success).toBe(true);
-      expect(result.data?.name).toBe('Test Şirketi');
+      expect(parseInput(companySchema, validCompany).name).toBe('Test Şirketi');
     });
 
     it('should reject an empty name', () => {
@@ -32,9 +36,8 @@ describe('Zod Validation Schemas', () => {
         name: '',
       };
 
-      const result = validateInput(companySchema, invalidCompany);
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('İsim zorunludur');
+      expect(validateInput(companySchema, invalidCompany).success).toBe(false);
+      expect(() => parseInput(companySchema, invalidCompany)).toThrow('İsim zorunludur');
     });
 
     it('should reject invalid type', () => {
@@ -76,7 +79,7 @@ describe('Zod Validation Schemas', () => {
         type: 'person',
         account_type: 'customer',
         name: 'Test',
-        tc_number: '123', // Too short
+        tc_number: '123',
       };
 
       const result = validateInput(companySchema, invalidCompany);
@@ -125,7 +128,7 @@ describe('Zod Validation Schemas', () => {
         code: 'PRJ-001',
         name: 'Test',
         ownership_type: 'own',
-        planned_start: '15-01-2024', // Invalid format
+        planned_start: '15-01-2024',
       };
 
       const result = validateInput(projectSchema, invalidProject);
@@ -150,23 +153,34 @@ describe('Zod Validation Schemas', () => {
     });
 
     it('should require an exchange rate for foreign currencies', () => {
-      const base = { scope: 'project', type: 'invoice_in', date: '2024-01-15', description: 'USD', amount: 100, currency: 'USD' };
+      const base = {
+        scope: 'project',
+        type: 'invoice_in',
+        date: '2024-01-15',
+        description: 'USD',
+        amount: 100,
+        currency: 'USD',
+      };
 
       expect(validateInput(transactionSchema, base).success).toBe(false);
       expect(validateInput(transactionSchema, { ...base, exchange_rate: 0 }).success).toBe(false);
       expect(validateInput(transactionSchema, { ...base, exchange_rate: -2 }).success).toBe(false);
 
-      const ok = validateInput(transactionSchema, { ...base, exchange_rate: '34.25' });
-      expect(ok.success).toBe(true);
-      expect(ok.data?.exchange_rate).toBe(34.25);
+      expect(parseInput(transactionSchema, { ...base, exchange_rate: '34.25' }).exchange_rate).toBe(
+        34.25
+      );
     });
 
     it('should not invent a rate of 1 when none is given', () => {
-      const result = validateInput(transactionSchema, {
-        scope: 'cari', type: 'invoice_out', date: '2024-01-15', description: 'TL', amount: 100, currency: 'TRY',
+      const result = parseInput(transactionSchema, {
+        scope: 'cari',
+        type: 'invoice_out',
+        date: '2024-01-15',
+        description: 'TL',
+        amount: 100,
+        currency: 'TRY',
       });
-      expect(result.success).toBe(true);
-      expect(result.data?.exchange_rate).toBeNull();
+      expect(result.exchange_rate).toBeNull();
     });
 
     it('should reject zero amount', () => {
@@ -179,9 +193,8 @@ describe('Zod Validation Schemas', () => {
         currency: 'TRY',
       };
 
-      const result = validateInput(transactionSchema, invalidTransaction);
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('sıfırdan büyük');
+      expect(validateInput(transactionSchema, invalidTransaction).success).toBe(false);
+      expect(() => parseInput(transactionSchema, invalidTransaction)).toThrow('sıfırdan büyük');
     });
 
     it('should reject negative amount', () => {
@@ -258,7 +271,7 @@ describe('Zod Validation Schemas', () => {
       const invalidCategory = {
         name: 'Test',
         type: 'invoice_out',
-        color: 'red', // Should be hex format
+        color: 'red',
       };
 
       const result = validateInput(categorySchema, invalidCategory);
@@ -290,5 +303,82 @@ describe('Zod Validation Schemas', () => {
       expect(validateId(null).success).toBe(false);
       expect(validateId(undefined).success).toBe(false);
     });
+
+    it('returns the id or throws the validation message', () => {
+      expect(parseId(7)).toBe(7);
+      expect(() => parseId(0)).toThrow();
+      expect(() => parseId('7')).toThrow();
+    });
+  });
+
+  describe('Language schema', () => {
+    it('accepts only the languages the app ships', () => {
+      expect(languageSchema.safeParse('tr').success).toBe(true);
+      expect(languageSchema.safeParse('en').success).toBe(true);
+      expect(languageSchema.safeParse('__proto__').success).toBe(false);
+      expect(languageSchema.safeParse(1).success).toBe(false);
+    });
+  });
+
+  describe('Export request schema', () => {
+    const valid = {
+      records: [{ Tarih: '01.02.2026', Tutar: '1.250,00', Adet: 3, Onay: true, Not: null }],
+      filename: 'islemler_2026-02-01',
+      metadata: { summaryStartIndex: 1, amountColumnLabel: 'Tutar', redSummaryLabels: ['Borç'] },
+    };
+
+    it('accepts the rows the export screens send', () => {
+      expect(validateInput(exportRequestSchema, valid).success).toBe(true);
+      expect(validateInput(exportRequestSchema, { filename: 'cariler', records: [] }).success).toBe(
+        true
+      );
+    });
+
+    it('rejects malformed requests', () => {
+      expect(validateInput(exportRequestSchema, null).success).toBe(false);
+      expect(validateInput(exportRequestSchema, { ...valid, records: 'rows' }).success).toBe(false);
+      expect(
+        validateInput(exportRequestSchema, { ...valid, records: [{ Tutar: { nested: 1 } }] })
+          .success
+      ).toBe(false);
+      expect(validateInput(exportRequestSchema, { ...valid, filename: '' }).success).toBe(false);
+      expect(
+        validateInput(exportRequestSchema, { ...valid, filename: 'x'.repeat(1001) }).success
+      ).toBe(false);
+      expect(
+        validateInput(exportRequestSchema, { ...valid, filename: 'Uzun Adlı Şirket '.repeat(20) })
+          .success
+      ).toBe(true);
+      expect(
+        validateInput(exportRequestSchema, { ...valid, metadata: { summaryStartIndex: -1 } })
+          .success
+      ).toBe(false);
+    });
+  });
+});
+
+describe('IPC argument schemas', () => {
+  it('explains a bad conflict choice and a bad Drive download in the user language', () => {
+    expect(() => parseInput(conflictChoiceSchema, 'merge')).toThrow(
+      i18n.t('main.sync.invalidChoice')
+    );
+    expect(() => parseInput(driveDownloadSchema, { fileId: '', fileName: 'a.db' })).toThrow(
+      i18n.t('main.gdrive.invalidFileId')
+    );
+    expect(() => parseInput(driveDownloadSchema, { fileId: 'x', fileName: 42 })).toThrow(
+      i18n.t('main.gdrive.invalidFileName')
+    );
+    expect(parseInput(driveDownloadSchema, { fileId: 'x', fileName: 'a.db' })).toEqual({
+      fileId: 'x',
+      fileName: 'a.db',
+    });
+  });
+
+  it('never shows field names or English default texts', () => {
+    const result = validateInput(transactionSchema, { scope: 'nope' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).not.toMatch(/scope|Invalid|expected/);
+    }
   });
 });

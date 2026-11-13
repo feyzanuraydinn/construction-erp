@@ -1,28 +1,56 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiCloud, FiCloudOff, FiUploadCloud, FiDownloadCloud, FiAlertCircle, FiCheckCircle, FiClock, FiRefreshCw } from 'react-icons/fi';
+import {
+  FiCloud,
+  FiCloudOff,
+  FiUploadCloud,
+  FiDownloadCloud,
+  FiAlertCircle,
+  FiCheckCircle,
+  FiClock,
+  FiRefreshCw,
+} from 'react-icons/fi';
 import { useSync } from '../contexts/SyncContext';
-import type { SyncStatusValue } from '../types/electron';
+import type { SyncStatusValue } from '../types/sync';
+import { cn } from '../utils/cn';
+import { formatDate } from '../utils/formatters';
 
 interface Props {
   collapsed: boolean;
+  className?: string;
 }
 
 const getStatusInfo = (
   status: SyncStatusValue,
-  t: (key: string) => string,
+  t: (key: string) => string
 ): { icon: React.ReactNode; color: string; label: string } => {
   switch (status) {
     case 'synced':
-      return { icon: <FiCheckCircle size={16} />, color: 'text-emerald-400', label: t('sync.synced') };
+      return {
+        icon: <FiCheckCircle size={16} />,
+        color: 'text-emerald-400',
+        label: t('sync.synced'),
+      };
     case 'uploading':
-      return { icon: <FiUploadCloud size={16} className="animate-pulse" />, color: 'text-blue-400', label: t('sync.uploading') };
+      return {
+        icon: <FiUploadCloud size={16} className="animate-pulse" />,
+        color: 'text-blue-400',
+        label: t('sync.uploading'),
+      };
     case 'downloading':
-      return { icon: <FiDownloadCloud size={16} className="animate-pulse" />, color: 'text-blue-400', label: t('sync.downloading') };
+      return {
+        icon: <FiDownloadCloud size={16} className="animate-pulse" />,
+        color: 'text-blue-400',
+        label: t('sync.downloading'),
+      };
     case 'pending':
       return { icon: <FiClock size={16} />, color: 'text-amber-400', label: t('sync.pending') };
     case 'conflict':
-      return { icon: <FiAlertCircle size={16} />, color: 'text-orange-400', label: t('sync.conflict') };
+      return {
+        icon: <FiAlertCircle size={16} />,
+        color: 'text-orange-400',
+        label: t('sync.conflict'),
+      };
     case 'error':
       return { icon: <FiAlertCircle size={16} />, color: 'text-red-400', label: t('sync.error') };
     case 'offline':
@@ -34,7 +62,7 @@ const getStatusInfo = (
 };
 
 const useFormatLastSync = () => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   return (iso: string | null | undefined): string => {
     if (!iso) return t('sync.neverSynced');
     const date = new Date(iso);
@@ -44,11 +72,11 @@ const useFormatLastSync = () => {
     if (mins < 60) return t('sync.minutesAgo', { n: mins });
     const hours = Math.floor(mins / 60);
     if (hours < 24) return t('sync.hoursAgo', { n: hours });
-    return date.toLocaleDateString(i18n.language === 'tr' ? 'tr-TR' : undefined);
+    return formatDate(iso);
   };
 };
 
-export const SyncStatusIndicator: React.FC<Props> = ({ collapsed }) => {
+export const SyncStatusIndicator: React.FC<Props> = ({ collapsed, className }) => {
   const { status } = useSync();
   const { t } = useTranslation();
   const formatLastSync = useFormatLastSync();
@@ -60,7 +88,10 @@ export const SyncStatusIndicator: React.FC<Props> = ({ collapsed }) => {
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+      if (
+        popoverRef.current &&
+        !(e.target instanceof Node && popoverRef.current.contains(e.target))
+      ) {
         setOpen(false);
       }
     };
@@ -73,15 +104,15 @@ export const SyncStatusIndicator: React.FC<Props> = ({ collapsed }) => {
     setSyncing(true);
     try {
       await window.electronAPI.sync.check();
-    } catch {
-      // status will update via event
+    } catch (error) {
+      console.error('Manual sync error:', error);
     } finally {
       setSyncing(false);
     }
   };
 
   return (
-    <div className="relative" ref={popoverRef}>
+    <div className={cn('relative', className)} ref={popoverRef}>
       <button
         onClick={() => setOpen(!open)}
         className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors ${info.color}`}
@@ -91,7 +122,9 @@ export const SyncStatusIndicator: React.FC<Props> = ({ collapsed }) => {
         {!collapsed && (
           <div className="flex-1 text-left">
             <div className="text-xs font-medium">{info.label}</div>
-            <div className="text-[10px] text-gray-500">{t('sync.lastSyncLabel', { value: formatLastSync(status.lastSyncSuccess) })}</div>
+            <div className="text-[10px] text-gray-500">
+              {t('sync.lastSyncLabel', { value: formatLastSync(status.lastSyncSuccess) })}
+            </div>
           </div>
         )}
       </button>
@@ -107,15 +140,24 @@ export const SyncStatusIndicator: React.FC<Props> = ({ collapsed }) => {
             <span className="text-sm font-semibold text-white">{info.label}</span>
           </div>
           <div className="text-xs text-gray-400 space-y-1">
-            <div>{t('sync.lastSyncFullLabel', { value: formatLastSync(status.lastSyncSuccess) })}</div>
+            <div>
+              {t('sync.lastSyncFullLabel', { value: formatLastSync(status.lastSyncSuccess) })}
+            </div>
             {status.error && (
-              <div className="text-red-400 mt-2 text-[11px] break-words">{t('sync.errorLabel', { error: status.error })}</div>
+              <div className="text-red-400 mt-2 text-[11px] break-words">
+                {t('sync.errorLabel', { error: status.error })}
+              </div>
             )}
           </div>
           <div className="mt-3 flex gap-2">
             <button
               onClick={handleSyncNow}
-              disabled={syncing || status.status === 'disconnected' || status.status === 'uploading' || status.status === 'downloading'}
+              disabled={
+                syncing ||
+                status.status === 'disconnected' ||
+                status.status === 'uploading' ||
+                status.status === 'downloading'
+              }
               className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-xs transition-colors"
             >
               <FiRefreshCw size={12} className={syncing ? 'animate-spin' : ''} />

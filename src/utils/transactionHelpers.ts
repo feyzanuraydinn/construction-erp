@@ -1,25 +1,18 @@
 import type { TFunction } from 'i18next';
 import type { TransactionType, BadgeVariant, TransactionWithDetails } from '../types';
 import { formatCurrency } from './formatters';
-import { INCOME_TYPES, EXPENSE_TYPES } from './constants';
+import { MONEY_TOLERANCE } from './money';
+import { isPaymentType } from './transactionKinds';
 
-// ==================== TÜR KONTROL FONKSİYONLARI ====================
-
-/** Gelir oluşturan işlem mi? (invoice_out) */
-export const isIncomeType = (type: TransactionType): boolean =>
-  INCOME_TYPES.includes(type);
-
-/** Gider oluşturan işlem mi? (invoice_in) */
-export const isExpenseType = (type: TransactionType): boolean =>
-  EXPENSE_TYPES.includes(type);
-
-/** Pozitif (bakiyeyi artıran) işlem mi? (invoice_out veya payment_in) */
 export const isPositiveTransaction = (type: TransactionType): boolean =>
   type === 'invoice_out' || type === 'payment_in';
 
-// ==================== EKRAN RENK FONKSİYONLARI (4'lü ayrım) ====================
+export function transactionSign(type: TransactionType): '+' | '-' | '' {
+  if (isPositiveTransaction(type)) return '+';
+  if (type === 'invoice_in' || type === 'payment_out') return '-';
+  return '';
+}
 
-/** İşlem tipine göre arka plan rengi (dot/badge için) */
 export function getTransactionColor(type: TransactionType): string {
   switch (type) {
     case 'invoice_out':
@@ -35,7 +28,6 @@ export function getTransactionColor(type: TransactionType): string {
   }
 }
 
-/** İşlem tipine göre yazı rengi (ekran: 600 shade) */
 export function getTransactionTextColor(type: TransactionType): string {
   switch (type) {
     case 'invoice_out':
@@ -51,27 +43,6 @@ export function getTransactionTextColor(type: TransactionType): string {
   }
 }
 
-/** İşlem tipine göre Badge variant'ı (4'lü ayrım) */
-export function getTransactionBadgeVariant(
-  type: TransactionType
-): BadgeVariant {
-  switch (type) {
-    case 'invoice_out':
-      return 'success';
-    case 'payment_in':
-      return 'info';
-    case 'invoice_in':
-      return 'danger';
-    case 'payment_out':
-      return 'warning';
-    default:
-      return 'info';
-  }
-}
-
-// ==================== YAZDIRMA RENK FONKSİYONLARI (700 shade — baskıda daha koyu) ====================
-
-/** İşlem tipine göre yazı rengi (yazdırma: 700 shade) */
 export function getPrintTransactionTextColor(type: TransactionType): string {
   switch (type) {
     case 'invoice_out':
@@ -87,9 +58,6 @@ export function getPrintTransactionTextColor(type: TransactionType): string {
   }
 }
 
-// ==================== FİRMA HESABI (2'li Gelir/Gider ayrımı) ====================
-
-/** Firma hesabı yazı rengi — Gelir yeşil, Gider kırmızı (2'li basit ayrım) */
 export function getSimpleTransactionTextColor(type: TransactionType): string {
   switch (type) {
     case 'invoice_out':
@@ -103,10 +71,7 @@ export function getSimpleTransactionTextColor(type: TransactionType): string {
   }
 }
 
-/** Firma hesabı Badge variant'ı — Gelir success, Gider danger (2'li basit ayrım) */
-export function getSimpleTransactionBadgeVariant(
-  type: TransactionType
-): BadgeVariant {
+export function getSimpleTransactionBadgeVariant(type: TransactionType): BadgeVariant {
   switch (type) {
     case 'invoice_out':
     case 'payment_in':
@@ -126,11 +91,16 @@ export function deleteTransactionMessage(
 ): string {
   const base = t(baseKey);
   if (!tx) return base;
-  const isPayment = tx.type === 'payment_in' || tx.type === 'payment_out';
+  const isPayment = isPaymentType(tx.type);
   const matched = (isPayment ? tx.allocated_amount : tx.settled_amount) ?? 0;
-  if (matched <= 0.005) return base;
-  const note = t(isPayment ? 'shared.deleteTransaction.matchedPayment' : 'shared.deleteTransaction.matchedInvoice', {
-    amount: formatCurrency(matched),
-  });
+  if (matched <= MONEY_TOLERANCE) return base;
+  const note = t(
+    isPayment
+      ? 'shared.deleteTransaction.matchedPayment'
+      : 'shared.deleteTransaction.matchedInvoice',
+    {
+      amount: formatCurrency(matched),
+    }
+  );
   return `${base} ${note}`;
 }

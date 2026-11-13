@@ -1,10 +1,21 @@
-import type { Database as SqlJsDatabase } from 'sql.js';
-import type { DashboardStats, DebtorCreditor, MonthlyStats, CategoryBreakdown, AgingReceivable } from '../../types';
-import { localDateStamp } from '../fileUtils';
-
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
-}
+import type {
+  DashboardStats,
+  DebtorCreditor,
+  MonthlyStats,
+  CategoryBreakdown,
+  AgingReceivable,
+} from '../../types';
+import { toLocalDateString } from '../../utils/dates';
+import { MONEY_TOLERANCE, roundMoney } from '../../utils/money';
+import {
+  flowTotalsSql,
+  netBalanceSql,
+  sumOfTypeSql,
+  tryAmountSql,
+  allocationTotalsJoinSql,
+} from '../sqlFragments';
+import { SqlRepository } from './SqlRepository';
+import { UNCATEGORIZED } from '../../utils/categories';
 
 function daysBetween(from: string, to: string): number {
   const toUtc = (date: string) => {
@@ -14,175 +25,108 @@ function daysBetween(from: string, to: string): number {
   return Math.round((toUtc(to) - toUtc(from)) / 86_400_000);
 }
 
-export class AnalyticsRepository {
-  constructor(private db: SqlJsDatabase) {}
-
-  private query<R>(sql: string, params?: unknown[]): R[] {
-    const stmt = this.db.prepare(sql);
-    if (params) stmt.bind(params);
-    const results: R[] = [];
-    while (stmt.step()) {
-      results.push(stmt.getAsObject() as R);
-    }
-    stmt.free();
-    return results;
-  }
-
-  private queryOne<R>(sql: string, params?: unknown[]): R | undefined {
-    const results = this.query<R>(sql, params);
-    return results[0];
-  }
-
+export class AnalyticsRepository extends SqlRepository {
   getDashboardStats(): DashboardStats {
-    // Combined transaction totals in a single query (replaces 4 separate queries)
-    const txTotals = this.queryOne<{
-      income: number; expense: number; collected: number; paid: number;
-    }>(`
-      SELECT
-        COALESCE(SUM(CASE WHEN type = 'invoice_out' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as income,
-        COALESCE(SUM(CASE WHEN type = 'invoice_in' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as expense,
-        COALESCE(SUM(CASE WHEN type = 'payment_in' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as collected,
-        COALESCE(SUM(CASE WHEN type = 'payment_out' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as paid
-      FROM transactions
-    `);
-
-    // Combined counts in a single query (replaces 3 separate queries)
-    const counts = this.queryOne<{
-      activeProjects: number; totalCompanies: number; lowStockCount: number;
-    }>(`
-      SELECT
-        (SELECT COUNT(*) FROM projects WHERE is_active = 1 AND status = 'active') as activeProjects,
-        (SELECT COUNT(*) FROM companies WHERE is_active = 1) as totalCompanies,
-        (SELECT COUNT(*) FROM materials WHERE is_active = 1 AND current_stock <= min_stock AND min_stock > 0) as lowStockCount
-    `);
-
-    // Receivables & payables in a single query (replaces 2 separate queries)
     const balances = this.queryOne<{ receivables: number; payables: number }>(`
       SELECT
-        COALESCE(SUM(CASE WHEN balance > 0 THEN balance ELSE 0 END), 0) as receivables,
-        COALESCE(SUM(CASE WHEN debt > 0 THEN debt ELSE 0 END), 0) as payables
+        COALESCE(SUM(CASE WHEN balance > ${MONEY_TOLERANCE} THEN balance ELSE 0 END), 0) as receivables,
+        COALESCE(SUM(CASE WHEN balance < -${MONEY_TOLERANCE} THEN -balance ELSE 0 END), 0) as payables
       FROM (
-        SELECT
-          (COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
-           COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0)) as balance,
-          (COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
-           COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0)) as debt
+        SELECT ${netBalanceSql('t')} as balance
         FROM transactions t WHERE t.company_id IS NOT NULL GROUP BY t.company_id
       )
     `);
 
-    const totalIncome = txTotals?.income || 0;
-    const totalExpense = txTotals?.expense || 0;
-    const totalCollected = txTotals?.collected || 0;
-    const totalPaid = txTotals?.paid || 0;
-
     return {
-      totalIncome,
-      totalExpense,
-      netProfit: totalIncome - totalExpense,
-      totalCollected,
-      totalPaid,
-      netCash: totalCollected - totalPaid,
-      activeProjects: counts?.activeProjects || 0,
-      totalCompanies: counts?.totalCompanies || 0,
       totalReceivables: balances?.receivables || 0,
       totalPayables: balances?.payables || 0,
-      lowStockCount: counts?.lowStockCount || 0,
     };
   }
 
-  getTopDebtors(limit = 5, startDate?: string): DebtorCreditor[] {
-    const dateFilter = startDate ? ` AND t.date >= ?` : '';
-    const params: unknown[] = startDate ? [startDate, limit] : [limit];
-    return this.query(`
-      SELECT c.id, c.name, c.account_type,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
-        COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as balance
-      FROM companies c
-      INNER JOIN transactions t ON t.company_id = c.id
-      WHERE c.is_active = 1${dateFilter}
-      GROUP BY c.id
-      HAVING balance > 0
-      ORDER BY balance DESC
-      LIMIT ?
-    `, params);
+  getTopDebtors(limit = 5): DebtorCreditor[] {
+    return this.rankByBalance('', limit);
   }
 
-  getTopCreditors(limit = 5, startDate?: string): DebtorCreditor[] {
-    const dateFilter = startDate ? ` AND t.date >= ?` : '';
-    const params: unknown[] = startDate ? [startDate, limit] : [limit];
-    return this.query(`
+  getTopCreditors(limit = 5): DebtorCreditor[] {
+    return this.rankByBalance('-', limit);
+  }
+
+  private rankByBalance(sign: '' | '-', limit: number): DebtorCreditor[] {
+    return this.query(
+      `
       SELECT c.id, c.name, c.account_type,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
-        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as balance
+        ${sign}(${netBalanceSql('t')}) as balance
       FROM companies c
       INNER JOIN transactions t ON t.company_id = c.id
-      WHERE c.is_active = 1${dateFilter}
+      WHERE c.is_active = 1
       GROUP BY c.id
-      HAVING balance > 0
+      HAVING balance > ${MONEY_TOLERANCE}
       ORDER BY balance DESC
       LIMIT ?
-    `, params);
+    `,
+      [limit]
+    );
   }
 
   getMonthlyStats(year: number): MonthlyStats[] {
-    return this.query(`
-      SELECT
-        strftime('%m', date) as month,
-        COALESCE(SUM(CASE WHEN type = 'invoice_out' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as income,
-        COALESCE(SUM(CASE WHEN type = 'invoice_in' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as expense,
-        COALESCE(SUM(CASE WHEN type = 'payment_in' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as collected,
-        COALESCE(SUM(CASE WHEN type = 'payment_out' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as paid
-      FROM transactions
-      WHERE strftime('%Y', date) = ?
-      GROUP BY month
-      ORDER BY month
-    `, [String(year)]);
+    return this.monthlyStats(year);
   }
 
   getProjectCategoryBreakdown(projectId: number): CategoryBreakdown[] {
-    return this.query(`
-      SELECT COALESCE(cat.name, 'Diğer') as category, cat.color as color,
-        SUM(COALESCE(t.amount_try, t.amount)) as total, COUNT(*) as count
+    return this.query(
+      `
+      SELECT COALESCE(cat.name, '${UNCATEGORIZED}') as category, cat.color as color,
+        SUM(${tryAmountSql('t')}) as total, COUNT(*) as count
       FROM transactions t
       LEFT JOIN categories cat ON cat.id = t.category_id
       WHERE t.project_id = ? AND t.type = 'invoice_in'
       GROUP BY t.category_id
       ORDER BY total DESC
-    `, [projectId]);
+    `,
+      [projectId]
+    );
   }
 
   getCompanyMonthlyStats(companyId: number, year: number): MonthlyStats[] {
-    return this.query(`
-      SELECT
-        strftime('%m', date) as month,
-        COALESCE(SUM(CASE WHEN type = 'invoice_out' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as income,
-        COALESCE(SUM(CASE WHEN type = 'invoice_in' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as expense,
-        COALESCE(SUM(CASE WHEN type = 'payment_in' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as collected,
-        COALESCE(SUM(CASE WHEN type = 'payment_out' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as paid
-      FROM transactions
-      WHERE company_id = ? AND strftime('%Y', date) = ?
-      GROUP BY month
-      ORDER BY month
-    `, [companyId, String(year)]);
+    return this.monthlyStats(year, companyId);
   }
 
-  /** Nakit akışı raporu: aylık tahsilat/ödeme ve kümülatif bakiye */
-  getCashFlowReport(year: number): { month: number; collected: number; paid: number; netCash: number; cumulative: number }[] {
-    const monthly = this.query<{ month: number; collected: number; paid: number }>(`
+  private monthlyStats(year: number, companyId?: number): MonthlyStats[] {
+    const forCompany = companyId !== undefined;
+    return this.query(
+      `
+      SELECT
+        strftime('%m', date) as month,
+        ${flowTotalsSql()}
+      FROM transactions
+      WHERE ${forCompany ? 'company_id = ? AND ' : ''}strftime('%Y', date) = ?
+      GROUP BY month
+      ORDER BY month
+    `,
+      forCompany ? [companyId, String(year)] : [String(year)]
+    );
+  }
+
+  getCashFlowReport(
+    year: number
+  ): { month: number; collected: number; paid: number; netCash: number; cumulative: number }[] {
+    const monthly = this.query<{ month: number; collected: number; paid: number }>(
+      `
       SELECT
         CAST(strftime('%m', date) AS INTEGER) as month,
-        COALESCE(SUM(CASE WHEN type = 'payment_in' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as collected,
-        COALESCE(SUM(CASE WHEN type = 'payment_out' THEN COALESCE(amount_try, amount) ELSE 0 END), 0) as paid
+        ${sumOfTypeSql('payment_in')} as collected,
+        ${sumOfTypeSql('payment_out')} as paid
       FROM transactions
       WHERE strftime('%Y', date) = ?
       GROUP BY month
       ORDER BY month
-    `, [String(year)]);
+    `,
+      [String(year)]
+    );
 
     let cumulative = 0;
     return Array.from({ length: 12 }, (_, i) => {
-      const found = monthly.find(m => m.month === i + 1);
+      const found = monthly.find((m) => m.month === i + 1);
       const collected = found?.collected || 0;
       const paid = found?.paid || 0;
       const netCash = collected - paid;
@@ -191,27 +135,29 @@ export class AnalyticsRepository {
     });
   }
 
-  getAgingReceivables(today: string = localDateStamp()): AgingReceivable[] {
-    const invoices = this.query<{ companyId: number; companyName: string; date: string; amount: number; allocated: number }>(`
+  getAgingReceivables(today: string = toLocalDateString()): AgingReceivable[] {
+    const invoices = this.query<{
+      companyId: number;
+      companyName: string;
+      date: string;
+      amount: number;
+      allocated: number;
+    }>(`
       SELECT t.company_id as companyId, c.name as companyName, t.date,
-        COALESCE(t.amount_try, t.amount) as amount,
+        ${tryAmountSql('t')} as amount,
         COALESCE(alloc.allocated, 0) as allocated
       FROM transactions t
       INNER JOIN companies c ON c.id = t.company_id
-      LEFT JOIN (
-        SELECT invoice_id, SUM(amount) as allocated FROM payment_allocations GROUP BY invoice_id
-      ) alloc ON alloc.invoice_id = t.id
+      ${allocationTotalsJoinSql('invoice_id', 'alloc', 'allocated', 't')}
       WHERE c.is_active = 1 AND t.type = 'invoice_out'
       ORDER BY t.company_id, t.date, t.id
     `);
 
     const credits = this.query<{ companyId: number; unallocated: number }>(`
       SELECT t.company_id as companyId,
-        SUM(MAX(0, COALESCE(t.amount_try, t.amount) - COALESCE(alloc.allocated, 0))) as unallocated
+        SUM(MAX(0, ${tryAmountSql('t')} - COALESCE(alloc.allocated, 0))) as unallocated
       FROM transactions t
-      LEFT JOIN (
-        SELECT payment_id, SUM(amount) as allocated FROM payment_allocations GROUP BY payment_id
-      ) alloc ON alloc.payment_id = t.id
+      ${allocationTotalsJoinSql('payment_id', 'alloc', 'allocated', 't')}
       WHERE t.type = 'payment_in' AND t.company_id IS NOT NULL
       GROUP BY t.company_id
     `);
@@ -224,11 +170,19 @@ export class AnalyticsRepository {
       const settled = Math.min(open, credit);
       open -= settled;
       creditLeft.set(invoice.companyId, credit - settled);
-      if (open < 0.005) continue;
+      if (open < MONEY_TOLERANCE) continue;
 
       let row = rows.get(invoice.companyId);
       if (!row) {
-        row = { companyId: invoice.companyId, companyName: invoice.companyName, current: 0, days30: 0, days60: 0, days90plus: 0, total: 0 };
+        row = {
+          companyId: invoice.companyId,
+          companyName: invoice.companyName,
+          current: 0,
+          days30: 0,
+          days60: 0,
+          days90plus: 0,
+          total: 0,
+        };
         rows.set(invoice.companyId, row);
       }
       const age = daysBetween(invoice.date, today);

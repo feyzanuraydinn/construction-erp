@@ -63,7 +63,14 @@ describe('DataReview page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.electronAPI.category.getAll = vi.fn().mockResolvedValue([
-      { id: 31, name: 'Diğer Gider', type: 'invoice_in', color: '#000', is_default: 1, created_at: '' },
+      {
+        id: 31,
+        name: 'Diğer Gider',
+        type: 'invoice_in',
+        color: '#000',
+        is_default: 1,
+        created_at: '',
+      },
       { id: 32, name: 'İşçilik', type: 'invoice_in', color: '#000', is_default: 1, created_at: '' },
     ]);
   });
@@ -72,24 +79,54 @@ describe('DataReview page', () => {
     window.electronAPI.review.getReport = vi.fn().mockResolvedValue(
       report({
         orphans: [
-          { id: 10, type: 'invoice_in', scope: 'cari', description: 'Silinen carinin faturası', date: '2026-01-08', currency: 'TRY', amount: 900, amountTry: 900, missing: 'company', missingId: 4 },
-          { id: 15, type: 'invoice_in', scope: 'project', description: 'Silinen projenin gideri', date: '2026-01-09', currency: 'TRY', amount: 300, amountTry: 300, missing: 'project', missingId: 11 },
+          {
+            id: 10,
+            type: 'invoice_in',
+            scope: 'cari',
+            description: 'Silinen carinin faturası',
+            date: '2026-01-08',
+            currency: 'TRY',
+            amount: 900,
+            amountTry: 900,
+            missing: 'company',
+            missingId: 4,
+          },
+          {
+            id: 15,
+            type: 'invoice_in',
+            scope: 'project',
+            description: 'Silinen projenin gideri',
+            date: '2026-01-09',
+            currency: 'TRY',
+            amount: 300,
+            amountTry: 300,
+            missing: 'project',
+            missingId: 11,
+          },
         ],
       })
     );
-    window.electronAPI.review.applyRepairs = vi.fn().mockResolvedValue({ result: { changed: 1, skipped: 1 }, report: report() });
+    window.electronAPI.review.applyRepairs = vi
+      .fn()
+      .mockResolvedValue({ result: { changed: 1, skipped: 1 }, report: report() });
     render(<DataReview />);
 
     fireEvent.click(await screen.findByLabelText('Silinen projenin gideri çöp kutusuna taşınsın'));
     fireEvent.click(screen.getByText('Onarımları uygula'));
 
-    await waitFor(() => expect(window.electronAPI.review.applyRepairs).toHaveBeenCalledWith({ orphanIds: [10] }));
+    await waitFor(() =>
+      expect(window.electronAPI.review.applyRepairs).toHaveBeenCalledWith({ orphanIds: [10] })
+    );
     expect(mockToast.success).toHaveBeenCalled();
   });
 
   it('needs a choice for a project payment with a company before applying', async () => {
-    window.electronAPI.review.getReport = vi.fn().mockResolvedValue(report({ unmatchedPayments: [wages] }));
-    window.electronAPI.review.applyUnmatched = vi.fn().mockResolvedValue({ result: { changed: 1, skipped: 0 }, report: report() });
+    window.electronAPI.review.getReport = vi
+      .fn()
+      .mockResolvedValue(report({ unmatchedPayments: [wages] }));
+    window.electronAPI.review.applyUnmatched = vi
+      .fn()
+      .mockResolvedValue({ result: { changed: 1, skipped: 0 }, report: report() });
     render(<DataReview />);
 
     const apply = await screen.findByText('Seçimleri uygula');
@@ -97,8 +134,12 @@ describe('DataReview page', () => {
     expect(screen.getByText('1 ödeme için kalan tutarın ne olacağını seçin.')).toBeInTheDocument();
     expect(screen.getByText('Eski proje sayfasında gider sayılıyordu')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Usta yevmiye için kalan tutar'), { target: { value: 'document' } });
-    fireEvent.change(screen.getByLabelText('Usta yevmiye için kategori'), { target: { value: '32' } });
+    fireEvent.change(screen.getByLabelText('Usta yevmiye için kalan tutar'), {
+      target: { value: 'document' },
+    });
+    fireEvent.change(screen.getByLabelText('Usta yevmiye için kategori'), {
+      target: { value: '32' },
+    });
     fireEvent.click(screen.getByText('Seçimleri uygula'));
 
     await waitFor(() =>

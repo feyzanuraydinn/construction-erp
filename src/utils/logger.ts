@@ -1,20 +1,19 @@
-// Simple logging utility for the application
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-interface LogEntry {
-  level: LogLevel;
-  message: string;
-  timestamp: string;
-  context?: string;
-  data?: unknown;
+export interface ContextLogger {
+  debug(message: string, data?: unknown): void;
+  info(message: string, data?: unknown): void;
+  warn(message: string, data?: unknown): void;
+  error(message: string, error?: unknown): void;
 }
 
-// In-memory log buffer for recent logs
-const LOG_BUFFER_SIZE = 100;
-const logBuffer: LogEntry[] = [];
+export interface LevelLogger {
+  debug(message: string, context?: string, data?: unknown): void;
+  info(message: string, context?: string, data?: unknown): void;
+  warn(message: string, context?: string, data?: unknown): void;
+  error(message: string, context?: string, error?: unknown): void;
+}
 
-// Log level priority
 const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
   info: 1,
@@ -22,155 +21,53 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
-// Current minimum log level (can be configured)
-let minLogLevel: LogLevel = process.env.NODE_ENV === 'development' ? 'debug' : 'info';
+export const DEFAULT_LOG_LEVEL: LogLevel =
+  process.env.NODE_ENV === 'development' ? 'debug' : 'info';
 
-function shouldLog(level: LogLevel): boolean {
-  return LOG_LEVELS[level] >= LOG_LEVELS[minLogLevel];
+export function isLevelEnabled(level: LogLevel, minLevel: LogLevel): boolean {
+  return LOG_LEVELS[level] >= LOG_LEVELS[minLevel];
 }
 
-function formatMessage(level: LogLevel, message: string, context?: string): string {
-  const timestamp = new Date().toISOString();
-  const prefix = context ? `[${context}]` : '';
-  return `${timestamp} [${level.toUpperCase()}]${prefix} ${message}`;
+export function formatLogLine(level: LogLevel, message: string, context?: string): string {
+  const contextStr = context ? `[${context}] ` : '';
+  return `${new Date().toISOString()} [${level.toUpperCase().padEnd(5)}] ${contextStr}${message}`;
 }
 
-function addToBuffer(entry: LogEntry): void {
-  logBuffer.push(entry);
-  if (logBuffer.length > LOG_BUFFER_SIZE) {
-    logBuffer.shift();
-  }
+export function consoleFor(level: LogLevel): (...args: unknown[]) => void {
+  if (level === 'error') return console.error;
+  if (level === 'warn') return console.warn;
+  if (level === 'debug') return console.debug;
+  return console.log;
 }
 
-function createLogEntry(
-  level: LogLevel,
-  message: string,
-  context?: string,
-  data?: unknown
-): LogEntry {
+export function withContext(logger: LevelLogger, context: string): ContextLogger {
   return {
-    level,
-    message,
-    timestamp: new Date().toISOString(),
-    context,
-    data,
+    debug: (message, data) => logger.debug(message, context, data),
+    info: (message, data) => logger.info(message, context, data),
+    warn: (message, data) => logger.warn(message, context, data),
+    error: (message, error) => logger.error(message, context, error),
   };
 }
 
-export const logger = {
-  /**
-   * Set the minimum log level
-   */
-  setLevel(level: LogLevel): void {
-    minLogLevel = level;
-  },
+function writeToConsole(level: LogLevel, message: string, context?: string, data?: unknown): void {
+  if (!isLevelEnabled(level, DEFAULT_LOG_LEVEL)) return;
+  consoleFor(level)(formatLogLine(level, message, context), data ?? '');
+}
 
-  /**
-   * Log debug messages (only in development)
-   */
-  debug(message: string, context?: string, data?: unknown): void {
-    if (!shouldLog('debug')) return;
-
-    const entry = createLogEntry('debug', message, context, data);
-    addToBuffer(entry);
-
-    if (process.env.NODE_ENV === 'development') {
-      console.debug(formatMessage('debug', message, context), data ?? '');
-    }
-  },
-
-  /**
-   * Log informational messages
-   */
-  info(message: string, context?: string, data?: unknown): void {
-    if (!shouldLog('info')) return;
-
-    const entry = createLogEntry('info', message, context, data);
-    addToBuffer(entry);
-
-    console.info(formatMessage('info', message, context), data ?? '');
-  },
-
-  /**
-   * Log warning messages
-   */
-  warn(message: string, context?: string, data?: unknown): void {
-    if (!shouldLog('warn')) return;
-
-    const entry = createLogEntry('warn', message, context, data);
-    addToBuffer(entry);
-
-    console.warn(formatMessage('warn', message, context), data ?? '');
-  },
-
-  /**
-   * Log error messages
-   */
-  error(message: string, context?: string, error?: Error | unknown): void {
-    if (!shouldLog('error')) return;
-
-    const entry = createLogEntry('error', message, context, error);
-    addToBuffer(entry);
-
-    console.error(formatMessage('error', message, context));
-    if (error) {
-      if (error instanceof Error) {
-        console.error('Error details:', {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-        });
-      } else {
-        console.error('Error data:', error);
-      }
-    }
-  },
-
-  /**
-   * Log performance timing
-   */
-  time(label: string): () => void {
-    const start = performance.now();
-    return () => {
-      const duration = performance.now() - start;
-      this.debug(`${label} completed in ${duration.toFixed(2)}ms`, 'Performance');
-    };
-  },
-
-  /**
-   * Get recent logs from buffer
-   */
-  getRecentLogs(count?: number): LogEntry[] {
-    const n = count ?? LOG_BUFFER_SIZE;
-    return logBuffer.slice(-n);
-  },
-
-  /**
-   * Clear log buffer
-   */
-  clearBuffer(): void {
-    logBuffer.length = 0;
-  },
-
-  /**
-   * Create a logger with a specific context
-   */
-  createContextLogger(context: string) {
-    return {
-      debug: (message: string, data?: unknown) => logger.debug(message, context, data),
-      info: (message: string, data?: unknown) => logger.info(message, context, data),
-      warn: (message: string, data?: unknown) => logger.warn(message, context, data),
-      error: (message: string, error?: Error | unknown) => logger.error(message, context, error),
-      time: (label: string) => logger.time(`[${context}] ${label}`),
-    };
-  },
+const consoleLogger: LevelLogger = {
+  debug: (message, context, data) => writeToConsole('debug', message, context, data),
+  info: (message, context, data) => writeToConsole('info', message, context, data),
+  warn: (message, context, data) => writeToConsole('warn', message, context, data),
+  error: (message, context, error) =>
+    writeToConsole(
+      'error',
+      message,
+      context,
+      error instanceof Error
+        ? { name: error.name, message: error.message, stack: error.stack }
+        : error
+    ),
 };
 
-// Create context-specific loggers
-export const dbLogger = logger.createContextLogger('Database');
-export const apiLogger = logger.createContextLogger('API');
-export const uiLogger = logger.createContextLogger('UI');
-export const authLogger = logger.createContextLogger('Auth');
-
-// Export default logger
-export default logger;
+export const dbLogger = withContext(consoleLogger, 'Database');
+export const uiLogger = withContext(consoleLogger, 'UI');

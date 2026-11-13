@@ -1,24 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
-// Mock sql.js database
 const mockDb = {
   run: vi.fn(),
   exec: vi.fn(),
   getRowsModified: vi.fn().mockReturnValue(1),
 };
 
-// Mock statement
-const mockStmt = {
-  bind: vi.fn().mockReturnThis(),
-  step: vi.fn().mockReturnValue(true),
-  getAsObject: vi.fn().mockReturnValue({ id: 1, name: 'Test' }),
-  free: vi.fn(),
-  reset: vi.fn(),
-};
-
 mockDb.exec = vi.fn().mockReturnValue([]);
 
-// Since BaseRepository requires actual sql.js, we test the logic patterns
 describe('BaseRepository Pattern Tests', () => {
   describe('CRUD Operations Pattern', () => {
     it('should format INSERT query correctly', () => {
@@ -61,7 +50,9 @@ describe('BaseRepository Pattern Tests', () => {
       const baseQuery = 'SELECT * FROM companies WHERE deleted_at IS NULL';
       const paginatedQuery = `${baseQuery} LIMIT ${limit} OFFSET ${offset}`;
 
-      expect(paginatedQuery).toBe('SELECT * FROM companies WHERE deleted_at IS NULL LIMIT 10 OFFSET 20');
+      expect(paginatedQuery).toBe(
+        'SELECT * FROM companies WHERE deleted_at IS NULL LIMIT 10 OFFSET 20'
+      );
     });
 
     it('should build ORDER BY query', () => {
@@ -70,7 +61,9 @@ describe('BaseRepository Pattern Tests', () => {
       const baseQuery = 'SELECT * FROM companies WHERE deleted_at IS NULL';
       const orderedQuery = `${baseQuery} ORDER BY ${orderColumn} ${orderDirection}`;
 
-      expect(orderedQuery).toBe('SELECT * FROM companies WHERE deleted_at IS NULL ORDER BY created_at DESC');
+      expect(orderedQuery).toBe(
+        'SELECT * FROM companies WHERE deleted_at IS NULL ORDER BY created_at DESC'
+      );
     });
 
     it('should build JOIN query', () => {
@@ -91,7 +84,7 @@ describe('BaseRepository Pattern Tests', () => {
 
   describe('Data Transformation Pattern', () => {
     it('should convert boolean to integer for SQLite', () => {
-      const boolToInt = (value: boolean): number => value ? 1 : 0;
+      const boolToInt = (value: boolean): number => (value ? 1 : 0);
 
       expect(boolToInt(true)).toBe(1);
       expect(boolToInt(false)).toBe(0);
@@ -173,8 +166,7 @@ describe('BaseRepository Pattern Tests', () => {
     });
 
     it('should escape special characters in search', () => {
-      const escapeSearch = (term: string): string =>
-        term.replace(/[%_]/g, '\\$&');
+      const escapeSearch = (term: string): string => term.replace(/[%_]/g, '\\$&');
 
       expect(escapeSearch('test%value')).toBe('test\\%value');
       expect(escapeSearch('test_value')).toBe('test\\_value');
@@ -206,7 +198,8 @@ describe('BaseRepository Pattern Tests', () => {
     });
 
     it('should get records from current month', () => {
-      const query = "SELECT * FROM transactions WHERE strftime('%Y-%m', date) = strftime('%Y-%m', 'now')";
+      const query =
+        "SELECT * FROM transactions WHERE strftime('%Y-%m', date) = strftime('%Y-%m', 'now')";
       expect(query).toContain("strftime('%Y-%m'");
     });
 

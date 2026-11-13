@@ -11,8 +11,26 @@ vi.mock('../../contexts/ToastContext', () => ({
 
 describe('ProjectModal', () => {
   const mockCompanies: Company[] = [
-    { id: 1, name: 'Acme Corp', type: 'company', account_type: 'customer', code: 'C001', is_active: 1, created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z' } as Company,
-    { id: 2, name: 'Build Co', type: 'company', account_type: 'supplier', code: 'C002', is_active: 1, created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z' } as Company,
+    {
+      id: 1,
+      name: 'Acme Corp',
+      type: 'company',
+      account_type: 'customer',
+      code: 'C001',
+      is_active: 1,
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
+    } as Company,
+    {
+      id: 2,
+      name: 'Build Co',
+      type: 'company',
+      account_type: 'supplier',
+      code: 'C002',
+      is_active: 1,
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
+    } as Company,
   ];
 
   const defaultProps = {
@@ -27,8 +45,6 @@ describe('ProjectModal', () => {
     vi.clearAllMocks();
     window.electronAPI.project.generateCode = vi.fn().mockResolvedValue('P-001');
   });
-
-  // ==================== RENDERING ====================
 
   it('should render when isOpen is true', () => {
     render(<ProjectModal {...defaultProps} />);
@@ -47,13 +63,15 @@ describe('ProjectModal', () => {
 
   it('should show edit project title when project is provided', () => {
     const project = {
-      id: 1, code: 'P-001', name: 'Test', ownership_type: 'own', status: 'active',
+      id: 1,
+      code: 'P-001',
+      name: 'Test',
+      ownership_type: 'own',
+      status: 'active',
     } as ProjectWithSummary;
     render(<ProjectModal {...defaultProps} project={project} />);
     expect(screen.getByText('Proje Düzenle')).toBeInTheDocument();
   });
-
-  // ==================== FORM FIELDS ====================
 
   it('should show project code and status fields', () => {
     render(<ProjectModal {...defaultProps} />);
@@ -110,7 +128,11 @@ describe('ProjectModal', () => {
 
   it('should disable code field when editing', () => {
     const project = {
-      id: 1, code: 'P-001', name: 'Test', ownership_type: 'own', status: 'planned',
+      id: 1,
+      code: 'P-001',
+      name: 'Test',
+      ownership_type: 'own',
+      status: 'planned',
     } as ProjectWithSummary;
     render(<ProjectModal {...defaultProps} project={project} />);
 
@@ -118,8 +140,6 @@ describe('ProjectModal', () => {
     const codeInput = codeLabel.closest('div')?.querySelector('input');
     expect(codeInput).toBeDisabled();
   });
-
-  // ==================== FORM SUBMISSION ====================
 
   it('should call project.create on submit for new project', async () => {
     const onSave = vi.fn();
@@ -140,11 +160,14 @@ describe('ProjectModal', () => {
 
     fireEvent.click(screen.getByText('Kaydet'));
 
-    await waitFor(() => {
-      if (mockCreate.mock.calls.length > 0) {
-        expect(onSave).toHaveBeenCalledWith(true);
-      }
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        if (mockCreate.mock.calls.length > 0) {
+          expect(onSave).toHaveBeenCalledWith(true);
+        }
+      },
+      { timeout: 3000 }
+    );
   });
 
   it('should call project.update on submit for existing project', async () => {
@@ -153,18 +176,25 @@ describe('ProjectModal', () => {
     window.electronAPI.project.update = mockUpdate;
 
     const project = {
-      id: 1, code: 'P-001', name: 'Old Name', ownership_type: 'own', status: 'active',
+      id: 1,
+      code: 'P-001',
+      name: 'Old Name',
+      ownership_type: 'own',
+      status: 'active',
     } as ProjectWithSummary;
 
     render(<ProjectModal {...defaultProps} project={project} onSave={onSave} />);
     fireEvent.click(screen.getByText('Kaydet'));
 
-    await waitFor(() => {
-      if (mockUpdate.mock.calls.length > 0) {
-        expect(mockUpdate).toHaveBeenCalledWith(1, expect.any(Object));
-        expect(onSave).toHaveBeenCalledWith(false);
-      }
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        if (mockUpdate.mock.calls.length > 0) {
+          expect(mockUpdate).toHaveBeenCalledWith(1, expect.any(Object));
+          expect(onSave).toHaveBeenCalledWith(false);
+        }
+      },
+      { timeout: 3000 }
+    );
   });
 
   it('should show error toast on save failure', async () => {
@@ -179,22 +209,21 @@ describe('ProjectModal', () => {
 
     fireEvent.click(screen.getByText('Kaydet'));
 
-    await waitFor(() => {
-      if (mockToast.error.mock.calls.length > 0) {
-        expect(mockToast.error).toHaveBeenCalled();
-      }
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        if (mockToast.error.mock.calls.length > 0) {
+          expect(mockToast.error).toHaveBeenCalled();
+        }
+      },
+      { timeout: 3000 }
+    );
   });
-
-  // ==================== CLOSE ====================
 
   it('should call onClose when cancel is clicked', () => {
     const onClose = vi.fn();
     render(<ProjectModal {...defaultProps} onClose={onClose} />);
-    // "İptal" appears twice: once as cancel button, once as status option in dropdown.
-    // Find the button with that text.
     const cancelButtons = screen.getAllByText('İptal');
-    const cancelBtn = cancelButtons.find(el => el.tagName === 'BUTTON' || el.closest('button'));
+    const cancelBtn = cancelButtons.find((el) => el.tagName === 'BUTTON' || el.closest('button'));
     fireEvent.click(cancelBtn!);
     expect(onClose).toHaveBeenCalledOnce();
   });

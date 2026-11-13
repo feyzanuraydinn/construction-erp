@@ -45,7 +45,6 @@ describe('Pagination', () => {
   it('should call onNextPage when next button is clicked', () => {
     const onNextPage = vi.fn();
     render(<Pagination {...createPaginationProps({ onNextPage })} />);
-    // Find the next page button by aria-label
     const nextBtn = screen.getByLabelText(/next|sonraki|ileri/i);
     fireEvent.click(nextBtn);
     expect(onNextPage).toHaveBeenCalledOnce();
@@ -67,22 +66,18 @@ describe('Pagination', () => {
         })}
       />
     );
-    // Find all disabled buttons
     const allButtons = screen.getAllByRole('button');
     const disabledButtons = allButtons.filter((btn) => btn.hasAttribute('disabled'));
     expect(disabledButtons.length).toBeGreaterThanOrEqual(1);
   });
 
   it('should not render when totalItems is 0', () => {
-    const { container } = render(
-      <Pagination {...createPaginationProps({ totalItems: 0 })} />
-    );
+    const { container } = render(<Pagination {...createPaginationProps({ totalItems: 0 })} />);
     expect(container.querySelector('nav')).not.toBeInTheDocument();
   });
 
   it('should show record count', () => {
     render(<Pagination {...createPaginationProps()} />);
-    // Should show something like "1-10 / 50"
     expect(screen.getByText(/1.*10.*50|50/)).toBeInTheDocument();
   });
 });

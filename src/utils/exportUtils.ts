@@ -1,42 +1,49 @@
 import { formatCurrency, formatDate } from './formatters';
 import type { TFunction } from 'i18next';
 import type { Currency } from '../types';
+import type { ExportRecord, ExportMetadata } from './schemas';
+import {
+  calculateTransactionTotals,
+  sumNetPositions,
+  type MoneyRecord,
+  splitNetBalance,
+} from './financials';
+import { isRecord, toText } from './typeGuards';
 
 function rowCurrency(row: unknown): Currency {
-  if (typeof row !== 'object' || row === null || !('currency' in row)) return 'TRY';
+  if (!isRecord(row)) return 'TRY';
   const { currency } = row;
   return currency === 'USD' || currency === 'EUR' ? currency : 'TRY';
 }
 
-// Column definitions for different data types
+function amountOrNull(value: unknown): number | null {
+  if (typeof value === 'number') return value;
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function money(value: unknown): string {
+  return formatCurrency(amountOrNull(value));
+}
+
+function enumLabel(t: TFunction, group: string) {
+  return (value: unknown) => t(`enums.${group}.${toText(value)}`, toText(value));
+}
+
 export interface ExportColumn {
   key: string;
   label: string;
   format?: (value: unknown, row: unknown) => string;
 }
 
-// Metadata for styled Excel exports
-export interface ExportMetadata {
-  summaryStartIndex?: number;
-  amountColumnLabel?: string;
-  balanceColumnLabel?: string;
-  receivableColumnLabel?: string;
-  payableColumnLabel?: string;
-  typeColumnLabel?: string;
-  expenseTypeValues?: string[];
-  redSummaryLabels?: string[];
-  greenSummaryLabels?: string[];
-  highlightSummaryLabels?: string[];
-}
-
-// Transaction export columns (accepts t function for i18n)
 export function getTransactionColumns(t: TFunction): ExportColumn[] {
   return [
-    { key: 'date', label: t('export.columns.date'), format: (v) => formatDate(v as string) },
+    { key: 'date', label: t('export.columns.date'), format: (v) => formatDate(toText(v)) },
     {
       key: 'type',
       label: t('export.columns.type'),
-      format: (v) => t(`enums.transactionType.${v}`, v as string),
+      format: enumLabel(t, 'transactionType'),
     },
     { key: 'description', label: t('export.columns.description') },
     { key: 'company_name', label: t('export.columns.companyAccount') },
@@ -45,35 +52,33 @@ export function getTransactionColumns(t: TFunction): ExportColumn[] {
     {
       key: 'amount',
       label: t('export.columns.amount'),
-      format: (v, row) => formatCurrency(v as number, rowCurrency(row)),
+      format: (v, row) => formatCurrency(amountOrNull(v), rowCurrency(row)),
     },
     { key: 'currency', label: t('export.columns.currency') },
     { key: 'document_no', label: t('export.columns.documentNo') },
   ];
 }
 
-// Company export columns
 export function getCompanyColumns(t: TFunction): ExportColumn[] {
   return [
     { key: 'code', label: t('export.columns.code') },
     { key: 'name', label: t('export.columns.companyName') },
-    { key: 'type', label: t('export.columns.type'), format: (v) => t(`enums.companyType.${v}`, v as string) },
+    { key: 'type', label: t('export.columns.type'), format: enumLabel(t, 'companyType') },
     {
       key: 'account_type',
       label: t('export.columns.accountType'),
-      format: (v) => t(`enums.accountType.${v}`, v as string),
+      format: enumLabel(t, 'accountType'),
     },
     { key: 'tax_number', label: t('export.columns.taxNumber') },
     { key: 'phone', label: t('export.columns.phone') },
     { key: 'email', label: t('export.columns.email') },
     { key: 'address', label: t('export.columns.address') },
-    { key: 'receivable', label: t('export.columns.receivable'), format: (v) => formatCurrency(v as number) },
-    { key: 'payable', label: t('export.columns.payable'), format: (v) => formatCurrency(v as number) },
-    { key: 'balance', label: t('export.columns.balance'), format: (v) => formatCurrency(v as number) },
+    { key: 'receivable', label: t('export.columns.receivable'), format: money },
+    { key: 'payable', label: t('export.columns.payable'), format: money },
+    { key: 'balance', label: t('export.columns.balance'), format: money },
   ];
 }
 
-// Project export columns
 export function getProjectColumns(t: TFunction): ExportColumn[] {
   return [
     { key: 'code', label: t('export.columns.code') },
@@ -81,23 +86,22 @@ export function getProjectColumns(t: TFunction): ExportColumn[] {
     {
       key: 'status',
       label: t('export.columns.status'),
-      format: (v) => t(`enums.projectStatus.${v}`, v as string),
+      format: enumLabel(t, 'projectStatus'),
     },
     {
       key: 'ownership_type',
       label: t('export.columns.ownership'),
-      format: (v) => t(`enums.ownershipType.${v}`, v as string),
+      format: enumLabel(t, 'ownershipType'),
     },
     { key: 'location', label: t('export.columns.location') },
-    { key: 'estimated_budget', label: t('export.columns.budget'), format: (v) => formatCurrency(v as number) },
-    { key: 'total_income', label: t('export.columns.totalIncome'), format: (v) => formatCurrency(v as number) },
-    { key: 'total_expense', label: t('export.columns.totalExpense'), format: (v) => formatCurrency(v as number) },
-    { key: 'total_collected', label: t('export.columns.totalCollected'), format: (v) => formatCurrency(v as number) },
-    { key: 'total_paid', label: t('export.columns.totalPaid'), format: (v) => formatCurrency(v as number) },
+    { key: 'estimated_budget', label: t('export.columns.budget'), format: money },
+    { key: 'total_income', label: t('export.columns.totalIncome'), format: money },
+    { key: 'total_expense', label: t('export.columns.totalExpense'), format: money },
+    { key: 'total_collected', label: t('export.columns.totalCollected'), format: money },
+    { key: 'total_paid', label: t('export.columns.totalPaid'), format: money },
   ];
 }
 
-// Format records for export based on column definitions
 export function formatRecordsForExport<T>(
   records: T[],
   columns: ExportColumn[]
@@ -105,7 +109,7 @@ export function formatRecordsForExport<T>(
   return records.map((record) => {
     const formatted: Record<string, string> = {};
     columns.forEach((col) => {
-      const value = (record as Record<string, unknown>)[col.key];
+      const value = isRecord(record) ? record[col.key] : undefined;
       formatted[col.label] = col.format
         ? col.format(value, record)
         : value === null || value === undefined
@@ -116,28 +120,13 @@ export function formatRecordsForExport<T>(
   });
 }
 
-// Build summary rows + metadata for transaction-based exports
 export function buildTransactionSummary(
-  records: { type?: string; amount_try?: number; amount?: number }[],
-  t: TFunction,
-  dataRowCount: number
+  records: MoneyRecord[],
+  t: TFunction
 ): { rows: Record<string, string>[]; metadata: ExportMetadata } {
-  let totalInvoiceOut = 0;
-  let totalPaymentIn = 0;
-  let totalInvoiceIn = 0;
-  let totalPaymentOut = 0;
-
-  for (const r of records) {
-    const amount = r.amount_try ?? r.amount ?? 0;
-    switch (r.type) {
-      case 'invoice_out': totalInvoiceOut += amount; break;
-      case 'payment_in': totalPaymentIn += amount; break;
-      case 'invoice_in': totalInvoiceIn += amount; break;
-      case 'payment_out': totalPaymentOut += amount; break;
-    }
-  }
-
-  const netBalance = (totalInvoiceOut + totalPaymentOut) - (totalInvoiceIn + totalPaymentIn);
+  const { totalInvoiceOut, totalPaymentIn, totalInvoiceIn, totalPaymentOut, netBalance } =
+    calculateTransactionTotals(records);
+  const positions = sumNetPositions(records);
   const descKey = t('export.columns.description');
   const amtKey = t('export.columns.amount');
 
@@ -148,15 +137,15 @@ export function buildTransactionSummary(
     { [descKey]: t('export.summary.paymentIn'), [amtKey]: formatCurrency(totalPaymentIn) },
     { [descKey]: t('export.summary.invoiceIn'), [amtKey]: formatCurrency(totalInvoiceIn) },
     { [descKey]: t('export.summary.paymentOut'), [amtKey]: formatCurrency(totalPaymentOut) },
-    { [descKey]: t('export.summary.receivable'), [amtKey]: formatCurrency(totalInvoiceOut - totalPaymentIn) },
-    { [descKey]: t('export.summary.payable'), [amtKey]: formatCurrency(totalInvoiceIn - totalPaymentOut) },
+    { [descKey]: t('export.summary.receivable'), [amtKey]: formatCurrency(positions.receivable) },
+    { [descKey]: t('export.summary.payable'), [amtKey]: formatCurrency(positions.payable) },
     { [descKey]: t('export.summary.netBalance'), [amtKey]: formatCurrency(netBalance) },
   ];
 
   return {
     rows,
     metadata: {
-      summaryStartIndex: dataRowCount + 1,
+      summaryStartIndex: records.length + 1,
       amountColumnLabel: amtKey,
       typeColumnLabel: t('export.columns.type'),
       expenseTypeValues: [
@@ -173,26 +162,22 @@ export function buildTransactionSummary(
         t('export.summary.paymentIn'),
         t('export.summary.receivable'),
       ],
-      highlightSummaryLabels: [
-        t('export.summary.netBalance'),
-      ],
+      highlightSummaryLabels: [t('export.summary.netBalance')],
     },
   };
 }
 
-// Build summary rows + metadata for company list exports
 export function buildCompanySummary(
   records: { balance?: number }[],
-  t: TFunction,
-  dataRowCount: number
+  t: TFunction
 ): { rows: Record<string, string>[]; metadata: ExportMetadata } {
   let totalReceivable = 0;
   let totalPayable = 0;
 
   for (const r of records) {
-    const bal = r.balance ?? 0;
-    if (bal > 0) totalReceivable += bal;
-    else if (bal < 0) totalPayable += Math.abs(bal);
+    const { receivable, payable } = splitNetBalance(r.balance ?? 0);
+    totalReceivable += receivable;
+    totalPayable += payable;
   }
 
   const nameKey = t('export.columns.companyName');
@@ -203,8 +188,14 @@ export function buildCompanySummary(
     { [nameKey]: t('export.summary.header') },
     { [nameKey]: t('export.summary.totalReceivable'), [balKey]: formatCurrency(totalReceivable) },
     { [nameKey]: t('export.summary.totalPayable'), [balKey]: formatCurrency(totalPayable) },
-    { [nameKey]: t('export.summary.netBalance'), [balKey]: formatCurrency(totalReceivable - totalPayable) },
-    { [nameKey]: t('common.total') + ' (' + t('export.summary.accountCount') + ')', [balKey]: String(records.length) },
+    {
+      [nameKey]: t('export.summary.netBalance'),
+      [balKey]: formatCurrency(totalReceivable - totalPayable),
+    },
+    {
+      [nameKey]: t('common.total') + ' (' + t('export.summary.accountCount') + ')',
+      [balKey]: String(records.length),
+    },
   ];
 
   const recKey = t('export.columns.receivable');
@@ -213,58 +204,29 @@ export function buildCompanySummary(
   return {
     rows,
     metadata: {
-      summaryStartIndex: dataRowCount + 1,
+      summaryStartIndex: records.length + 1,
       balanceColumnLabel: balKey,
       receivableColumnLabel: recKey,
       payableColumnLabel: payKey,
-      redSummaryLabels: [
-        t('export.summary.totalPayable'),
-      ],
-      greenSummaryLabels: [
-        t('export.summary.totalReceivable'),
-      ],
-      highlightSummaryLabels: [
-        t('export.summary.netBalance'),
-      ],
+      redSummaryLabels: [t('export.summary.totalPayable')],
+      greenSummaryLabels: [t('export.summary.totalReceivable')],
+      highlightSummaryLabels: [t('export.summary.netBalance')],
     },
   };
 }
 
-// Export to Excel via electron API
-export async function exportToExcel(
-  type: string,
-  records: unknown[],
-  filename?: string,
+export function exportToExcel(
+  filename: string,
+  records: ExportRecord[],
   metadata?: ExportMetadata
 ): Promise<string> {
-  try {
-    const result = await window.electronAPI.export.toExcel({
-      type,
-      records,
-      filename,
-      metadata,
-    });
-    return result;
-  } catch (error) {
-    console.error('Export error:', error);
-    throw error;
-  }
+  return window.electronAPI.export.toExcel({ filename, records, metadata });
 }
 
-// Share Excel — copies file to clipboard and opens its folder in Explorer
 export async function shareExcel(
-  type: string,
-  records: unknown[],
-  filename?: string,
+  filename: string,
+  records: ExportRecord[],
   metadata?: ExportMetadata
 ): Promise<void> {
-  await window.electronAPI.export.share({
-    type,
-    records,
-    filename,
-    metadata,
-  });
+  await window.electronAPI.export.share({ filename, records, metadata });
 }
-
-// Legacy alias
-export const exportToCSV = exportToExcel;

@@ -1,53 +1,64 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useCRUDPage, getPaginationProps } from '../hooks';
-import { FiPlus, FiSearch, FiEdit2, FiTrash2, FiUsers, FiDownload, FiShare2 } from 'react-icons/fi';
+import { useCRUDPage } from '../hooks/useCRUDPage';
+import { getPaginationProps } from '../hooks/usePagination';
+import { FiPlus, FiUsers } from 'react-icons/fi';
+import { Card, CardBody } from '../components/ui/Card';
 import {
-  Card,
-  CardBody,
-  Button,
-  Input,
-  Select,
   Table,
   TableHeader,
   TableBody,
   TableRow,
   TableHead,
   TableCell,
-  TypeBadge,
-  AccountTypeBadge,
-  BalanceBadge,
-  EmptyState,
-  ConfirmDialog,
-  Pagination,
-  LoadingSpinner,
-  Divider,
-  SelectAllCheckbox,
-  RowCheckbox,
-} from '../components/ui';
-import { CompanyModal, ExportPreviewModal } from '../components/modals';
-import { formatCurrency } from '../utils/formatters';
+} from '../components/ui/Table';
+import { TypeBadge, AccountTypeBadge, BalanceBadge } from '../components/ui/Badge';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Pagination } from '../components/ui/Pagination';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { SelectAllHeadCell, RowCheckboxCell } from '../components/ui/SelectAllCheckbox';
+import { CompanyModal } from '../components/modals/CompanyModal';
+import { formatCurrency, matchesSearchText } from '../utils/formatters';
 import { COMPANY_TYPES, ACCOUNT_TYPES } from '../utils/constants';
 import { getCompanyColumns, buildCompanySummary } from '../utils/exportUtils';
 import type { CompanyWithBalance } from '../types';
+import { PageActions, BulkDeleteAction } from '../components/shared/PageActions';
+import { ListFilterBar } from '../components/shared/ListFilterBar';
+import { CrudListDialogs } from '../components/shared/CrudListDialogs';
+import { RowActions } from '../components/ui/RowActions';
+import { useRelatedDeleteConfirm } from '../hooks/useRelatedDeleteConfirm';
+import { useTranslatedOptions } from '../hooks/useTranslatedOptions';
+import { PageHeader } from '../components/shared/PageHeader';
+
+type CompanyFilters = { type: string; accountType: string };
+
+function filterCompanies(
+  items: CompanyWithBalance[],
+  search: string,
+  filters: CompanyFilters
+): CompanyWithBalance[] {
+  return items.filter((company) => {
+    const matchesSearch = matchesSearchText(search, company.name);
+    const matchesType = !filters.type || company.type === filters.type;
+    const matchesAccountType = !filters.accountType || company.account_type === filters.accountType;
+    return matchesSearch && matchesType && matchesAccountType;
+  });
+}
 
 function Companies() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-
-  // Companies-specific state for related entity counts on delete
-  const [deleteRelated, setDeleteRelated] = useState<{ transactionCount: number; projectCount: number } | null>(null);
+  const companyTypeOptions = useTranslatedOptions(COMPANY_TYPES);
+  const accountTypeOptions = useTranslatedOptions(ACCOUNT_TYPES);
 
   const i18nCompanyColumns = useMemo(() => getCompanyColumns(t), [t]);
 
-  const crud = useCRUDPage<CompanyWithBalance, { type: string; accountType: string }>({
+  const crud = useCRUDPage<CompanyWithBalance, CompanyFilters>({
     loadFn: async () => {
       const companies = await window.electronAPI.company.getWithBalance();
-      return { companies };
+      return { items: companies };
     },
-    dataKey: 'companies',
-    onDataLoaded: () => {},
     deleteFn: (id) => window.electronAPI.company.delete(id),
     entityKey: 'companies',
     toastKeys: {
@@ -56,30 +67,19 @@ function Companies() {
       delete: 'companies.deleteSuccess',
     },
     initialFilters: { type: '', accountType: '' },
-    filterFn: (items, search, filters) => items.filter((company) => {
-      const matchesSearch = company.name.toLowerCase().includes(search.toLowerCase());
-      const matchesType = !filters.type || company.type === filters.type;
-      const matchesAccountType = !filters.accountType || company.account_type === filters.accountType;
-      return matchesSearch && matchesType && matchesAccountType;
-    }),
+    filterFn: filterCompanies,
     exportConfig: {
       filename: t('export.filenames.companies'),
       columns: i18nCompanyColumns,
-      summaryBuilder: (records) => buildCompanySummary(records, t, records.length),
+      summaryBuilder: (records) => buildCompanySummary(records, t),
     },
   });
 
-  // Translated select options
-  const translatedCompanyTypes = useMemo(() =>
-    COMPANY_TYPES.map((opt) => ({ ...opt, label: t(opt.label) })),
-    [t]
+  const deletion = useRelatedDeleteConfirm(crud, (id) =>
+    window.electronAPI.company.getRelatedCounts(id)
   );
-  const translatedAccountTypes = useMemo(() =>
-    ACCOUNT_TYPES.map((opt) => ({ ...opt, label: t(opt.label) })),
-    [t]
-  );
+  const deleteRelated = deletion.related;
 
-  // Build delete confirmation message
   const deleteMessage = useMemo(() => {
     if (!crud.deleteConfirm) return '';
     let msg = t('companies.deleteMessage', { name: crud.deleteConfirm.name });
@@ -98,90 +98,47 @@ function Companies() {
     return msg;
   }, [crud.deleteConfirm, deleteRelated, t]);
 
-  // Delete wrapper that also clears deleteRelated
-  const handleDeleteWithRelated = async () => {
-    await crud.handleDelete();
-    setDeleteRelated(null);
-  };
-
   return (
     <div className="page-container">
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">{t('companies.title')}</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t('companies.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {crud.selectedIds.size > 0 && (
-            <>
-              <Button variant="ghost-danger" size="sm" icon={FiTrash2} onClick={() => crud.setBulkDeleteConfirm(true)}>
-                {t('companies.bulkDeleteCount', { count: crud.selectedIds.size })}
-              </Button>
-              <Divider />
-            </>
-          )}
-          <Button
-            variant="secondary"
-            icon={FiDownload}
-            onClick={() => crud.prepareExportPreview()}
-            title={t('common.exportToExcel')}
-          >
-            {t('common.exportToExcel')}
-          </Button>
-          <Button
-            variant="secondary"
-            icon={FiShare2}
-            onClick={() => crud.handleShare()}
-            title={t('common.share')}
-          >
-            {t('common.share')}
-          </Button>
-          <Button icon={FiPlus} onClick={() => crud.setModalOpen(true)}>
-            {t('companies.newCompany')}
-          </Button>
-        </div>
-      </div>
+      <PageHeader title={t('companies.title')} subtitle={t('companies.subtitle')}>
+        <PageActions
+          leading={
+            <BulkDeleteAction
+              count={crud.selectedIds.size}
+              label={t('companies.bulkDeleteCount', { count: crud.selectedIds.size })}
+              onClick={() => crud.setBulkDeleteConfirm(true)}
+              divider="after"
+            />
+          }
+          onExport={() => crud.prepareExportPreview()}
+          onShare={() => crud.handleShare()}
+          onNew={() => crud.setModalOpen(true)}
+          newLabel={t('companies.newCompany')}
+        />
+      </PageHeader>
 
-      {/* Filters */}
-      <Card className="mb-6">
-        <CardBody>
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <Input
-                placeholder={t('companies.searchPlaceholder')}
-                icon={FiSearch}
-                value={crud.search}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => crud.setSearch(e.target.value)}
-              />
-            </div>
-            <div className="w-40">
-              <Select
-                options={translatedCompanyTypes}
-                value={crud.filters.type}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  crud.setFilter('type', e.target.value)
-                }
-                placeholder={t('companies.table.type')}
-              />
-            </div>
-            <div className="w-40">
-              <Select
-                options={translatedAccountTypes}
-                value={crud.filters.accountType}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  crud.setFilter('accountType', e.target.value)
-                }
-                placeholder={t('companies.table.accountType')}
-              />
-            </div>
-          </div>
-        </CardBody>
-      </Card>
+      <ListFilterBar
+        search={crud.search}
+        onSearch={crud.setSearch}
+        searchPlaceholder={t('companies.searchPlaceholder')}
+        filters={[
+          {
+            value: crud.filters.type,
+            onChange: (value) => crud.setFilter('type', value),
+            options: companyTypeOptions,
+            placeholder: t('companies.table.type'),
+          },
+          {
+            value: crud.filters.accountType,
+            onChange: (value) => crud.setFilter('accountType', value),
+            options: accountTypeOptions,
+            placeholder: t('companies.table.accountType'),
+          },
+        ]}
+      />
 
-      {/* Table */}
       <Card>
-        <CardBody className="p-0">
+        <CardBody>
           {crud.loading ? (
             <LoadingSpinner />
           ) : crud.filteredData.length === 0 ? (
@@ -197,13 +154,11 @@ function Companies() {
             <Table>
               <TableHeader>
                 <TableRow hover={false}>
-                  <TableHead className="w-10">
-                    <SelectAllCheckbox
-                      itemIds={crud.paginatedData.map(c => c.id)}
-                      selectedIds={crud.selectedIds}
-                      onSelectAll={crud.handleSelectAll}
-                    />
-                  </TableHead>
+                  <SelectAllHeadCell
+                    itemIds={crud.paginatedData.map((c) => c.id)}
+                    selectedIds={crud.selectedIds}
+                    onSelectAll={crud.handleSelectAll}
+                  />
                   <TableHead>{t('companies.table.code')}</TableHead>
                   <TableHead>{t('companies.table.type')}</TableHead>
                   <TableHead>{t('companies.table.accountType')}</TableHead>
@@ -222,15 +177,15 @@ function Companies() {
                     selected={crud.selectedIds.has(company.id)}
                     onClick={() => navigate(`/companies/${company.id}`)}
                   >
-                    <TableCell onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                      <RowCheckbox
-                        id={company.id}
-                        selectedIds={crud.selectedIds}
-                        onSelectOne={crud.handleSelectOne}
-                      />
-                    </TableCell>
+                    <RowCheckboxCell
+                      id={company.id}
+                      selectedIds={crud.selectedIds}
+                      onSelectOne={crud.handleSelectOne}
+                    />
                     <TableCell>
-                      <span className="text-xs font-mono text-gray-500 dark:text-gray-400">{company.code}</span>
+                      <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
+                        {company.code}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <TypeBadge type={company.type} />
@@ -239,7 +194,9 @@ function Companies() {
                       <AccountTypeBadge accountType={company.account_type} />
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium text-gray-900 dark:text-gray-100">{company.name}</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        {company.name}
+                      </span>
                     </TableCell>
                     <TableCell>{company.phone || '-'}</TableCell>
                     <TableCell className="text-right text-green-600 dark:text-green-400">
@@ -252,49 +209,23 @@ function Companies() {
                       <BalanceBadge amount={company.balance} size="sm" />
                     </TableCell>
                     <TableCell>
-                      <div
-                        className="flex items-center justify-center gap-1"
-                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                      >
-                        <Button
-                          variant="ghost-warning"
-                          size="icon"
-                          icon={FiEdit2}
-                          onClick={() => {
-                            crud.setEditingItem(company);
-                            crud.setModalOpen(true);
-                          }}
-                          title={t('common.edit')}
-                        />
-                        <Button
-                          variant="ghost-danger"
-                          size="icon"
-                          icon={FiTrash2}
-                          onClick={async () => {
-                            crud.setDeleteConfirm(company);
-                            try {
-                              const counts = await window.electronAPI.company.getRelatedCounts(company.id);
-                              setDeleteRelated(counts);
-                            } catch {
-                              setDeleteRelated(null);
-                            }
-                          }}
-                          title={t('common.delete')}
-                        />
-                      </div>
+                      <RowActions
+                        onEdit={() => {
+                          crud.setEditingItem(company);
+                          crud.setModalOpen(true);
+                        }}
+                        onDelete={() => deletion.ask(company)}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           )}
-          {crud.filteredData.length > 0 && (
-            <Pagination {...getPaginationProps(crud.pagination)} />
-          )}
+          {crud.filteredData.length > 0 && <Pagination {...getPaginationProps(crud.pagination)} />}
         </CardBody>
       </Card>
 
-      {/* Company Modal */}
       <CompanyModal
         isOpen={crud.modalOpen}
         onClose={() => {
@@ -305,35 +236,12 @@ function Companies() {
         onSave={crud.handleSave}
       />
 
-      {/* Delete Confirmation */}
-      <ConfirmDialog
-        isOpen={!!crud.deleteConfirm}
-        onClose={() => { crud.setDeleteConfirm(null); setDeleteRelated(null); }}
-        onConfirm={handleDeleteWithRelated}
-        title={t('companies.deleteTitle')}
-        message={deleteMessage}
-        type="danger"
-        confirmText={t('common.delete')}
-      />
-
-      {/* Bulk Delete Confirmation */}
-      <ConfirmDialog
-        isOpen={crud.bulkDeleteConfirm}
-        onClose={() => crud.setBulkDeleteConfirm(false)}
-        onConfirm={() => crud.handleBulkDelete()}
-        title={t('companies.bulkDeleteTitle')}
-        message={t('companies.bulkDeleteMessage', { count: crud.selectedIds.size })}
-        type="danger"
-        confirmText={t('companies.bulkDeleteConfirm', { count: crud.selectedIds.size })}
-      />
-
-      {/* Export Preview */}
-      <ExportPreviewModal
-        isOpen={crud.exportPreviewOpen}
-        onClose={() => crud.setExportPreviewOpen(false)}
-        data={crud.exportPreviewData}
-        onExport={(selectedIndices) => crud.handleExport(selectedIndices)}
-        mode="selection"
+      <CrudListDialogs
+        crud={crud}
+        keyPrefix="companies"
+        deleteMessage={deleteMessage}
+        onCancelDelete={deletion.cancel}
+        onConfirmDelete={deletion.confirm}
       />
     </div>
   );

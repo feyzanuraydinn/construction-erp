@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
@@ -19,14 +19,6 @@ describe('useKeyboardShortcuts Hook', () => {
 
     dispatchKeyEvent('n', true);
     expect(onNew).toHaveBeenCalledTimes(1);
-  });
-
-  it('should call onEscape when Escape is pressed', () => {
-    const onEscape = vi.fn();
-    renderHook(() => useKeyboardShortcuts({ onEscape }));
-
-    dispatchKeyEvent('Escape');
-    expect(onEscape).toHaveBeenCalledTimes(1);
   });
 
   it('should not call onNew while a dialog is open (would wipe a form in progress)', () => {
@@ -86,10 +78,9 @@ describe('useKeyboardShortcuts Hook', () => {
     const onNew1 = vi.fn();
     const onNew2 = vi.fn();
 
-    const { rerender } = renderHook(
-      ({ onNew }) => useKeyboardShortcuts({ onNew }),
-      { initialProps: { onNew: onNew1 } }
-    );
+    const { rerender } = renderHook(({ onNew }) => useKeyboardShortcuts({ onNew }), {
+      initialProps: { onNew: onNew1 },
+    });
 
     dispatchKeyEvent('n', true);
     expect(onNew1).toHaveBeenCalledTimes(1);
@@ -98,7 +89,6 @@ describe('useKeyboardShortcuts Hook', () => {
 
     dispatchKeyEvent('n', true);
     expect(onNew2).toHaveBeenCalledTimes(1);
-    // First handler should not be called again
     expect(onNew1).toHaveBeenCalledTimes(1);
   });
 });

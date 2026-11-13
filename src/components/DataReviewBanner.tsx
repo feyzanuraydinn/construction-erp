@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FiShield } from 'react-icons/fi';
-import { Button } from './ui';
+import { Button } from './ui/Button';
+import { cn } from '../utils/cn';
 
 interface DataReviewBannerProps {
   className?: string;
@@ -18,7 +19,8 @@ export function DataReviewBanner({ className = '' }: DataReviewBannerProps) {
   const previousPath = useRef(pathname);
 
   useEffect(() => {
-    if (previousPath.current === '/data-review' && pathname !== '/data-review') setCheckKey((key) => key + 1);
+    if (previousPath.current === '/data-review' && pathname !== '/data-review')
+      setCheckKey((key) => key + 1);
     previousPath.current = pathname;
   }, [pathname]);
 
@@ -43,7 +45,10 @@ export function DataReviewBanner({ className = '' }: DataReviewBannerProps) {
   return (
     <div
       role="status"
-      className={`flex items-center justify-between gap-4 px-6 py-3 text-sm border-b text-amber-900 bg-amber-50 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800 ${className}`}
+      className={cn(
+        'flex items-center justify-between gap-4 px-6 py-3 text-sm border-b text-amber-900 bg-amber-50 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800',
+        className
+      )}
     >
       <div className="flex items-start gap-3">
         <FiShield className="mt-0.5 flex-shrink-0" />

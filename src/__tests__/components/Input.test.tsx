@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-// Initialize i18n before importing components that use useTranslation()
 import '../../i18n';
 import { Input, Select, Textarea } from '../../components/ui/Input';
 import { FiSearch, FiMail } from 'react-icons/fi';
@@ -90,14 +89,7 @@ describe('Input Component', () => {
 
   describe('HTML Attributes', () => {
     it('should pass through HTML attributes', () => {
-      render(
-        <Input
-          type="email"
-          required
-          maxLength={100}
-          data-testid="email-input"
-        />
-      );
+      render(<Input type="email" required maxLength={100} data-testid="email-input" />);
       const input = screen.getByTestId('email-input');
       expect(input).toHaveAttribute('type', 'email');
       expect(input).toHaveAttribute('required');
@@ -158,9 +150,7 @@ describe('Select Component', () => {
   describe('Events', () => {
     it('should call onChange when selection changes', () => {
       const handleChange = vi.fn();
-      render(
-        <Select options={options} onChange={handleChange} data-testid="select" />
-      );
+      render(<Select options={options} onChange={handleChange} data-testid="select" />);
       fireEvent.change(screen.getByTestId('select'), {
         target: { value: '2' },
       });

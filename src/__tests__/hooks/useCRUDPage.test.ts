@@ -2,8 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useCRUDPage } from '../../hooks/useCRUDPage';
 
-// Mock react-i18next — t must be a STABLE reference to avoid infinite re-render loops
-// (useCRUDPage uses t as a useCallback dependency)
 const mockT = (key: string) => key;
 const mockI18n = { language: 'tr' };
 
@@ -14,7 +12,6 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock toast context
 const mockToast = {
   success: vi.fn(),
   error: vi.fn(),
@@ -29,25 +26,20 @@ vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
 
-// Mock export utils
 vi.mock('../../utils/exportUtils', () => ({
   formatRecordsForExport: vi.fn().mockReturnValue([]),
-  exportToCSV: vi.fn().mockResolvedValue('/path/to/export.xlsx'),
   exportToExcel: vi.fn().mockResolvedValue('/path/to/export.xlsx'),
   shareExcel: vi.fn().mockResolvedValue('/path/to/export.xlsx'),
 }));
 
-// Mock useKeyboardShortcuts to prevent event listener issues
 vi.mock('../../hooks/useKeyboardShortcuts', () => ({
   useKeyboardShortcuts: vi.fn(),
 }));
 
-// Mock useDebounce to return value immediately
 vi.mock('../../hooks/useDebounce', () => ({
   useDebounce: (value: unknown) => value,
 }));
 
-// Sample data type
 interface TestItem {
   id: number;
   name: string;
@@ -65,8 +57,6 @@ const sampleItems: TestItem[] = [
 function createDefaultOptions(overrides: Record<string, unknown> = {}) {
   return {
     loadFn: vi.fn().mockResolvedValue({ items: sampleItems }),
-    dataKey: 'items',
-    onDataLoaded: vi.fn(),
     deleteFn: vi.fn().mockResolvedValue({ success: true }),
     entityKey: 'test',
     toastKeys: { create: 'test.created', update: 'test.updated', delete: 'test.deleted' },
@@ -81,16 +71,17 @@ function createDefaultOptions(overrides: Record<string, unknown> = {}) {
       }
       return filtered;
     },
-    pageSize: 2,
     ...overrides,
   };
 }
 
-/** Wait for the hook's async loadData to complete */
 async function waitForLoadComplete(result: { current: { loading: boolean } }) {
-  await waitFor(() => {
-    expect(result.current.loading).toBe(false);
-  }, { timeout: 3000 });
+  await waitFor(
+    () => {
+      expect(result.current.loading).toBe(false);
+    },
+    { timeout: 3000 }
+  );
 }
 
 describe('useCRUDPage', () => {
@@ -106,7 +97,7 @@ describe('useCRUDPage', () => {
       await waitForLoadComplete(result);
 
       expect(options.loadFn).toHaveBeenCalled();
-      expect(options.onDataLoaded).toHaveBeenCalledWith({ items: sampleItems });
+      expect(result.current.loaded).toEqual({ items: sampleItems });
       expect(result.current.filteredData).toHaveLength(5);
     });
 
@@ -119,7 +110,7 @@ describe('useCRUDPage', () => {
 
       await waitForLoadComplete(result);
 
-      expect(mockToast.error).toHaveBeenCalledWith('common.loadError');
+      expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('common.loadError'));
     });
   });
 
@@ -150,14 +141,15 @@ describe('useCRUDPage', () => {
   });
 
   describe('pagination', () => {
-    it('should paginate data with given page size', async () => {
+    it('should show the filtered data on pages of the default size', async () => {
       const options = createDefaultOptions();
       const { result } = renderHook(() => useCRUDPage<TestItem, { type: string }>(options));
 
       await waitForLoadComplete(result);
 
-      expect(result.current.paginatedData).toHaveLength(2);
-      expect(result.current.pagination.totalPages).toBe(3);
+      expect(result.current.paginatedData).toHaveLength(5);
+      expect(result.current.pagination.pageSize).toBe(25);
+      expect(result.current.pagination.totalPages).toBe(1);
     });
   });
 
@@ -304,7 +296,7 @@ describe('useCRUDPage', () => {
         result.current.handleSelectOne(1, true);
         result.current.handleSelectOne(2, true);
       });
-      act(() => result.current.setFilters({ type: 'B' }));
+      act(() => result.current.setFilter('type', 'B'));
 
       await waitFor(() => expect([...result.current.selectedIds]).toEqual([2]));
     });

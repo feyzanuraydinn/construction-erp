@@ -1,6 +1,10 @@
-import React, { memo } from 'react';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { IconType } from 'react-icons';
 import { FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight } from 'react-icons/fi';
+import { cn } from '../../utils/cn';
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 interface PaginationProps {
   currentPage: number;
@@ -18,10 +22,6 @@ interface PaginationProps {
   onLastPage: () => void;
   onPrevPage: () => void;
   onNextPage: () => void;
-  pageSizeOptions?: number[];
-  showPageSizeSelector?: boolean;
-  /** Always show pagination even if only one page */
-  alwaysShow?: boolean;
   className?: string;
 }
 
@@ -41,74 +41,50 @@ export const Pagination = memo(function Pagination({
   onLastPage,
   onPrevPage,
   onNextPage,
-  pageSizeOptions = [10, 25, 50, 100],
-  showPageSizeSelector = true,
-  alwaysShow = true,
-  className = '',
+  className,
 }: PaginationProps) {
   const { t } = useTranslation();
 
-  // Hide pagination if total items is 0 (or if alwaysShow is false and only one page)
   if (totalItems === 0) {
-    return null;
-  }
-  if (!alwaysShow && totalItems <= pageSize) {
     return null;
   }
 
   return (
     <nav
       aria-label={t('pagination.navigation')}
-      className={`flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 ${className}`}
+      className={cn(
+        'flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700',
+        className
+      )}
     >
-      {/* Left side - empty for spacing (same width as right side for centering) */}
       <div className="hidden sm:flex sm:items-center sm:gap-4 sm:invisible">
         <span className="text-sm">0 - 0 / 0 {t('pagination.records')}</span>
-        {showPageSizeSelector && (
-          <select className="px-2 py-1 border rounded-md text-sm">
-            <option>10</option>
-          </select>
-        )}
+        <select className="px-2 py-1 border rounded-md text-sm">
+          <option>10</option>
+        </select>
       </div>
 
-      {/* Center - pagination controls */}
       <div className="flex items-center gap-1">
-        {/* First page */}
-        <button
+        <NavButton
+          icon={FiChevronsLeft}
+          label={t('pagination.firstPage')}
+          enabled={canPrevPage}
           onClick={onFirstPage}
-          disabled={!canPrevPage}
-          aria-label={t('pagination.firstPage')}
-          className={`p-2 rounded-md transition-colors ${
-            canPrevPage
-              ? 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
-              : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-          }`}
-          title={t('pagination.firstPage')}
-        >
-          <FiChevronsLeft size={18} />
-        </button>
-
-        {/* Previous page */}
-        <button
+        />
+        <NavButton
+          icon={FiChevronLeft}
+          label={t('pagination.prevPage')}
+          enabled={canPrevPage}
           onClick={onPrevPage}
-          disabled={!canPrevPage}
-          aria-label={t('pagination.prevPage')}
-          className={`p-2 rounded-md transition-colors ${
-            canPrevPage
-              ? 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
-              : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-          }`}
-          title={t('pagination.prevPage')}
-        >
-          <FiChevronLeft size={18} />
-        </button>
+        />
 
-        {/* Page numbers */}
         <div className="flex items-center gap-1 mx-2">
           {pageNumbers[0] > 1 && (
             <>
               <PageButton page={1} currentPage={currentPage} onClick={onPageChange} />
-              {pageNumbers[0] > 2 && <span className="px-2 text-gray-400 dark:text-gray-500">...</span>}
+              {pageNumbers[0] > 2 && (
+                <span className="px-2 text-gray-400 dark:text-gray-500">...</span>
+              )}
             </>
           )}
 
@@ -126,55 +102,37 @@ export const Pagination = memo(function Pagination({
           )}
         </div>
 
-        {/* Next page */}
-        <button
+        <NavButton
+          icon={FiChevronRight}
+          label={t('pagination.nextPage')}
+          enabled={canNextPage}
           onClick={onNextPage}
-          disabled={!canNextPage}
-          aria-label={t('pagination.nextPage')}
-          className={`p-2 rounded-md transition-colors ${
-            canNextPage
-              ? 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
-              : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-          }`}
-          title={t('pagination.nextPage')}
-        >
-          <FiChevronRight size={18} />
-        </button>
-
-        {/* Last page */}
-        <button
+        />
+        <NavButton
+          icon={FiChevronsRight}
+          label={t('pagination.lastPage')}
+          enabled={canNextPage}
           onClick={onLastPage}
-          disabled={!canNextPage}
-          aria-label={t('pagination.lastPage')}
-          className={`p-2 rounded-md transition-colors ${
-            canNextPage
-              ? 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
-              : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-          }`}
-          title={t('pagination.lastPage')}
-        >
-          <FiChevronsRight size={18} />
-        </button>
+        />
       </div>
 
-      {/* Right side - info and page size */}
       <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
         <span>
           <span className="font-medium">{startIndex + 1}</span>
           {' - '}
           <span className="font-medium">{endIndex}</span>
           {' / '}
-          <span className="font-medium">{totalItems}</span>
-          {' '}{t('pagination.records')}
+          <span className="font-medium">{totalItems}</span> {t('pagination.records')}
         </span>
 
-        {showPageSizeSelector && onPageSizeChange && (
+        {onPageSizeChange && (
           <select
             value={pageSize}
             onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            aria-label={t('pagination.pageSize')}
             className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {pageSizeOptions.map((size) => (
+            {PAGE_SIZE_OPTIONS.map((size) => (
               <option key={size} value={size}>
                 {size}
               </option>
@@ -186,13 +144,47 @@ export const Pagination = memo(function Pagination({
   );
 });
 
+interface NavButtonProps {
+  icon: IconType;
+  label: string;
+  enabled: boolean;
+  onClick: () => void;
+  className?: string;
+}
+
+function NavButton({ icon: Icon, label, enabled, onClick, className }: NavButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!enabled}
+      aria-label={label}
+      title={label}
+      className={cn(
+        'p-2 rounded-md transition-colors',
+        enabled
+          ? 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
+          : 'text-gray-300 dark:text-gray-600 cursor-not-allowed',
+        className
+      )}
+    >
+      <Icon size={18} />
+    </button>
+  );
+}
+
 interface PageButtonProps {
   page: number;
   currentPage: number;
   onClick: (page: number) => void;
+  className?: string;
 }
 
-const PageButton = memo(function PageButton({ page, currentPage, onClick }: PageButtonProps) {
+const PageButton = memo(function PageButton({
+  page,
+  currentPage,
+  onClick,
+  className,
+}: PageButtonProps) {
   const isActive = page === currentPage;
 
   return (
@@ -200,11 +192,13 @@ const PageButton = memo(function PageButton({ page, currentPage, onClick }: Page
       onClick={() => onClick(page)}
       aria-label={`${page}`}
       aria-current={isActive ? 'page' : undefined}
-      className={`min-w-[32px] h-8 px-2 rounded-md text-sm font-medium transition-colors ${
+      className={cn(
+        'min-w-[32px] h-8 px-2 rounded-md text-sm font-medium transition-colors',
         isActive
           ? 'bg-blue-600 text-white dark:bg-blue-500'
-          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
-      }`}
+          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100',
+        className
+      )}
     >
       {page}
     </button>

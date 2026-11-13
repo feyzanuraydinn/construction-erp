@@ -2,12 +2,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import {
   useDataCache,
-  invalidateCache,
   invalidateCachePattern,
   clearAllCache,
+  createCacheKey,
+  type CacheKey,
 } from '../../hooks/useDataCache';
 
-// Clear the global cache between tests
+const keys = new Map<string, CacheKey<unknown>>();
+function key(name: string): CacheKey<unknown> {
+  const existing = keys.get(name);
+  if (existing) return existing;
+  const created = createCacheKey<unknown>(name);
+  keys.set(name, created);
+  return created;
+}
+
 beforeEach(() => {
   clearAllCache();
   vi.restoreAllMocks();
@@ -17,9 +26,7 @@ describe('useDataCache', () => {
   it('should fetch data on mount', async () => {
     const fetcher = vi.fn().mockResolvedValue({ items: [1, 2, 3] });
 
-    const { result } = renderHook(() =>
-      useDataCache('test-key-1', fetcher)
-    );
+    const { result } = renderHook(() => useDataCache(key('test-key-1'), fetcher));
 
     expect(result.current.loading).toBe(true);
 
@@ -35,9 +42,7 @@ describe('useDataCache', () => {
   it('should return cached data for same key without re-fetching', async () => {
     const fetcher = vi.fn().mockResolvedValue('cached-value');
 
-    const { result, unmount } = renderHook(() =>
-      useDataCache('test-key-2', fetcher, { ttl: 60000 })
-    );
+    const { result, unmount } = renderHook(() => useDataCache(key('test-key-2'), fetcher));
 
     await waitFor(() => {
       expect(result.current.data).toBe('cached-value');
@@ -47,21 +52,15 @@ describe('useDataCache', () => {
 
     unmount();
 
-    // Re-render with same key — should use cache
-    const { result: result2 } = renderHook(() =>
-      useDataCache('test-key-2', fetcher, { ttl: 60000 })
-    );
+    const { result: result2 } = renderHook(() => useDataCache(key('test-key-2'), fetcher));
 
-    // data should come from cache immediately
     expect(result2.current.data).toBe('cached-value');
   });
 
   it('should handle fetch errors', async () => {
     const fetcher = vi.fn().mockRejectedValue(new Error('Network error'));
 
-    const { result } = renderHook(() =>
-      useDataCache('error-key', fetcher)
-    );
+    const { result } = renderHook(() => useDataCache(key('error-key'), fetcher));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -75,9 +74,7 @@ describe('useDataCache', () => {
   it('should handle non-Error thrown values', async () => {
     const fetcher = vi.fn().mockRejectedValue('string error');
 
-    const { result } = renderHook(() =>
-      useDataCache('non-error-key', fetcher)
-    );
+    const { result } = renderHook(() => useDataCache(key('non-error-key'), fetcher));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -94,9 +91,7 @@ describe('useDataCache', () => {
       return Promise.resolve(`data-${callCount}`);
     });
 
-    const { result } = renderHook(() =>
-      useDataCache('refresh-key', fetcher)
-    );
+    const { result } = renderHook(() => useDataCache(key('refresh-key'), fetcher));
 
     await waitFor(() => {
       expect(result.current.data).toBe('data-1');
@@ -117,9 +112,7 @@ describe('useDataCache', () => {
       return Promise.resolve(`data-${callCount}`);
     });
 
-    const { result } = renderHook(() =>
-      useDataCache('inv-key', fetcher)
-    );
+    const { result } = renderHook(() => useDataCache(key('inv-key'), fetcher));
 
     await waitFor(() => {
       expect(result.current.data).toBe('data-1');
@@ -137,9 +130,7 @@ describe('useDataCache', () => {
   it('should return isStale=false when cache is fresh', async () => {
     const fetcher = vi.fn().mockResolvedValue('data');
 
-    const { result } = renderHook(() =>
-      useDataCache('stale-key', fetcher, { ttl: 60000 })
-    );
+    const { result } = renderHook(() => useDataCache(key('stale-key'), fetcher));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -151,10 +142,7 @@ describe('useDataCache', () => {
   it('should start with loading=false if cache already exists', async () => {
     const fetcher = vi.fn().mockResolvedValue('first');
 
-    // First render populates cache
-    const { unmount } = renderHook(() =>
-      useDataCache('preloaded-key', fetcher, { ttl: 60000 })
-    );
+    const { unmount } = renderHook(() => useDataCache(key('preloaded-key'), fetcher));
 
     await waitFor(() => {
       expect(fetcher).toHaveBeenCalledOnce();
@@ -162,17 +150,14 @@ describe('useDataCache', () => {
 
     unmount();
 
-    // Second render should not be loading since cache exists
-    const { result } = renderHook(() =>
-      useDataCache('preloaded-key', fetcher, { ttl: 60000 })
-    );
+    const { result } = renderHook(() => useDataCache(key('preloaded-key'), fetcher));
 
     expect(result.current.loading).toBe(false);
     expect(result.current.data).toBe('first');
   });
 });
 
-describe('invalidateCache', () => {
+describe('invalidate', () => {
   it('should trigger re-fetch for a specific cache key', async () => {
     let callCount = 0;
     const fetcher = vi.fn().mockImplementation(() => {
@@ -180,16 +165,14 @@ describe('invalidateCache', () => {
       return Promise.resolve(`val-${callCount}`);
     });
 
-    const { result } = renderHook(() =>
-      useDataCache('global-inv-key', fetcher)
-    );
+    const { result } = renderHook(() => useDataCache(key('global-inv-key'), fetcher));
 
     await waitFor(() => {
       expect(result.current.data).toBe('val-1');
     });
 
     act(() => {
-      invalidateCache('global-inv-key');
+      result.current.invalidate();
     });
 
     await waitFor(() => {
@@ -201,8 +184,8 @@ describe('invalidateCache', () => {
     const fetcher1 = vi.fn().mockResolvedValue('a');
     const fetcher2 = vi.fn().mockResolvedValue('b');
 
-    const { result: r1 } = renderHook(() => useDataCache('key-a', fetcher1));
-    const { result: r2 } = renderHook(() => useDataCache('key-b', fetcher2));
+    const { result: r1 } = renderHook(() => useDataCache(key('key-a'), fetcher1));
+    const { result: r2 } = renderHook(() => useDataCache(key('key-b'), fetcher2));
 
     await waitFor(() => {
       expect(r1.current.data).toBe('a');
@@ -210,10 +193,9 @@ describe('invalidateCache', () => {
     });
 
     act(() => {
-      invalidateCache('key-a');
+      r1.current.invalidate();
     });
 
-    // fetcher2 should not be called again
     expect(fetcher2).toHaveBeenCalledOnce();
   });
 });
@@ -231,8 +213,8 @@ describe('invalidateCachePattern', () => {
       return Promise.resolve(`project-${count2}`);
     });
 
-    const { result: r1 } = renderHook(() => useDataCache('company:list', fetcher1));
-    const { result: r2 } = renderHook(() => useDataCache('project:list', fetcher2));
+    const { result: r1 } = renderHook(() => useDataCache(key('company:list'), fetcher1));
+    const { result: r2 } = renderHook(() => useDataCache(key('project:list'), fetcher2));
 
     await waitFor(() => {
       expect(r1.current.data).toBe('company-1');
@@ -247,7 +229,6 @@ describe('invalidateCachePattern', () => {
       expect(r1.current.data).toBe('company-2');
     });
 
-    // project should not be re-fetched
     expect(fetcher2).toHaveBeenCalledOnce();
   });
 });
@@ -260,7 +241,7 @@ describe('clearAllCache', () => {
       return Promise.resolve(`clear-${count}`);
     });
 
-    const { result } = renderHook(() => useDataCache('clear-key', fetcher));
+    const { result } = renderHook(() => useDataCache(key('clear-key'), fetcher));
 
     await waitFor(() => {
       expect(result.current.data).toBe('clear-1');

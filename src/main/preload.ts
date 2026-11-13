@@ -1,29 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { ExportRequest, ConflictChoice } from '../utils/schemas';
+import type { TransactionFilters, StockMovementFilters } from '../types';
+import type { ElectronAPI } from '../types/electron';
+import type { SyncStatusPayload, SyncConflictPayload } from '../types/sync';
 
-// These mirror TransactionFilters and StockMovementFilters from types/index.ts.
-// Kept local because preload runs in a separate compilation context (electron main).
-// Union types match the Zod schemas in utils/schemas.ts.
-interface TransactionFilters {
-  scope?: 'cari' | 'project' | 'company';
-  type?: 'invoice_out' | 'payment_in' | 'invoice_in' | 'payment_out';
-  company_id?: number | null;
-  project_id?: number | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  search?: string;
-  limit?: number | null;
-}
-
-interface StockMovementFilters {
-  material_id?: number | null;
-  movement_type?: 'in' | 'out' | 'adjustment' | 'waste';
-  project_id?: number | null;
-  start_date?: string | null;
-  end_date?: string | null;
-}
-
-contextBridge.exposeInMainWorld('electronAPI', {
-  // Company operations
+const api: ElectronAPI = {
   company: {
     getAll: () => ipcRenderer.invoke('company:getAll'),
     getWithBalance: () => ipcRenderer.invoke('company:getWithBalance'),
@@ -34,7 +15,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getRelatedCounts: (id: number) => ipcRenderer.invoke('company:getRelatedCounts', id),
   },
 
-  // Project operations
   project: {
     getAll: () => ipcRenderer.invoke('project:getAll'),
     getWithSummary: () => ipcRenderer.invoke('project:getWithSummary'),
@@ -49,7 +29,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     removeParty: (id: number) => ipcRenderer.invoke('project:removeParty', id),
   },
 
-  // Transaction operations
   transaction: {
     getAll: (filters?: TransactionFilters) => ipcRenderer.invoke('transaction:getAll', filters),
     getByCompany: (companyId: number, filters?: TransactionFilters) =>
@@ -59,14 +38,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (data: unknown) => ipcRenderer.invoke('transaction:create', data),
     update: (id: number, data: unknown) => ipcRenderer.invoke('transaction:update', id, data),
     delete: (id: number) => ipcRenderer.invoke('transaction:delete', id),
-    getInvoicesForProject: (projectId: number) =>
-      ipcRenderer.invoke('transaction:getInvoicesForProject', projectId),
-    getInvoicesForCompany: (companyId: number) =>
-      ipcRenderer.invoke('transaction:getInvoicesForCompany', companyId),
     save: (request: unknown) => ipcRenderer.invoke('transaction:save', request),
-    getMatchCandidates: (request: unknown) => ipcRenderer.invoke('transaction:getMatchCandidates', request),
-    setAllocations: (paymentId: number, allocations: { invoiceId: number; amount: number }[]) =>
-      ipcRenderer.invoke('transaction:setAllocations', paymentId, allocations),
+    getMatchCandidates: (request: unknown) =>
+      ipcRenderer.invoke('transaction:getMatchCandidates', request),
     getAllocationsForPayment: (paymentId: number) =>
       ipcRenderer.invoke('transaction:getAllocationsForPayment', paymentId),
     getAllocationsForInvoice: (invoiceId: number) =>
@@ -78,37 +52,32 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getReport: () => ipcRenderer.invoke('review:getReport'),
     applyRepairs: (request: unknown) => ipcRenderer.invoke('review:applyRepairs', request),
     applyRates: (request: unknown) => ipcRenderer.invoke('review:applyRates', request),
-    applyAllocationFixes: (request: unknown) => ipcRenderer.invoke('review:applyAllocationFixes', request),
+    applyAllocationFixes: (request: unknown) =>
+      ipcRenderer.invoke('review:applyAllocationFixes', request),
     applyUnmatched: (request: unknown) => ipcRenderer.invoke('review:applyUnmatched', request),
     complete: () => ipcRenderer.invoke('review:complete'),
   },
 
-  // Material operations
   material: {
     getAll: () => ipcRenderer.invoke('material:getAll'),
-    getById: (id: number) => ipcRenderer.invoke('material:getById', id),
     create: (data: unknown) => ipcRenderer.invoke('material:create', data),
     update: (id: number, data: unknown) => ipcRenderer.invoke('material:update', id, data),
     delete: (id: number) => ipcRenderer.invoke('material:delete', id),
     generateCode: () => ipcRenderer.invoke('material:generateCode'),
-    getLowStock: () => ipcRenderer.invoke('material:getLowStock'),
   },
 
-  // Stock operations
   stock: {
     getAll: (filters?: StockMovementFilters) => ipcRenderer.invoke('stock:getAll', filters),
     create: (data: unknown) => ipcRenderer.invoke('stock:create', data),
     delete: (id: number) => ipcRenderer.invoke('stock:delete', id),
   },
 
-  // Category operations
   category: {
-    getAll: (type?: string) => ipcRenderer.invoke('category:getAll', type),
+    getAll: () => ipcRenderer.invoke('category:getAll'),
     create: (data: unknown) => ipcRenderer.invoke('category:create', data),
     delete: (id: number) => ipcRenderer.invoke('category:delete', id),
   },
 
-  // Trash operations
   trash: {
     getAll: () => ipcRenderer.invoke('trash:getAll'),
     restore: (id: number) => ipcRenderer.invoke('trash:restore', id),
@@ -116,16 +85,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     empty: () => ipcRenderer.invoke('trash:empty'),
   },
 
-  // Dashboard operations
   dashboard: {
     getStats: () => ipcRenderer.invoke('dashboard:getStats'),
-    getRecentTransactions: (limit: number) =>
-      ipcRenderer.invoke('dashboard:getRecentTransactions', limit),
-    getTopDebtors: (limit: number, startDate?: string) => ipcRenderer.invoke('dashboard:getTopDebtors', limit, startDate),
-    getTopCreditors: (limit: number, startDate?: string) => ipcRenderer.invoke('dashboard:getTopCreditors', limit, startDate),
+    getTopDebtors: (limit: number) => ipcRenderer.invoke('dashboard:getTopDebtors', limit),
+    getTopCreditors: (limit: number) => ipcRenderer.invoke('dashboard:getTopCreditors', limit),
   },
 
-  // Analytics operations
   analytics: {
     getMonthlyStats: (year: number) => ipcRenderer.invoke('analytics:getMonthlyStats', year),
     getProjectCategoryBreakdown: (projectId: number) =>
@@ -136,31 +101,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAgingReceivables: () => ipcRenderer.invoke('analytics:getAgingReceivables'),
   },
 
-  // Backup operations
   backup: {
     create: () => ipcRenderer.invoke('backup:create'),
     list: () => ipcRenderer.invoke('backup:list'),
     restore: (backupPath: string) => ipcRenderer.invoke('backup:restore', backupPath),
-    selectFolder: () => ipcRenderer.invoke('backup:selectFolder'),
     openFolder: () => ipcRenderer.invoke('backup:openFolder'),
   },
 
-  // Export operations
   export: {
-    toExcel: (data: { type: string; records: unknown[]; filename?: string; metadata?: { summaryStartIndex?: number; amountColumnLabel?: string; balanceColumnLabel?: string } }) =>
-      ipcRenderer.invoke('export:toExcel', data),
-    toPDF: (data: { type: string; html: string; filename?: string }) =>
-      ipcRenderer.invoke('export:toPDF', data),
-    share: (data: { type: string; records: unknown[]; filename?: string; metadata?: { summaryStartIndex?: number; amountColumnLabel?: string; balanceColumnLabel?: string } }) =>
-      ipcRenderer.invoke('export:share', data),
+    toExcel: (data: ExportRequest) => ipcRenderer.invoke('export:toExcel', data),
+    share: (data: ExportRequest) => ipcRenderer.invoke('export:share', data),
   },
 
-  // Exchange rate operations
   exchange: {
     getRates: () => ipcRenderer.invoke('exchange:getRates'),
   },
 
-  // Google Drive operations
   gdrive: {
     hasCredentials: () => ipcRenderer.invoke('gdrive:hasCredentials'),
     isConnected: () => ipcRenderer.invoke('gdrive:isConnected'),
@@ -172,10 +128,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     uploadBackup: () => ipcRenderer.invoke('gdrive:uploadBackup'),
     downloadBackup: (fileId: string, fileName: string) =>
       ipcRenderer.invoke('gdrive:downloadBackup', fileId, fileName),
-    deleteBackup: (fileId: string) => ipcRenderer.invoke('gdrive:deleteBackup', fileId),
   },
 
-  // App info
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     print: () => ipcRenderer.invoke('app:print'),
@@ -187,25 +141,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('app:close-requested', handler);
       return () => ipcRenderer.removeListener('app:close-requested', handler);
     },
+    onDataChanged: (callback: () => void) => {
+      const listener = () => callback();
+      ipcRenderer.on('db:changed', listener);
+      return () => ipcRenderer.removeListener('db:changed', listener);
+    },
   },
 
-  // Sync operations
   sync: {
     getStatus: () => ipcRenderer.invoke('sync:getStatus'),
-    getMeta: () => ipcRenderer.invoke('sync:getMeta'),
-    setAutoSyncEnabled: (enabled: boolean) => ipcRenderer.invoke('sync:setAutoSyncEnabled', enabled),
     check: () => ipcRenderer.invoke('sync:check'),
-    upload: () => ipcRenderer.invoke('sync:upload'),
-    download: () => ipcRenderer.invoke('sync:download'),
-    resolveConflict: (choice: 'use-local' | 'use-remote' | 'cancel') =>
-      ipcRenderer.invoke('sync:resolveConflict', choice),
-    onStatus: (callback: (status: unknown) => void) => {
-      const listener = (_: unknown, payload: unknown) => callback(payload);
+    resolveConflict: (choice: ConflictChoice) => ipcRenderer.invoke('sync:resolveConflict', choice),
+    onStatus: (callback: (status: SyncStatusPayload) => void) => {
+      const listener = (_: unknown, payload: SyncStatusPayload) => callback(payload);
       ipcRenderer.on('sync:status', listener);
       return () => ipcRenderer.removeListener('sync:status', listener);
     },
-    onConflict: (callback: (payload: unknown) => void) => {
-      const listener = (_: unknown, payload: unknown) => callback(payload);
+    onConflict: (callback: (payload: SyncConflictPayload) => void) => {
+      const listener = (_: unknown, payload: SyncConflictPayload) => callback(payload);
       ipcRenderer.on('sync:conflict', listener);
       return () => ipcRenderer.removeListener('sync:conflict', listener);
     },
@@ -215,4 +168,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('sync:reload-required', listener);
     },
   },
-});
+};
+
+contextBridge.exposeInMainWorld('electronAPI', api);

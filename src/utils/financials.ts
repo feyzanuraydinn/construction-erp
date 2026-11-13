@@ -1,29 +1,28 @@
 import type { Transaction, TransactionWithDetails, OwnershipType } from '../types';
+import { MONEY_TOLERANCE, amountInTry } from './money';
+import { budgetUsedPercent } from './budget';
 
-// ==================== ORTAK YARDIMCI ====================
-
-/** Hem Transaction hem TransactionWithDetails kabul eden tip */
 type AnyTransaction = Transaction | TransactionWithDetails;
 
-/** Transaction listesinden tip bazlı TRY toplamı hesaplar */
-function sumByType(transactions: AnyTransaction[], type: string): number {
-  return transactions
-    .filter((t) => t.type === type)
-    .reduce((sum, t) => sum + (t.amount_try || t.amount), 0);
+export interface MoneyRecord {
+  type?: string;
+  amount?: number | null;
+  amount_try?: number | null;
+  company_id?: number | null;
 }
 
-function amountTry(t: AnyTransaction): number {
-  return t.amount_try || t.amount;
+function sumByType(transactions: MoneyRecord[], type: string): number {
+  return transactions.filter((t) => t.type === type).reduce((sum, t) => sum + amountInTry(t), 0);
 }
 
 function openOnInvoice(t: AnyTransaction): number {
   const settled = ('settled_amount' in t && t.settled_amount) || 0;
-  return Math.max(0, amountTry(t) - settled);
+  return Math.max(0, amountInTry(t) - settled);
 }
 
 function unmatchedOnPayment(t: AnyTransaction): number {
   const allocated = ('allocated_amount' in t && t.allocated_amount) || 0;
-  return Math.max(0, amountTry(t) - allocated);
+  return Math.max(0, amountInTry(t) - allocated);
 }
 
 interface OpenBalances {
@@ -34,7 +33,10 @@ interface OpenBalances {
 }
 
 function calculateOpenBalances(transactions: AnyTransaction[]): OpenBalances {
-  const groups = new Map<number, { openOut: number; openIn: number; unmatchedIn: number; unmatchedOut: number }>();
+  const groups = new Map<
+    number,
+    { openOut: number; openIn: number; unmatchedIn: number; unmatchedOut: number }
+  >();
   for (const t of transactions) {
     if (t.company_id == null) continue;
     const key = t.company_id;
@@ -54,8 +56,6 @@ function calculateOpenBalances(transactions: AnyTransaction[]): OpenBalances {
   }
   return result;
 }
-
-// ==================== TYPES ====================
 
 export interface ProjectFinancials {
   totalInvoiceOut: number;
@@ -84,6 +84,8 @@ export interface CompanyFinancials {
   receivable: number;
   payable: number;
   balance: number;
+  receivableFromOverpayment: boolean;
+  payableFromOverpayment: boolean;
 }
 
 export interface DashboardFinancials {
@@ -107,8 +109,6 @@ export interface TransactionTotals {
   openBalance: number;
 }
 
-// ==================== PURE FUNCTIONS ====================
-
 export function calculateProjectFinancials(
   transactions: AnyTransaction[],
   ownershipType: OwnershipType = 'own',
@@ -123,7 +123,7 @@ export function calculateProjectFinancials(
   const totalExpense = totalInvoiceIn;
   const projectProfit = totalIncome - totalExpense;
   const estimatedProfit = estimatedBudget ? estimatedBudget - totalExpense : null;
-  const budgetUsed = estimatedBudget ? (totalExpense / estimatedBudget) * 100 : 0;
+  const budgetUsed = budgetUsedPercent(totalExpense, estimatedBudget);
 
   const open = calculateOpenBalances(transactions);
   const unmatched = (type: string) =>
@@ -149,23 +149,51 @@ export function calculateProjectFinancials(
   };
 }
 
-/**
- * Cari hesap finansal hesaplamalarını yapar.
- * Cari hesapta TÜM ödemeler borç/alacağı azaltır (eşleştirme bağımsız).
- *
- * Alacak = Satış faturaları - Tüm tahsilatlar (müşteri bize borçlu)
- * Borç   = Alış faturaları - Tüm ödemeler (biz borçluyuz)
- * Bakiye = Alacak - Borç
- */
-export function calculateCompanyFinancials(transactions: AnyTransaction[]): CompanyFinancials {
+export function splitNetBalance(balance: number): { receivable: number; payable: number } {
+  if (balance > MONEY_TOLERANCE) return { receivable: balance, payable: 0 };
+  if (balance < -MONEY_TOLERANCE) return { receivable: 0, payable: -balance };
+  return { receivable: 0, payable: 0 };
+}
+
+export function balanceEffect(record: MoneyRecord): number {
+  if (record.type === 'invoice_out' || record.type === 'payment_out') return amountInTry(record);
+  if (record.type === 'invoice_in' || record.type === 'payment_in') return -amountInTry(record);
+  return 0;
+}
+
+export function netBalanceOf(records: MoneyRecord[]): number {
+  return records.reduce((sum, record) => sum + balanceEffect(record), 0);
+}
+
+export function sumNetPositions(transactions: MoneyRecord[]): {
+  receivable: number;
+  payable: number;
+} {
+  const nets = new Map<number | null, number>();
+  for (const t of transactions) {
+    const key = t.company_id ?? null;
+    nets.set(key, (nets.get(key) ?? 0) + balanceEffect(t));
+  }
+  let receivable = 0;
+  let payable = 0;
+  for (const net of nets.values()) {
+    const split = splitNetBalance(net);
+    receivable += split.receivable;
+    payable += split.payable;
+  }
+  return { receivable, payable };
+}
+
+export function calculateCompanyFinancials(transactions: MoneyRecord[]): CompanyFinancials {
   const totalInvoiceOut = sumByType(transactions, 'invoice_out');
   const totalPaymentIn = sumByType(transactions, 'payment_in');
   const totalInvoiceIn = sumByType(transactions, 'invoice_in');
   const totalPaymentOut = sumByType(transactions, 'payment_out');
 
-  const receivable = totalInvoiceOut - totalPaymentIn;
-  const payable = totalInvoiceIn - totalPaymentOut;
-  const balance = receivable - payable;
+  const salesSide = totalInvoiceOut - totalPaymentIn;
+  const purchaseSide = totalInvoiceIn - totalPaymentOut;
+  const balance = netBalanceOf(transactions);
+  const { receivable, payable } = splitNetBalance(balance);
 
   return {
     totalInvoiceOut,
@@ -175,18 +203,12 @@ export function calculateCompanyFinancials(transactions: AnyTransaction[]): Comp
     receivable,
     payable,
     balance,
+    receivableFromOverpayment: receivable > 0 && salesSide <= MONEY_TOLERANCE,
+    payableFromOverpayment: payable > 0 && purchaseSide <= MONEY_TOLERANCE,
   };
 }
 
-/**
- * Dashboard genel finansal hesaplamalarını yapar.
- * Gelir/Gider sadece faturalar üzerinden hesaplanır.
- * Tahsilat/Ödeme ayrı gösterilir.
- *
- * Gelir = Satış faturaları toplamı
- * Gider = Alış faturaları toplamı
- */
-export function calculateDashboardFinancials(transactions: AnyTransaction[]): DashboardFinancials {
+export function calculateDashboardFinancials(transactions: MoneyRecord[]): DashboardFinancials {
   const totalIncome = sumByType(transactions, 'invoice_out');
   const totalExpense = sumByType(transactions, 'invoice_in');
   const totalCollected = sumByType(transactions, 'payment_in');
@@ -201,31 +223,11 @@ export function calculateDashboardFinancials(transactions: AnyTransaction[]): Da
   };
 }
 
-/**
- * İşlem toplamlarını hesaplar.
- * Transactions listesi, CompanyAccount ve PrintView'da kullanılır.
- *
- * totalIncome = Satış faturaları (fatura bazlı gelir)
- * totalExpense = Alış faturaları (fatura bazlı gider)
- * netProfit = Satış faturaları - Alış faturaları (fatura bazlı kâr/zarar)
- * netCashFlow = Tahsilatlar - Ödemeler (nakit akışı)
- * netBalance = Alacak - Borç = (invoice_out - payment_in) - (invoice_in - payment_out)
- *
- * Ödemeler fatura borcunu/alacağını azaltır, gider/gelir olarak eklenmez.
- */
-export function calculateTransactionTotals(transactions: AnyTransaction[]): TransactionTotals {
+export function calculateTransactionTotals(transactions: MoneyRecord[]): TransactionTotals {
   const totalInvoiceOut = sumByType(transactions, 'invoice_out');
   const totalPaymentIn = sumByType(transactions, 'payment_in');
   const totalInvoiceIn = sumByType(transactions, 'invoice_in');
   const totalPaymentOut = sumByType(transactions, 'payment_out');
-
-  const receivable = totalInvoiceOut - totalPaymentIn;
-  const payable = totalInvoiceIn - totalPaymentOut;
-  const withCompany = transactions.filter((t) => t.company_id != null);
-  const openBalance =
-    sumByType(withCompany, 'invoice_out') -
-    sumByType(withCompany, 'payment_in') -
-    (sumByType(withCompany, 'invoice_in') - sumByType(withCompany, 'payment_out'));
 
   return {
     totalInvoiceOut,
@@ -236,7 +238,7 @@ export function calculateTransactionTotals(transactions: AnyTransaction[]): Tran
     totalExpense: totalInvoiceIn,
     netProfit: totalInvoiceOut - totalInvoiceIn,
     netCashFlow: totalPaymentIn - totalPaymentOut,
-    netBalance: receivable - payable,
-    openBalance,
+    netBalance: netBalanceOf(transactions),
+    openBalance: netBalanceOf(transactions.filter((t) => t.company_id != null)),
   };
 }

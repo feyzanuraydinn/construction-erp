@@ -1,4 +1,4 @@
-import React, { useId } from 'react';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiAlertTriangle, FiAlertCircle, FiCheckCircle } from 'react-icons/fi';
 import type { IconType } from 'react-icons';
@@ -25,6 +25,9 @@ interface ConfirmDialogProps {
   confirmText?: string;
   cancelText?: string;
   loading?: boolean;
+  alternativeText?: string;
+  onAlternative?: () => void;
+  className?: string;
 }
 
 const types: Record<ConfirmDialogType, ConfirmDialogConfig> = {
@@ -58,6 +61,9 @@ export function ConfirmDialog({
   confirmText,
   cancelText,
   loading = false,
+  alternativeText,
+  onAlternative,
+  className,
 }: ConfirmDialogProps) {
   const { t } = useTranslation();
   const titleId = useId();
@@ -65,19 +71,33 @@ export function ConfirmDialog({
   const Icon = config.icon;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="sm" role="alertdialog" labelledBy={titleId}>
+    <Modal
+      className={className}
+      isOpen={isOpen}
+      onClose={onClose}
+      size="sm"
+      role="alertdialog"
+      labelledBy={titleId}
+    >
       <div className="text-center p-6">
         <div
           className={`mx-auto w-14 h-14 rounded-full ${config.iconBg} flex items-center justify-center mb-4`}
         >
           <Icon className={`w-7 h-7 ${config.iconColor}`} />
         </div>
-        <h3 id={titleId} className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">{title}</h3>
+        <h3 id={titleId} className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+          {title}
+        </h3>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{message}</p>
-        <div className="flex gap-3 justify-center">
+        <div className="flex flex-wrap gap-3 justify-center">
           <Button variant="secondary" onClick={onClose} disabled={loading}>
             {cancelText || t('confirmDialog.cancel')}
           </Button>
+          {alternativeText && onAlternative && (
+            <Button variant="secondary" onClick={onAlternative} disabled={loading}>
+              {alternativeText}
+            </Button>
+          )}
           <Button variant={config.confirmVariant} onClick={onConfirm} loading={loading}>
             {confirmText || t('confirmDialog.confirm')}
           </Button>

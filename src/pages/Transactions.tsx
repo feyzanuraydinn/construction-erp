@@ -1,318 +1,122 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiList, FiEdit2, FiTrash2, FiDownload, FiShare2 } from 'react-icons/fi';
-import {
-  useDebounce,
-  usePagination,
-  paginateArray,
-  calculateTransactionTotals,
-  invalidateCachePattern,
-  useSelection,
-  useBulkDelete,
-  useExport,
-  getPaginationProps,
-} from '../hooks';
-import {
-  Card,
-  CardBody,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-  Badge,
-  EmptyState,
-  ConfirmDialog,
-  Pagination,
-  Button,
-  Input,
-  Select,
-  LoadingSpinner,
-  Divider,
-  SelectAllCheckbox,
-  RowCheckbox,
-  MatchStatusBadge,
-} from '../components/ui';
+import { FiList } from 'react-icons/fi';
+import { useDebounce } from '../hooks/useDebounce';
+import { usePaginatedItems, getPaginationProps } from '../hooks/usePagination';
+import { calculateTransactionTotals } from '../utils/financials';
+import { useTransactionDeletion } from '../hooks/useTransactionDeletion';
+import { useTransactionExport } from '../hooks/useTransactionExport';
+import { useTransactionAllocations } from '../hooks/useTransactionAllocations';
+import { Card, CardBody } from '../components/ui/Card';
+import { EmptyState } from '../components/ui/EmptyState';
+import { TransactionDeleteDialogs } from '../components/transaction-list/TransactionDeleteDialogs';
+import { Pagination } from '../components/ui/Pagination';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useToast } from '../contexts/ToastContext';
-import { ipcErrorMessage } from '../utils/ipcError';
-import { formatCurrency, formatDate, formatDateForInput, toLocalDateString } from '../utils/formatters';
+import { PageActions, BulkDeleteAction } from '../components/shared/PageActions';
+import { TransactionModal } from '../components/modals/TransactionModal';
+import { TransactionDetailView } from '../components/shared/TransactionDetailView';
+import { TransactionStats } from './transactions-components/TransactionStats';
 import {
-  getTransactionColor,
-  getTransactionTextColor,
-  isPositiveTransaction,
-  deleteTransactionMessage,
-} from '../utils/transactionHelpers';
-import { TRANSACTION_TYPE_LABELS } from '../utils/constants';
-import { getTransactionColumns, buildTransactionSummary, formatRecordsForExport } from '../utils/exportUtils';
-import { TRANSACTION_TYPES, TRANSACTION_SCOPES } from '../utils/constants';
-import { ExportPreviewModal } from '../components/modals';
-import {
-  TransactionStats,
   TransactionFiltersPanel,
-  TransactionDetailModal,
-} from './transactions-components';
-import type { TransactionUIFilters, TransactionDetailFormData } from './transactions-components';
-import type {
-  TransactionWithDetails,
-  Company,
-  Project,
-  Category,
-  BadgeVariant,
-} from '../types';
+  type TransactionUIFilters,
+} from './transactions-components/TransactionFiltersPanel';
+import { AllTransactionsTable } from './transactions-components/AllTransactionsTable';
+import { TransactionsExportDialog } from './transactions-components/TransactionsExportDialog';
+import {
+  EMPTY_LIST_FILTERS,
+  matchesFilters,
+  matchesSearch,
+  type ListFilters,
+} from './transactions-components/transactionListFilters';
+import type { TransactionWithDetails, TransactionScope } from '../types';
+import { useLoadedData } from '../hooks/useLoadedData';
+import { NO_ITEMS } from '../utils/emptyList';
+import { PageHeader } from '../components/shared/PageHeader';
+
+interface EditTarget {
+  scope: TransactionScope;
+  entityId?: number;
+  mode: 'full' | 'simple';
+}
+
+function editTargetFor(tx: TransactionWithDetails): EditTarget {
+  if (tx.scope === 'company') return { scope: 'company', mode: 'simple' };
+  if (tx.scope === 'project' && tx.project_id)
+    return { scope: 'project', entityId: tx.project_id, mode: 'full' };
+  if (tx.company_id) return { scope: 'cari', entityId: tx.company_id, mode: 'full' };
+  if (tx.project_id) return { scope: 'project', entityId: tx.project_id, mode: 'full' };
+  return { scope: tx.scope, mode: 'full' };
+}
+
+const loadTransactionsPage = () =>
+  Promise.all([
+    window.electronAPI.transaction.getAll({}),
+    window.electronAPI.company.getAll(),
+    window.electronAPI.project.getAll(),
+    window.electronAPI.category.getAll(),
+  ]).then(([transactions, companies, projects, categories]) => ({
+    transactions,
+    companies,
+    projects,
+    categories,
+  }));
 
 function Transactions() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const toast = useToast();
-  const [transactions, setTransactions] = useState<TransactionWithDetails[]>([]);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data,
+    loading,
+    reload: loadData,
+  } = useLoadedData(loadTransactionsPage, 'Transactions load error:');
+  const transactions = data?.transactions ?? NO_ITEMS;
+  const companies = data?.companies ?? NO_ITEMS;
+  const projects = data?.projects ?? NO_ITEMS;
+  const categories = data?.categories ?? NO_ITEMS;
   const [filters, setFilters] = useState<TransactionUIFilters>({
     search: '',
-    scope: '',
-    type: '',
-    company_id: '',
-    project_id: '',
-    start_date: '',
-    end_date: '',
+    ...EMPTY_LIST_FILTERS,
   });
-  const debouncedSearch = useDebounce(filters.search, 300);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [showModal, setShowModal] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithDetails | null>(
-    null
-  );
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [typeChangeWarning, setTypeChangeWarning] = useState<{ count: number; total: number } | null>(null);
-  const [formData, setFormData] = useState<TransactionDetailFormData>({
-    date: '',
-    type: 'invoice_out',
-    scope: 'company',
-    company_id: '',
-    project_id: '',
-    category_id: '',
-    amount: '',
-    currency: 'TRY',
-    exchange_rate: 1,
-    description: '',
-    document_no: '',
-  });
+  const debouncedSearch = useDebounce(filters.search);
+  const [viewingTransaction, setViewingTransaction] = useState<TransactionWithDetails | null>(null);
+  const viewingAllocations = useTransactionAllocations(viewingTransaction);
+  const [editingTransaction, setEditingTransaction] = useState<TransactionWithDetails | null>(null);
 
-  // Bulk selection hooks
-  const { selectedIds, handleSelectAll, handleSelectOne, clearSelection } = useSelection();
-  const { bulkDeleteConfirm, setBulkDeleteConfirm, handleBulkDelete: bulkDelete } = useBulkDelete({
-    deleteFn: (id) => window.electronAPI.transaction.delete(id),
-    entityKey: 'transactions',
-    onSuccess: () => {
-      clearSelection();
-      invalidateCachePattern('dashboard:.*');
-      loadData();
-    },
-  });
-  const { handleExport: exportAction, handleShare: shareAction } = useExport();
+  const { shareTransactions } = useTransactionExport();
+  const exportPrefix = t('export.filenames.transactions');
   const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
-  const [exportFilters, setExportFilters] = useState({ scope: '', type: '', company_id: '', project_id: '', start_date: '', end_date: '' });
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [txData, companiesData, projectsData, categoriesData] = await Promise.all([
-        window.electronAPI.transaction.getAll({}),
-        window.electronAPI.company.getAll(),
-        window.electronAPI.project.getAll(),
-        window.electronAPI.category.getAll(),
-      ]);
-      setTransactions(txData);
-      setCompanies(companiesData);
-      setProjects(projectsData);
-      setCategories(categoriesData);
-    } catch (error) {
-      console.error('Load error:', error);
-      toast.error(t('common.loadError'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const populateFormData = (tx: TransactionWithDetails): TransactionDetailFormData => ({
-    date: formatDateForInput(tx.date),
-    type: tx.type,
-    scope: tx.scope,
-    company_id: tx.company_id ? String(tx.company_id) : '',
-    project_id: tx.project_id ? String(tx.project_id) : '',
-    category_id: tx.category_id ? String(tx.category_id) : '',
-    amount: tx.amount.toString(),
-    currency: (tx.currency || 'TRY') as TransactionDetailFormData['currency'],
-    exchange_rate: tx.exchange_rate,
-    description: tx.description,
-    document_no: tx.document_no || '',
-  });
-
-  const handleViewTransaction = (tx: TransactionWithDetails) => {
-    setSelectedTransaction(tx);
-    setFormData(populateFormData(tx));
-    setEditMode(false);
-    setShowModal(true);
-  };
+  const [exportFilters, setExportFilters] = useState<ListFilters>(EMPTY_LIST_FILTERS);
 
   const handleEditTransaction = (tx: TransactionWithDetails) => {
-    setSelectedTransaction(tx);
-    setFormData(populateFormData(tx));
-    setEditMode(true);
-    setShowModal(true);
+    setViewingTransaction(null);
+    setEditingTransaction(tx);
   };
 
-  const handleSaveTransaction = async () => {
-    if (!selectedTransaction) return;
-    if (formData.type !== selectedTransaction.type) {
-      try {
-        const isPayment = selectedTransaction.type === 'payment_in' || selectedTransaction.type === 'payment_out';
-        const linked = isPayment
-          ? await window.electronAPI.transaction.getAllocationsForPayment(selectedTransaction.id)
-          : await window.electronAPI.transaction.getAllocationsForInvoice(selectedTransaction.id);
-        if (linked.length > 0) {
-          setTypeChangeWarning({ count: linked.length, total: linked.reduce((sum, a) => sum + a.amount, 0) });
-          return;
-        }
-      } catch (error) {
-        console.error('Allocation check failed:', error);
-      }
-    }
-    await saveTransaction();
+  const handleSaved = () => {
+    setEditingTransaction(null);
+    toast.success(t('shared.transactionUpdated'));
+    loadData();
   };
 
-  const saveTransaction = async () => {
-    if (!selectedTransaction) return;
-    try {
-      await window.electronAPI.transaction.update(selectedTransaction.id, {
-        ...formData,
-        amount: parseFloat(formData.amount),
-        exchange_rate: formData.currency === 'TRY' ? 1 : formData.exchange_rate,
-        company_id: formData.company_id || undefined,
-        project_id: formData.project_id || undefined,
-        category_id: formData.category_id || undefined,
-      });
-      setShowModal(false);
-      toast.success(t('transactions.updateSuccess'));
-      invalidateCachePattern('dashboard:.*');
-      loadData();
-    } catch (error) {
-      console.error('Update error:', error);
-      toast.error(`${t('transactions.updateError')}: ${ipcErrorMessage(error)}`);
-    }
-  };
+  const editTarget = editingTransaction ? editTargetFor(editingTransaction) : null;
 
-  const handleDeleteClick = () => {
-    setShowDeleteConfirm(true);
-  };
+  const filteredTransactions = useMemo(
+    () =>
+      transactions.filter(
+        (tx) => matchesSearch(tx, debouncedSearch) && matchesFilters(tx, filters)
+      ),
+    [transactions, debouncedSearch, filters]
+  );
 
-  const handleDeleteConfirm = async () => {
-    if (!selectedTransaction) return;
-    try {
-      await window.electronAPI.transaction.delete(selectedTransaction.id);
-      setShowDeleteConfirm(false);
-      setShowModal(false);
-      toast.success(t('transactions.deleteSuccess'));
-      invalidateCachePattern('dashboard:.*');
-      loadData();
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast.error(t('transactions.deleteError'));
-    }
-  };
+  const deletion = useTransactionDeletion(filteredTransactions, loadData);
+  const { selectedIds } = deletion;
 
-  const closeModal = () => {
-    setShowModal(false);
-    setSelectedTransaction(null);
-    setEditMode(false);
-  };
+  const { pagination, pageItems: paginatedTransactions } = usePaginatedItems(
+    filteredTransactions,
+    JSON.stringify(filters)
+  );
 
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      const matchesSearch =
-        !debouncedSearch ||
-        tx.description.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        (tx.company_name &&
-          tx.company_name.toLowerCase().includes(debouncedSearch.toLowerCase())) ||
-        (tx.project_name && tx.project_name.toLowerCase().includes(debouncedSearch.toLowerCase()));
-      const matchesScope = !filters.scope || tx.scope === filters.scope;
-      const matchesType = !filters.type || tx.type === filters.type;
-      const matchesCompany = !filters.company_id || tx.company_id === parseInt(filters.company_id);
-      const matchesProject = !filters.project_id || tx.project_id === parseInt(filters.project_id);
-      const matchesStartDate = !filters.start_date || tx.date >= filters.start_date;
-      const matchesEndDate = !filters.end_date || tx.date <= filters.end_date;
-
-      return (
-        matchesSearch &&
-        matchesScope &&
-        matchesType &&
-        matchesCompany &&
-        matchesProject &&
-        matchesStartDate &&
-        matchesEndDate
-      );
-    });
-  }, [
-    transactions,
-    debouncedSearch,
-    filters.scope,
-    filters.type,
-    filters.company_id,
-    filters.project_id,
-    filters.start_date,
-    filters.end_date,
-  ]);
-
-  // Export-filtered transactions
-  const exportFilteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      if (exportFilters.scope && tx.scope !== exportFilters.scope) return false;
-      if (exportFilters.type && tx.type !== exportFilters.type) return false;
-      if (exportFilters.company_id && tx.company_id !== parseInt(exportFilters.company_id)) return false;
-      if (exportFilters.project_id && tx.project_id !== parseInt(exportFilters.project_id)) return false;
-      if (exportFilters.start_date && tx.date < exportFilters.start_date) return false;
-      if (exportFilters.end_date && tx.date > exportFilters.end_date) return false;
-      return true;
-    });
-  }, [transactions, exportFilters]);
-
-  const exportPreviewData = useMemo(() => {
-    const cols = getTransactionColumns(t);
-    return formatRecordsForExport(exportFilteredTransactions, cols);
-  }, [exportFilteredTransactions, t]);
-
-  // Pagination
-  const pagination = usePagination({
-    totalItems: filteredTransactions.length,
-    initialPageSize: 25,
-  });
-
-  // Reset to first page when filters change
-  useEffect(() => {
-    pagination.goToPage(1);
-  }, [
-    debouncedSearch,
-    filters.scope,
-    filters.type,
-    filters.company_id,
-    filters.project_id,
-    filters.start_date,
-    filters.end_date,
-  ]);
-
-  const paginatedTransactions = useMemo(() => {
-    return paginateArray(filteredTransactions, pagination.currentPage, pagination.pageSize);
-  }, [filteredTransactions, pagination.currentPage, pagination.pageSize]);
-
-  // Transaction totals
   const {
     totalInvoiceOut,
     totalPaymentIn,
@@ -323,51 +127,26 @@ function Transactions() {
     openBalance,
   } = calculateTransactionTotals(filteredTransactions);
 
-  const getScopeLabel = (scope: string): { label: string; variant: BadgeVariant } => {
-    switch (scope) {
-      case 'cari':
-        return { label: t('transactions.scope.cari'), variant: 'info' };
-      case 'project':
-        return { label: t('transactions.scope.project'), variant: 'purple' };
-      case 'company':
-        return { label: t('transactions.scope.company'), variant: 'default' };
-      default:
-        return { label: scope, variant: 'default' };
-    }
-  };
-
   return (
     <div className="page-container">
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">{t('transactions.title')}</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t('transactions.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {selectedIds.size > 0 && (
-            <>
-              <Button variant="ghost-danger" size="sm" icon={FiTrash2} onClick={() => setBulkDeleteConfirm(true)}>
-                {t('transactions.bulkDeleteCount', { count: selectedIds.size })}
-              </Button>
-              <Divider />
-            </>
-          )}
-          <Button variant="secondary" icon={FiDownload} onClick={() => { setExportFilters({ scope: '', type: '', company_id: '', project_id: '', start_date: '', end_date: '' }); setExportPreviewOpen(true); }} title={t('common.exportToExcel')}>
-            {t('common.exportToExcel')}
-          </Button>
-          <Button variant="secondary" icon={FiShare2} onClick={() => {
-            const cols = getTransactionColumns(t);
-            const { rows: summaryRows, metadata } = buildTransactionSummary(filteredTransactions, t, filteredTransactions.length);
-            const filename = `${t('export.filenames.transactions')}_${toLocalDateString()}`;
-            void shareAction(filename, filteredTransactions, cols, summaryRows, metadata);
-          }} title={t('common.share')}>
-            {t('common.share')}
-          </Button>
-        </div>
-      </div>
+      <PageHeader title={t('transactions.title')} subtitle={t('transactions.subtitle')}>
+        <PageActions
+          leading={
+            <BulkDeleteAction
+              count={selectedIds.size}
+              label={t('shared.bulkDelete.buttonLabel', { count: selectedIds.size })}
+              onClick={() => deletion.setBulkDeleteConfirm(true)}
+              divider="after"
+            />
+          }
+          onExport={() => {
+            setExportFilters(EMPTY_LIST_FILTERS);
+            setExportPreviewOpen(true);
+          }}
+          onShare={() => void shareTransactions(exportPrefix, filteredTransactions)}
+        />
+      </PageHeader>
 
-      {/* Stats */}
       <TransactionStats
         totalInvoiceOut={totalInvoiceOut}
         totalPaymentIn={totalPaymentIn}
@@ -379,16 +158,14 @@ function Transactions() {
         filteredTransactions={filteredTransactions}
       />
 
-      {/* Filters */}
       <TransactionFiltersPanel
         filters={filters}
         onFiltersChange={setFilters}
         companies={companies}
       />
 
-      {/* Table */}
       <Card>
-        <CardBody className="p-0">
+        <CardBody>
           {loading ? (
             <LoadingSpinner />
           ) : filteredTransactions.length === 0 ? (
@@ -398,249 +175,50 @@ function Transactions() {
               description={t('transactions.noTransactionsDesc')}
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow hover={false}>
-                  <TableHead className="w-10">
-                    <SelectAllCheckbox
-                      itemIds={paginatedTransactions.map((tx) => tx.id)}
-                      selectedIds={selectedIds}
-                      onSelectAll={handleSelectAll}
-                    />
-                  </TableHead>
-                  <TableHead>{t('transactions.table.date')}</TableHead>
-                  <TableHead>{t('transactions.table.source')}</TableHead>
-                  <TableHead>{t('transactions.table.type')}</TableHead>
-                  <TableHead>{t('transactions.table.companyProject')}</TableHead>
-                  <TableHead>{t('transactions.table.description')}</TableHead>
-                  <TableHead>{t('transactions.table.category')}</TableHead>
-                  <TableHead className="text-right">{t('transactions.table.amount')}</TableHead>
-                  <TableHead className="w-20 text-center">{t('transactions.table.action')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedTransactions.map((tx) => {
-                  const scopeConfig = getScopeLabel(tx.scope);
-                  return (
-                    <TableRow
-                      key={tx.id}
-                      selected={selectedIds.has(tx.id)}
-                      onClick={() => handleViewTransaction(tx)}
-                    >
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <RowCheckbox
-                          id={tx.id}
-                          selectedIds={selectedIds}
-                          onSelectOne={handleSelectOne}
-                        />
-                      </TableCell>
-                      <TableCell>{formatDate(tx.date)}</TableCell>
-                      <TableCell>
-                        <Badge variant={scopeConfig.variant}>{scopeConfig.label}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${getTransactionColor(tx.type)} text-white`}
-                        >
-                          {t(TRANSACTION_TYPE_LABELS[tx.type])}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {tx.company_name ? (
-                          <span
-                            className="text-blue-600 dark:text-blue-400 cursor-pointer hover:underline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/companies/${tx.company_id}`);
-                            }}
-                          >
-                            {tx.company_name}
-                          </span>
-                        ) : tx.project_name ? (
-                          <span
-                            className="text-purple-600 dark:text-purple-400 cursor-pointer hover:underline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/projects/${tx.project_id}`);
-                            }}
-                          >
-                            {tx.project_name}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 dark:text-gray-500">{t('transactions.companyGeneral')}</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <p className="font-medium flex items-center gap-2">
-                          <span>{tx.description}</span>
-                          <MatchStatusBadge transaction={tx} />
-                        </p>
-                        {tx.document_no && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {t('transactions.table.document', { no: tx.document_no })}
-                          </p>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {tx.category_name ? (
-                          <span
-                            className="inline-flex items-center px-2 py-0.5 rounded text-xs"
-                            style={{
-                              backgroundColor: `${tx.category_color}20`,
-                              color: tx.category_color || undefined,
-                            }}
-                          >
-                            {t(`categories.${tx.category_name}`, tx.category_name)}
-                          </span>
-                        ) : (
-                          '-'
-                        )}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right font-medium ${getTransactionTextColor(tx.type)}`}
-                      >
-                        {isPositiveTransaction(tx.type) ? '+' : '-'}
-                        {formatCurrency(tx.amount, tx.currency)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div
-                          className="flex items-center justify-center gap-1"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Button
-                            variant="ghost-warning"
-                            size="icon"
-                            icon={FiEdit2}
-                            onClick={() => handleEditTransaction(tx)}
-                            title={t('common.edit')}
-                          />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <AllTransactionsTable
+              transactions={paginatedTransactions}
+              deletion={deletion}
+              onView={setViewingTransaction}
+              onEdit={handleEditTransaction}
+            />
           )}
-          {filteredTransactions.length > 0 && (
-            <Pagination {...getPaginationProps(pagination)} />
-          )}
+          {filteredTransactions.length > 0 && <Pagination {...getPaginationProps(pagination)} />}
         </CardBody>
       </Card>
 
-      {/* View/Edit Modal */}
-      <TransactionDetailModal
-        isOpen={showModal}
-        editMode={editMode}
-        formData={formData}
-        companies={companies}
-        projects={projects}
-        categories={categories}
-        onClose={closeModal}
-        onEdit={() => setEditMode(true)}
-        onSave={handleSaveTransaction}
-        onDelete={handleDeleteClick}
-        onFormChange={setFormData}
+      <TransactionDetailView
+        transaction={viewingTransaction}
+        allocations={viewingAllocations}
+        onClose={() => setViewingTransaction(null)}
+        onEdit={handleEditTransaction}
       />
 
-      <ConfirmDialog
-        isOpen={typeChangeWarning !== null}
-        onClose={() => setTypeChangeWarning(null)}
-        onConfirm={async () => {
-          setTypeChangeWarning(null);
-          await saveTransaction();
-        }}
-        title={t('transactionModal.typeChangeWarningTitle')}
-        message={t('transactionModal.typeChangeWarningMessage', {
-          count: typeChangeWarning?.count ?? 0,
-          total: formatCurrency(typeChangeWarning?.total ?? 0),
-        })}
-        type="warning"
-        confirmText={t('transactionModal.removeAllocations')}
-        cancelText={t('common.cancel')}
-      />
+      {editingTransaction && editTarget && (
+        <TransactionModal
+          isOpen
+          onClose={() => setEditingTransaction(null)}
+          transaction={editingTransaction}
+          categories={categories}
+          onSave={handleSaved}
+          scope={editTarget.scope}
+          entityId={editTarget.entityId}
+          companies={companies}
+          projects={projects}
+          mode={editTarget.mode}
+        />
+      )}
 
-      {/* Delete Confirm Dialog */}
-      <ConfirmDialog
-        isOpen={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={handleDeleteConfirm}
-        title={t('transactions.deleteTitle')}
-        message={deleteTransactionMessage(t, selectedTransaction, 'transactions.deleteMessage')}
-        type="danger"
-        confirmText={t('common.delete')}
-        cancelText={t('common.cancel')}
-      />
+      <TransactionDeleteDialogs deletion={deletion} />
 
-      {/* Bulk Delete Confirm Dialog */}
-      <ConfirmDialog
-        isOpen={bulkDeleteConfirm}
-        onClose={() => setBulkDeleteConfirm(false)}
-        onConfirm={() => bulkDelete(selectedIds)}
-        title={t('transactions.bulkDeleteTitle')}
-        message={t('transactions.bulkDeleteMessage', { count: selectedIds.size })}
-        type="danger"
-        confirmText={t('transactions.bulkDeleteConfirm')}
-        cancelText={t('common.cancel')}
-      />
-
-      {/* Export Preview */}
-      <ExportPreviewModal
+      <TransactionsExportDialog
         isOpen={exportPreviewOpen}
         onClose={() => setExportPreviewOpen(false)}
-        data={exportPreviewData}
-        onExport={() => {
-          const cols = getTransactionColumns(t);
-          const { rows: summaryRows, metadata } = buildTransactionSummary(exportFilteredTransactions, t, exportFilteredTransactions.length);
-          const filename = `${t('export.filenames.transactions')}_${toLocalDateString()}`;
-          void exportAction(filename, exportFilteredTransactions, cols, summaryRows, metadata);
-        }}
-        mode="filter"
-      >
-        <Select
-          options={TRANSACTION_SCOPES.map((o) => ({ ...o, label: t(o.label) }))}
-          value={exportFilters.scope}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-            setExportFilters((prev) => ({ ...prev, scope: e.target.value }))
-          }
-          placeholder={t('transactions.filterSource')}
-          className="w-32"
-        />
-        <Select
-          options={TRANSACTION_TYPES.map((o) => ({ ...o, label: t(o.label) }))}
-          value={exportFilters.type}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-            setExportFilters((prev) => ({ ...prev, type: e.target.value }))
-          }
-          placeholder={t('shared.printOptions.transactionType')}
-          className="w-40"
-        />
-        <Select
-          options={companies.map((c) => ({ value: c.id, label: c.name }))}
-          value={exportFilters.company_id}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-            setExportFilters((prev) => ({ ...prev, company_id: e.target.value }))
-          }
-          placeholder={t('transactions.filterCompany')}
-          className="w-40"
-        />
-        <Input
-          type="date"
-          value={exportFilters.start_date}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setExportFilters((prev) => ({ ...prev, start_date: e.target.value }))
-          }
-          className="w-36"
-        />
-        <Input
-          type="date"
-          value={exportFilters.end_date}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setExportFilters((prev) => ({ ...prev, end_date: e.target.value }))
-          }
-          className="w-36"
-        />
-      </ExportPreviewModal>
+        filters={exportFilters}
+        onFiltersChange={setExportFilters}
+        transactions={transactions}
+        companies={companies}
+        exportPrefix={exportPrefix}
+      />
     </div>
   );
 }

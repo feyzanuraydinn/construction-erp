@@ -6,14 +6,27 @@ import path from 'path';
 import { DatabaseService } from '../../database/DatabaseService';
 import {
   analyzeData,
-  countPending,
   applyRepairs,
   applyRates,
   applyAllocationFixes,
   applyUnmatched,
   completeReview,
   readBaseline,
+  type DataReviewReport,
 } from '../../database/dataReview';
+
+function countPending(report: DataReviewReport): number {
+  const dangling = Object.values(report.dangling).reduce((sum, n) => sum + n, 0);
+  return (
+    report.amountFixes.length +
+    dangling +
+    report.orphans.length +
+    report.rateIssues.length +
+    report.allocationIssues.length +
+    report.unmatchedPayments.length +
+    report.legacyFirmPayments.length
+  );
+}
 
 let userDataPath: string;
 let db: DatabaseService;
@@ -81,7 +94,11 @@ function addTx(raw: Raw, tx: Tx): void {
 }
 
 function allocate(raw: Raw, paymentId: number, invoiceId: number, amount: number): void {
-  raw.run('INSERT INTO payment_allocations (payment_id, invoice_id, amount) VALUES (?, ?, ?)', [paymentId, invoiceId, amount]);
+  raw.run('INSERT INTO payment_allocations (payment_id, invoice_id, amount) VALUES (?, ?, ?)', [
+    paymentId,
+    invoiceId,
+    amount,
+  ]);
 }
 
 async function openLegacy(setup: (raw: Raw) => void): Promise<void> {
@@ -91,11 +108,21 @@ async function openLegacy(setup: (raw: Raw) => void): Promise<void> {
   raw.run('PRAGMA foreign_keys = OFF');
   raw.run('DROP TABLE app_meta');
   raw.run('DELETE FROM schema_versions WHERE version >= 4');
-  raw.run("INSERT INTO companies (id, code, type, account_type, name) VALUES (1, 'C1', 'company', 'supplier', 'Tedarikçi A')");
-  raw.run("INSERT INTO companies (id, code, type, account_type, name) VALUES (2, 'C2', 'person', 'subcontractor', 'Usta Ali')");
-  raw.run("INSERT INTO companies (id, code, type, account_type, name) VALUES (3, 'C3', 'company', 'customer', 'Müşteri M')");
-  raw.run("INSERT INTO companies (id, code, type, account_type, name) VALUES (5, 'C5', 'company', 'supplier', 'B Firması')");
-  raw.run("INSERT INTO projects (id, code, name, ownership_type, status) VALUES (10, 'P-10', 'Merkez', 'own', 'active')");
+  raw.run(
+    "INSERT INTO companies (id, code, type, account_type, name) VALUES (1, 'C1', 'company', 'supplier', 'Tedarikçi A')"
+  );
+  raw.run(
+    "INSERT INTO companies (id, code, type, account_type, name) VALUES (2, 'C2', 'person', 'subcontractor', 'Usta Ali')"
+  );
+  raw.run(
+    "INSERT INTO companies (id, code, type, account_type, name) VALUES (3, 'C3', 'company', 'customer', 'Müşteri M')"
+  );
+  raw.run(
+    "INSERT INTO companies (id, code, type, account_type, name) VALUES (5, 'C5', 'company', 'supplier', 'B Firması')"
+  );
+  raw.run(
+    "INSERT INTO projects (id, code, name, ownership_type, status) VALUES (10, 'P-10', 'Merkez', 'own', 'active')"
+  );
   setup(raw);
   first.close();
   db = new DatabaseService();
@@ -146,9 +173,25 @@ describe('data review: repairs (step 1)', () => {
   it('corrects TRY values the first versions did not recompute after an edit', async () => {
     await openLegacy((raw) => {
       addTx(raw, { id: 1, company: 3, type: 'invoice_out', amount: 1500, amountTry: 1000 });
-      addTx(raw, { id: 2, company: 3, type: 'invoice_out', amount: 200, currency: 'USD', rate: 30, amountTry: 3000 });
+      addTx(raw, {
+        id: 2,
+        company: 3,
+        type: 'invoice_out',
+        amount: 200,
+        currency: 'USD',
+        rate: 30,
+        amountTry: 3000,
+      });
       addTx(raw, { id: 3, company: 3, type: 'payment_in', amount: 400, amountTry: null });
-      addTx(raw, { id: 4, company: 3, type: 'invoice_out', amount: 100, currency: 'EUR', rate: 35, amountTry: 3500 });
+      addTx(raw, {
+        id: 4,
+        company: 3,
+        type: 'invoice_out',
+        amount: 100,
+        currency: 'EUR',
+        rate: 35,
+        amountTry: 3500,
+      });
     });
     const report = analyzeData(db.rawDb);
     expect(report.amountFixes.map((f) => [f.id, f.correctTry])).toEqual([
@@ -158,7 +201,10 @@ describe('data review: repairs (step 1)', () => {
     ]);
 
     applyRepairs(db.rawDb, []);
-    const values = all<{ id: number; amount_try: number }>(db.rawDb, 'SELECT id, amount_try FROM transactions ORDER BY id');
+    const values = all<{ id: number; amount_try: number }>(
+      db.rawDb,
+      'SELECT id, amount_try FROM transactions ORDER BY id'
+    );
     expect(values.map((v) => v.amount_try)).toEqual([1500, 6000, 400, 3500]);
     expect(analyzeData(db.rawDb).amountFixes).toEqual([]);
   });
@@ -169,12 +215,23 @@ describe('data review: repairs (step 1)', () => {
       addTx(raw, { id: 2, company: 4, type: 'payment_out', amount: 900 });
       allocate(raw, 2, 1, 900);
       addTx(raw, { id: 3, scope: 'project', project: 11, type: 'invoice_in', amount: 300 });
-      addTx(raw, { id: 4, scope: 'cari', company: 1, project: 11, type: 'invoice_in', amount: 250 });
+      addTx(raw, {
+        id: 4,
+        scope: 'cari',
+        company: 1,
+        project: 11,
+        type: 'invoice_in',
+        amount: 250,
+      });
       addTx(raw, { id: 5, company: 1, type: 'invoice_in', amount: 100, category: 9999 });
       addTx(raw, { id: 6, company: 1, type: 'payment_out', amount: 100, linkedInvoice: 8888 });
       allocate(raw, 7777, 5, 50);
-      raw.run("INSERT INTO project_parties (project_id, company_id, role) VALUES (11, 1, 'supplier')");
-      raw.run("INSERT INTO projects (id, code, name, ownership_type, status, client_company_id) VALUES (12, 'P-12', 'Eski', 'client', 'active', 4)");
+      raw.run(
+        "INSERT INTO project_parties (project_id, company_id, role) VALUES (11, 1, 'supplier')"
+      );
+      raw.run(
+        "INSERT INTO projects (id, code, name, ownership_type, status, client_company_id) VALUES (12, 'P-12', 'Eski', 'client', 'active', 4)"
+      );
     });
 
     const report = analyzeData(db.rawDb);
@@ -197,9 +254,16 @@ describe('data review: repairs (step 1)', () => {
     expect(after.orphans).toEqual([]);
     expect(Object.values(after.dangling).every((n) => n === 0)).toBe(true);
 
-    const ids = all<{ id: number }>(db.rawDb, 'SELECT id FROM transactions ORDER BY id').map((r) => r.id);
+    const ids = all<{ id: number }>(db.rawDb, 'SELECT id FROM transactions ORDER BY id').map(
+      (r) => r.id
+    );
     expect(ids).toEqual([4, 5, 6]);
-    expect(one<{ project_id: number | null }>(db.rawDb, 'SELECT project_id FROM transactions WHERE id = 4').project_id).toBeNull();
+    expect(
+      one<{ project_id: number | null }>(
+        db.rawDb,
+        'SELECT project_id FROM transactions WHERE id = 4'
+      ).project_id
+    ).toBeNull();
     expect(db.trash.getAll()).toHaveLength(3);
     expect(db.checkForeignKeys().ok).toBe(true);
 
@@ -220,8 +284,26 @@ describe('data review: repairs (step 1)', () => {
 describe('data review: exchange rates (step 2)', () => {
   it('lists USD/EUR records valued 1:1 and rescales same-currency matches', async () => {
     await openLegacy((raw) => {
-      addTx(raw, { id: 1, company: 1, project: 10, type: 'invoice_in', amount: 1000, currency: 'USD', rate: 1, amountTry: 1000 });
-      addTx(raw, { id: 2, company: 1, project: 10, type: 'payment_out', amount: 1000, currency: 'USD', rate: 1, amountTry: 1000 });
+      addTx(raw, {
+        id: 1,
+        company: 1,
+        project: 10,
+        type: 'invoice_in',
+        amount: 1000,
+        currency: 'USD',
+        rate: 1,
+        amountTry: 1000,
+      });
+      addTx(raw, {
+        id: 2,
+        company: 1,
+        project: 10,
+        type: 'payment_out',
+        amount: 1000,
+        currency: 'USD',
+        rate: 1,
+        amountTry: 1000,
+      });
       allocate(raw, 2, 1, 1000);
     });
     const report = analyzeData(db.rawDb);
@@ -232,9 +314,14 @@ describe('data review: exchange rates (step 2)', () => {
       { id: 1, rate: 34 },
       { id: 2, rate: 35 },
     ]);
-    const tx = all<{ id: number; amount_try: number }>(db.rawDb, 'SELECT id, amount_try FROM transactions ORDER BY id');
+    const tx = all<{ id: number; amount_try: number }>(
+      db.rawDb,
+      'SELECT id, amount_try FROM transactions ORDER BY id'
+    );
     expect(tx.map((t) => t.amount_try)).toEqual([34000, 35000]);
-    expect(one<{ amount: number }>(db.rawDb, 'SELECT amount FROM payment_allocations').amount).toBe(34000);
+    expect(one<{ amount: number }>(db.rawDb, 'SELECT amount FROM payment_allocations').amount).toBe(
+      34000
+    );
     const after = analyzeData(db.rawDb);
     expect(after.rateIssues).toEqual([]);
     expect(after.allocationIssues).toEqual([]);
@@ -242,7 +329,15 @@ describe('data review: exchange rates (step 2)', () => {
 
   it('skips records without a valid new rate', async () => {
     await openLegacy((raw) => {
-      addTx(raw, { id: 1, company: 1, type: 'invoice_in', amount: 10, currency: 'EUR', rate: 1, amountTry: 10 });
+      addTx(raw, {
+        id: 1,
+        company: 1,
+        type: 'invoice_in',
+        amount: 10,
+        currency: 'EUR',
+        rate: 1,
+        amountTry: 10,
+      });
     });
     expect(applyRates(db.rawDb, [{ id: 1, rate: 1 }]).skipped).toBe(1);
     expect(analyzeData(db.rawDb).rateIssues).toHaveLength(1);
@@ -270,14 +365,26 @@ describe('data review: matches that do not fit (step 3)', () => {
 
     const issues = analyzeData(db.rawDb).allocationIssues;
     const byKind = Object.fromEntries(issues.map((i) => [i.kind, i]));
-    expect(byKind.assign_company).toMatchObject({ paymentId: 2, companyId: 5, companyName: 'B Firması' });
+    expect(byKind.assign_company).toMatchObject({
+      paymentId: 2,
+      companyId: 5,
+      companyName: 'B Firması',
+    });
     expect(byKind.counterparty).toMatchObject({ paymentId: 4, invoiceId: 3 });
-    expect(byKind.payment_over.changes).toEqual([{ allocationId: expect.any(Number), invoiceDescription: 'tx 6', from: 800, to: 300 }]);
+    expect(byKind.payment_over.changes).toEqual([
+      { allocationId: expect.any(Number), invoiceDescription: 'tx 6', from: 800, to: 300 },
+    ]);
     expect(byKind.type_mismatch).toMatchObject({ paymentId: 9, invoiceId: 8 });
 
-    applyAllocationFixes(db.rawDb, issues.map((i) => i.key));
+    applyAllocationFixes(
+      db.rawDb,
+      issues.map((i) => i.key)
+    );
     expect(analyzeData(db.rawDb).allocationIssues).toEqual([]);
-    expect(one<{ company_id: number }>(db.rawDb, 'SELECT company_id FROM transactions WHERE id = 2').company_id).toBe(5);
+    expect(
+      one<{ company_id: number }>(db.rawDb, 'SELECT company_id FROM transactions WHERE id = 2')
+        .company_id
+    ).toBe(5);
     const allocations = all<{ payment_id: number; invoice_id: number; amount: number }>(
       db.rawDb,
       'SELECT payment_id, invoice_id, amount FROM payment_allocations ORDER BY payment_id, invoice_id'
@@ -293,12 +400,47 @@ describe('data review: matches that do not fit (step 3)', () => {
 describe('data review: unmatched payments (step 4)', () => {
   async function openProjectScenario(): Promise<void> {
     await openLegacy((raw) => {
-      addTx(raw, { id: 1, company: 1, project: 10, type: 'invoice_in', amount: 10000, date: '2026-01-05' });
-      addTx(raw, { id: 2, company: 1, project: 10, type: 'payment_out', amount: 10000, date: '2026-01-10' });
-      addTx(raw, { id: 3, company: 2, project: 10, type: 'payment_out', amount: 3000, date: '2026-01-12' });
+      addTx(raw, {
+        id: 1,
+        company: 1,
+        project: 10,
+        type: 'invoice_in',
+        amount: 10000,
+        date: '2026-01-05',
+      });
+      addTx(raw, {
+        id: 2,
+        company: 1,
+        project: 10,
+        type: 'payment_out',
+        amount: 10000,
+        date: '2026-01-10',
+      });
+      addTx(raw, {
+        id: 3,
+        company: 2,
+        project: 10,
+        type: 'payment_out',
+        amount: 3000,
+        date: '2026-01-12',
+      });
       addTx(raw, { id: 4, project: 10, type: 'payment_out', amount: 500, date: '2026-01-15' });
-      addTx(raw, { id: 5, company: 3, project: 10, type: 'invoice_out', amount: 50000, date: '2026-01-02' });
-      addTx(raw, { id: 6, company: 3, project: 10, type: 'payment_in', amount: 20000, date: '2026-01-20' });
+      addTx(raw, {
+        id: 5,
+        company: 3,
+        project: 10,
+        type: 'invoice_out',
+        amount: 50000,
+        date: '2026-01-02',
+      });
+      addTx(raw, {
+        id: 6,
+        company: 3,
+        project: 10,
+        type: 'payment_in',
+        amount: 20000,
+        date: '2026-01-20',
+      });
       addTx(raw, { id: 7, company: 3, type: 'payment_in', amount: 5000, date: '2026-01-03' });
       addTx(raw, { id: 8, company: 1, type: 'payment_out', amount: 2000, date: '2026-02-01' });
       addTx(raw, { id: 9, scope: 'company', type: 'payment_out', amount: 750, date: '2026-01-30' });
@@ -311,7 +453,12 @@ describe('data review: unmatched payments (step 4)', () => {
     const list = Object.fromEntries(report.unmatchedPayments.map((p) => [p.id, p]));
     expect(Object.keys(list).map(Number)).toEqual([2, 3, 4, 6, 7]);
     expect(list[2]).toMatchObject({ matchable: 10000, rest: 0, countedByOldProjectPage: true });
-    expect(list[3]).toMatchObject({ matchable: 0, rest: 3000, advanceAllowed: true, companyType: 'person' });
+    expect(list[3]).toMatchObject({
+      matchable: 0,
+      rest: 3000,
+      advanceAllowed: true,
+      companyType: 'person',
+    });
     expect(list[4]).toMatchObject({ rest: 500, advanceAllowed: false });
     expect(list[6]).toMatchObject({ matchable: 20000, rest: 0 });
     expect(list[7]).toMatchObject({ matchable: 5000, rest: 0, countedByOldProjectPage: false });
@@ -355,17 +502,46 @@ describe('data review: unmatched payments (step 4)', () => {
       { payment_id: 7, invoice_id: 5, amount: 5000 },
     ]);
 
-    const documents = all<{ type: string; amount: number; category_id: number; company_id: number | null; project_id: number; notes: string; matched: number }>(
+    const documents = all<{
+      type: string;
+      amount: number;
+      category_id: number;
+      company_id: number | null;
+      project_id: number;
+      notes: string;
+      matched: number;
+    }>(
       db.rawDb,
       `SELECT t.type, t.amount, t.category_id, t.company_id, t.project_id, t.notes,
          (SELECT SUM(amount) FROM payment_allocations WHERE invoice_id = t.id) as matched
        FROM transactions t WHERE t.id > 9 ORDER BY t.id`
     );
     expect(documents).toEqual([
-      { type: 'invoice_in', amount: 3000, category_id: labour, company_id: 2, project_id: 10, notes: 'from review', matched: 3000 },
-      { type: 'invoice_in', amount: 500, category_id: transport, company_id: null, project_id: 10, notes: 'from review', matched: 500 },
+      {
+        type: 'invoice_in',
+        amount: 3000,
+        category_id: labour,
+        company_id: 2,
+        project_id: 10,
+        notes: 'from review',
+        matched: 3000,
+      },
+      {
+        type: 'invoice_in',
+        amount: 500,
+        category_id: transport,
+        company_id: null,
+        project_id: 10,
+        notes: 'from review',
+        matched: 500,
+      },
     ]);
-    expect(one<{ type: string; category_id: number }>(db.rawDb, 'SELECT type, category_id FROM transactions WHERE id = 9')).toEqual({
+    expect(
+      one<{ type: string; category_id: number }>(
+        db.rawDb,
+        'SELECT type, category_id FROM transactions WHERE id = 9'
+      )
+    ).toEqual({
       type: 'invoice_in',
       category_id: rent,
     });
@@ -373,13 +549,20 @@ describe('data review: unmatched payments (step 4)', () => {
     const after = analyzeData(db.rawDb);
     expect(after.unmatchedPayments).toEqual([]);
     expect(after.legacyFirmPayments).toEqual([]);
-    expect(after.projectEffects[0]).toMatchObject({ now: { income: 50000, expense: 13500, profit: 36500 } });
+    expect(after.projectEffects[0]).toMatchObject({
+      now: { income: 50000, expense: 13500, profit: 36500 },
+    });
     expect(countPending(after)).toBe(0);
   });
 
   it('never leaves a payment without a company as an advance', async () => {
     await openProjectScenario();
-    const result = applyUnmatched(db.rawDb, [{ id: 4, match: false, rest: 'advance', categoryId: null }], [], null);
+    const result = applyUnmatched(
+      db.rawDb,
+      [{ id: 4, match: false, rest: 'advance', categoryId: null }],
+      [],
+      null
+    );
     expect(result).toEqual({ changed: 0, skipped: 1 });
     expect(analyzeData(db.rawDb).unmatchedPayments.some((p) => p.id === 4)).toBe(true);
   });
@@ -392,7 +575,12 @@ describe('data review: unmatched payments (step 4)', () => {
         db.rawDb,
         [
           { id: 2, match: true, rest: 'advance', categoryId: null },
-          { id: 3, match: false, rest: 'document', categoryId: categoryId(db.rawDb, 'Kira Geliri') },
+          {
+            id: 3,
+            match: false,
+            rest: 'document',
+            categoryId: categoryId(db.rawDb, 'Kira Geliri'),
+          },
         ],
         [],
         null

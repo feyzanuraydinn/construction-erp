@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Modal, ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import { Modal, ModalBody, ModalFooter } from '../../components/ui/Modal';
 
 describe('Modal Component', () => {
   const onClose = vi.fn();
@@ -10,7 +10,6 @@ describe('Modal Component', () => {
   });
 
   afterEach(() => {
-    // Reset body overflow after each test
     document.body.style.overflow = '';
   });
 
@@ -40,19 +39,6 @@ describe('Modal Component', () => {
         </Modal>
       );
       expect(screen.getByText('Test Modal')).toBeInTheDocument();
-    });
-
-    it('should render footer when provided', () => {
-      render(
-        <Modal
-          isOpen={true}
-          onClose={onClose}
-          footer={<button>Save</button>}
-        >
-          <div>Content</div>
-        </Modal>
-      );
-      expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
     });
   });
 
@@ -115,7 +101,6 @@ describe('Modal Component', () => {
           <div>Content</div>
         </Modal>
       );
-      // Click on backdrop (the overlay with bg-black/50)
       const backdrop = document.querySelector('.bg-black\\/50');
       if (backdrop) {
         fireEvent.click(backdrop);
@@ -129,12 +114,8 @@ describe('Modal Component', () => {
           <div>Content</div>
         </Modal>
       );
-      // Close button is rendered when title is provided
       const closeButtons = document.querySelectorAll('button');
-      // Find the close button (the one with X icon)
-      const closeButton = Array.from(closeButtons).find(
-        btn => btn.querySelector('svg')
-      );
+      const closeButton = Array.from(closeButtons).find((btn) => btn.querySelector('svg'));
       if (closeButton) {
         fireEvent.click(closeButton);
       }
@@ -177,36 +158,6 @@ describe('Modal Component', () => {
       );
       expect(document.body.style.overflow).toBe('');
     });
-  });
-});
-
-describe('ModalHeader Component', () => {
-  it('should render children', () => {
-    render(<ModalHeader>Header Title</ModalHeader>);
-    expect(screen.getByText('Header Title')).toBeInTheDocument();
-  });
-
-  it('should render close button when onClose is provided', () => {
-    const onClose = vi.fn();
-    render(<ModalHeader onClose={onClose}>Header</ModalHeader>);
-    const closeButton = document.querySelector('button');
-    expect(closeButton).toBeInTheDocument();
-  });
-
-  it('should not render close button when onClose is not provided', () => {
-    render(<ModalHeader>Header</ModalHeader>);
-    const closeButton = document.querySelector('button');
-    expect(closeButton).not.toBeInTheDocument();
-  });
-
-  it('should call onClose when close button is clicked', () => {
-    const onClose = vi.fn();
-    render(<ModalHeader onClose={onClose}>Header</ModalHeader>);
-    const closeButton = document.querySelector('button');
-    if (closeButton) {
-      fireEvent.click(closeButton);
-    }
-    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -259,8 +210,7 @@ describe('Compound Modal Pattern', () => {
   it('should work with compound components', () => {
     const onClose = vi.fn();
     render(
-      <Modal isOpen={true} onClose={onClose}>
-        <ModalHeader onClose={onClose}>Edit Item</ModalHeader>
+      <Modal isOpen={true} onClose={onClose} title="Edit Item">
         <ModalBody>
           <input placeholder="Item name" />
         </ModalBody>

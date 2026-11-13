@@ -1,5 +1,6 @@
-import React, { ButtonHTMLAttributes, ReactNode, memo } from 'react';
+import { ButtonHTMLAttributes, ReactNode, memo } from 'react';
 import type { IconType } from 'react-icons';
+import { cn } from '../../utils/cn';
 
 type ButtonVariant =
   | 'primary'
@@ -21,6 +22,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: IconType;
   iconPosition?: 'left' | 'right';
   loading?: boolean;
+  loadingText?: string;
 }
 
 const variants: Record<ButtonVariant, string> = {
@@ -59,33 +61,33 @@ export const Button = memo(function Button({
   iconPosition = 'left',
   disabled = false,
   loading = false,
+  loadingText,
   className = '',
   ...props
 }: ButtonProps) {
   const isIconOnly = size === 'icon' || (Icon && !children);
   const iconSize = size === 'xs' ? 14 : size === 'sm' ? 16 : 18;
 
-  // Auto-derive aria-label from title for icon-only buttons (accessibility)
-  const ariaLabel = isIconOnly && !props['aria-label'] && props.title
-    ? props.title
-    : props['aria-label'];
+  const ariaLabel =
+    isIconOnly && !props['aria-label'] && props.title ? props.title : props['aria-label'];
 
   return (
     <button
-      className={`
-        ${variants[variant]}
-        ${sizes[size]}
-        rounded-lg font-medium transition-all duration-200
-        flex items-center justify-center gap-2
-        disabled:opacity-50 disabled:cursor-not-allowed
-        ${className}
-      `}
+      className={cn(
+        variants[variant],
+        sizes[size],
+        'rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed',
+        className
+      )}
       disabled={disabled || loading}
       aria-label={ariaLabel}
       {...props}
     >
       {loading ? (
-        <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+        <>
+          <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          {loadingText}
+        </>
       ) : isIconOnly && Icon ? (
         <Icon size={iconSize} />
       ) : (

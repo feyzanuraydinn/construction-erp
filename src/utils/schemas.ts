@@ -1,17 +1,34 @@
 import { z } from 'zod';
-import i18n from '../i18n';
+import { i18n } from '../i18n';
+import {
+  ACCOUNT_TYPE_VALUES,
+  CATEGORY_TYPE_VALUES,
+  COMPANY_TYPE_VALUES,
+  CURRENCY_VALUES,
+  MOVEMENT_TYPE_VALUES,
+  OWNERSHIP_TYPE_VALUES,
+  PROJECT_STATUS_VALUES,
+  PROJECT_TYPE_VALUES,
+  TRANSACTION_SCOPE_VALUES,
+  TRANSACTION_TYPE_VALUES,
+} from '../types';
+import { DEFAULT_CATEGORY_COLOR } from './constants';
+import { UserFacingError } from './userFacingError';
 
-// Helper: get translated validation message
 function v(key: string): string {
   return i18n.t(`validation.${key}`);
 }
+
+z.config({ customError: () => v('validationError') });
 
 export function isValidCalendarDate(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return false;
   const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
   const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
 }
 
 export function isValidTcNumber(value: string): boolean {
@@ -48,8 +65,6 @@ const optionalNonNegativeNumberField = z
   })
   .refine((val) => val === null || val >= 0, { error: () => v('nonNegative') });
 
-// ==================== HELPER SCHEMAS ====================
-
 const optionalDateField = z
   .string()
   .optional()
@@ -64,7 +79,6 @@ const optionalDateField = z
 
 const requiredDateField = z.string().refine(isValidCalendarDate, { error: () => v('dateFormat') });
 
-// Optional number field that coerces string to number
 const optionalNumberField = z
   .union([z.number(), z.string(), z.null(), z.undefined()])
   .optional()
@@ -75,7 +89,6 @@ const optionalNumberField = z
     return isNaN(num) ? null : num;
   });
 
-// Required positive number field that coerces string to number
 const requiredPositiveNumberField = z
   .union([z.number(), z.string()])
   .transform((val) => {
@@ -86,12 +99,13 @@ const requiredPositiveNumberField = z
     error: () => v('positiveNumber'),
   });
 
-// ==================== COMPANY SCHEMAS ====================
-
 export const companySchema = z.object({
-  type: z.enum(['person', 'company']),
-  account_type: z.enum(['customer', 'supplier', 'subcontractor', 'investor']),
-  name: z.string().min(1, { error: () => v('nameRequired') }).max(255),
+  type: z.enum(COMPANY_TYPE_VALUES),
+  account_type: z.enum(ACCOUNT_TYPE_VALUES),
+  name: z
+    .string()
+    .min(1, { error: () => v('nameRequired') })
+    .max(255),
   tc_number: z
     .string()
     .optional()
@@ -140,35 +154,38 @@ export const companySchema = z.object({
 export type CompanyInput = z.infer<typeof companySchema>;
 export type CompanyFormInput = z.input<typeof companySchema>;
 
-// ==================== PROJECT SCHEMAS ====================
-
-export const projectSchema = z.object({
-  code: z.string().min(1, { error: () => v('projectCodeRequired') }).max(50),
-  name: z.string().min(1, { error: () => v('projectNameRequired') }).max(255),
-  ownership_type: z.enum(['own', 'client']),
-  client_company_id: optionalNumberField,
-  status: z.enum(['planned', 'active', 'completed', 'cancelled']).default('planned'),
-  project_type: z
-    .enum(['residential', 'villa', 'commercial', 'mixed', 'infrastructure', 'renovation'])
-    .optional()
-    .nullable(),
-  location: z.string().max(255).optional().nullable(),
-  total_area: optionalNonNegativeNumberField,
-  unit_count: optionalNumberField,
-  estimated_budget: optionalNonNegativeNumberField,
-  planned_start: optionalDateField,
-  planned_end: optionalDateField,
-  actual_start: optionalDateField,
-  actual_end: optionalDateField,
-  description: z.string().max(2000).optional().nullable(),
-}).superRefine((data, ctx) => {
-  if (data.planned_start && data.planned_end && data.planned_end < data.planned_start) {
-    ctx.addIssue({ code: 'custom', path: ['planned_end'], message: v('endBeforeStart') });
-  }
-  if (data.actual_start && data.actual_end && data.actual_end < data.actual_start) {
-    ctx.addIssue({ code: 'custom', path: ['actual_end'], message: v('endBeforeStart') });
-  }
-});
+export const projectSchema = z
+  .object({
+    code: z
+      .string()
+      .min(1, { error: () => v('projectCodeRequired') })
+      .max(50),
+    name: z
+      .string()
+      .min(1, { error: () => v('projectNameRequired') })
+      .max(255),
+    ownership_type: z.enum(OWNERSHIP_TYPE_VALUES),
+    client_company_id: optionalNumberField,
+    status: z.enum(PROJECT_STATUS_VALUES).default('planned'),
+    project_type: z.enum(PROJECT_TYPE_VALUES).optional().nullable(),
+    location: z.string().max(255).optional().nullable(),
+    total_area: optionalNonNegativeNumberField,
+    unit_count: optionalNumberField,
+    estimated_budget: optionalNonNegativeNumberField,
+    planned_start: optionalDateField,
+    planned_end: optionalDateField,
+    actual_start: optionalDateField,
+    actual_end: optionalDateField,
+    description: z.string().max(2000).optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.planned_start && data.planned_end && data.planned_end < data.planned_start) {
+      ctx.addIssue({ code: 'custom', path: ['planned_end'], message: v('endBeforeStart') });
+    }
+    if (data.actual_start && data.actual_end && data.actual_end < data.actual_start) {
+      ctx.addIssue({ code: 'custom', path: ['actual_end'], message: v('endBeforeStart') });
+    }
+  });
 
 export type ProjectInput = z.infer<typeof projectSchema>;
 export type ProjectFormInput = z.input<typeof projectSchema>;
@@ -176,51 +193,55 @@ export type ProjectFormInput = z.input<typeof projectSchema>;
 export const projectPartySchema = z.object({
   project_id: requiredPositiveNumberField,
   company_id: requiredPositiveNumberField,
-  role: z.enum(['customer', 'supplier', 'subcontractor', 'investor']),
+  role: z.enum(ACCOUNT_TYPE_VALUES),
   notes: z.string().max(500).optional().nullable(),
 });
 
 export type ProjectPartyInput = z.infer<typeof projectPartySchema>;
 
-// ==================== TRANSACTION SCHEMAS ====================
-
-export const transactionSchema = z.object({
-  scope: z.enum(['cari', 'project', 'company']),
-  company_id: optionalNumberField,
-  project_id: optionalNumberField,
-  type: z.enum(['invoice_out', 'payment_in', 'invoice_in', 'payment_out']),
-  category_id: optionalNumberField,
-  date: requiredDateField,
-  description: z.string().min(1, { error: () => v('descriptionRequired') }).max(500),
-  amount: z
-    .union([z.number(), z.string()])
-    .transform((val) => {
-      const num = typeof val === 'string' ? parseFloat(val) : val;
-      return num;
-    })
-    .refine((val) => !isNaN(val) && val > 0, {
-      error: () => v('amountPositive'),
-    }),
-  currency: z.enum(['TRY', 'USD', 'EUR']).default('TRY'),
-  exchange_rate: z
-    .union([z.number(), z.string(), z.null(), z.undefined()])
-    .transform((val) => {
-      if (val === null || val === undefined || val === '') return null;
-      const num = typeof val === 'string' ? parseFloat(val) : val;
-      return Number.isFinite(num) ? num : null;
-    }),
-  document_no: z.string().max(50).optional().nullable(),
-  linked_invoice_id: optionalNumberField,
-  notes: z.string().max(1000).optional().nullable(),
-}).superRefine((data, ctx) => {
-  if (data.currency !== 'TRY' && !(data.exchange_rate !== null && data.exchange_rate > 0)) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['exchange_rate'],
-      message: v('exchangeRateRequired'),
-    });
-  }
-});
+export const transactionSchema = z
+  .object({
+    scope: z.enum(TRANSACTION_SCOPE_VALUES),
+    company_id: optionalNumberField,
+    project_id: optionalNumberField,
+    type: z.enum(TRANSACTION_TYPE_VALUES),
+    category_id: optionalNumberField,
+    date: requiredDateField,
+    description: z
+      .string()
+      .min(1, { error: () => v('descriptionRequired') })
+      .max(500),
+    amount: z
+      .union([z.number(), z.string()])
+      .transform((val) => {
+        const num = typeof val === 'string' ? parseFloat(val) : val;
+        return num;
+      })
+      .refine((val) => !isNaN(val) && val > 0, {
+        error: () => v('amountPositive'),
+      }),
+    currency: z.enum(CURRENCY_VALUES).default('TRY'),
+    exchange_rate: z
+      .union([z.number(), z.string(), z.null(), z.undefined()])
+      .optional()
+      .transform((val) => {
+        if (val === null || val === undefined || val === '') return null;
+        const num = typeof val === 'string' ? parseFloat(val) : val;
+        return Number.isFinite(num) ? num : null;
+      }),
+    document_no: z.string().max(50).optional().nullable(),
+    linked_invoice_id: optionalNumberField,
+    notes: z.string().max(1000).optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.currency !== 'TRY' && !(data.exchange_rate !== null && data.exchange_rate > 0)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['exchange_rate'],
+        message: v('exchangeRateRequired'),
+      });
+    }
+  });
 
 export type TransactionInput = z.infer<typeof transactionSchema>;
 export type TransactionFormInput = z.input<typeof transactionSchema>;
@@ -244,7 +265,7 @@ export const saveTransactionSchema = z.object({
 });
 
 export const matchCandidatesSchema = z.object({
-  type: z.enum(['invoice_out', 'payment_in', 'invoice_in', 'payment_out']),
+  type: z.enum(TRANSACTION_TYPE_VALUES),
   companyId: nullableIdField,
   projectId: nullableIdField,
   selfId: nullableIdField,
@@ -277,8 +298,8 @@ export const reviewUnmatchedSchema = z.object({
 });
 
 export const transactionFiltersSchema = z.object({
-  scope: z.enum(['cari', 'project', 'company']).optional(),
-  type: z.enum(['invoice_out', 'payment_in', 'invoice_in', 'payment_out']).optional(),
+  scope: z.enum(TRANSACTION_SCOPE_VALUES).optional(),
+  type: z.enum(TRANSACTION_TYPE_VALUES).optional(),
   company_id: optionalNumberField,
   project_id: optionalNumberField,
   start_date: optionalDateField,
@@ -289,13 +310,20 @@ export const transactionFiltersSchema = z.object({
 
 export type TransactionFiltersInput = z.infer<typeof transactionFiltersSchema>;
 
-// ==================== MATERIAL SCHEMAS ====================
-
 export const materialSchema = z.object({
-  code: z.string().min(1, { error: () => v('materialCodeRequired') }).max(50),
-  name: z.string().min(1, { error: () => v('materialNameRequired') }).max(255),
+  code: z
+    .string()
+    .min(1, { error: () => v('materialCodeRequired') })
+    .max(50),
+  name: z
+    .string()
+    .min(1, { error: () => v('materialNameRequired') })
+    .max(255),
   category: z.string().max(100).optional().nullable(),
-  unit: z.string().min(1, { error: () => v('unitRequired') }).max(20),
+  unit: z
+    .string()
+    .min(1, { error: () => v('unitRequired') })
+    .max(20),
   min_stock: z
     .union([z.number(), z.string()])
     .default(0)
@@ -316,11 +344,9 @@ export const materialSchema = z.object({
 export type MaterialInput = z.infer<typeof materialSchema>;
 export type MaterialFormInput = z.input<typeof materialSchema>;
 
-// ==================== STOCK MOVEMENT SCHEMAS ====================
-
 export const stockMovementSchema = z.object({
   material_id: requiredPositiveNumberField,
-  movement_type: z.enum(['in', 'out', 'adjustment', 'waste']),
+  movement_type: z.enum(MOVEMENT_TYPE_VALUES),
   quantity: z
     .union([z.number(), z.string()])
     .transform((val) => {
@@ -343,7 +369,7 @@ export type StockMovementFormInput = z.input<typeof stockMovementSchema>;
 
 export const stockMovementFiltersSchema = z.object({
   material_id: optionalNumberField,
-  movement_type: z.enum(['in', 'out', 'adjustment', 'waste']).optional(),
+  movement_type: z.enum(MOVEMENT_TYPE_VALUES).optional(),
   project_id: optionalNumberField,
   start_date: optionalDateField,
   end_date: optionalDateField,
@@ -351,35 +377,74 @@ export const stockMovementFiltersSchema = z.object({
 
 export type StockMovementFiltersInput = z.infer<typeof stockMovementFiltersSchema>;
 
-// ==================== CATEGORY SCHEMAS ====================
-
 export const categorySchema = z.object({
-  name: z.string().min(1, { error: () => v('categoryNameRequired') }).max(100),
-  type: z.enum(['invoice_out', 'invoice_in', 'payment']),
+  name: z
+    .string()
+    .min(1, { error: () => v('categoryNameRequired') })
+    .max(100),
+  type: z.enum(CATEGORY_TYPE_VALUES),
   color: z
     .string()
     .regex(/^#[0-9A-Fa-f]{6}$/)
-    .default('#6366f1'),
+    .default(DEFAULT_CATEGORY_COLOR),
 });
 
 export type CategoryInput = z.infer<typeof categorySchema>;
 
-// ==================== GOOGLE DRIVE SCHEMAS ====================
+const exportLabel = z.string().max(200);
+const exportLabelList = z.array(exportLabel).max(50);
+
+export const exportMetadataSchema = z.object({
+  summaryStartIndex: z.number().int().nonnegative().optional(),
+  amountColumnLabel: exportLabel.optional(),
+  balanceColumnLabel: exportLabel.optional(),
+  receivableColumnLabel: exportLabel.optional(),
+  payableColumnLabel: exportLabel.optional(),
+  typeColumnLabel: exportLabel.optional(),
+  expenseTypeValues: exportLabelList.optional(),
+  redSummaryLabels: exportLabelList.optional(),
+  greenSummaryLabels: exportLabelList.optional(),
+  highlightSummaryLabels: exportLabelList.optional(),
+});
+
+export const exportRecordSchema = z.record(
+  z.string().max(200),
+  z.union([z.string().max(10_000), z.number(), z.boolean(), z.null()])
+);
+
+export const exportRequestSchema = z.object({
+  filename: z.string().min(1).max(1000),
+  records: z.array(exportRecordSchema).max(100_000),
+  metadata: exportMetadataSchema.optional(),
+});
+
+export type ExportMetadata = z.infer<typeof exportMetadataSchema>;
+export type ExportRecord = z.infer<typeof exportRecordSchema>;
+export type ExportRequest = z.infer<typeof exportRequestSchema>;
+
+export const conflictChoiceSchema = z.enum(['use-local', 'use-remote', 'cancel'], {
+  error: () => i18n.t('main.sync.invalidChoice'),
+});
+
+export const driveDownloadSchema = z.object({
+  fileId: z
+    .string({ error: () => i18n.t('main.gdrive.invalidFileId') })
+    .min(1, { error: () => i18n.t('main.gdrive.invalidFileId') }),
+  fileName: z
+    .string({ error: () => i18n.t('main.gdrive.invalidFileName') })
+    .min(1, { error: () => i18n.t('main.gdrive.invalidFileName') }),
+});
+
+export const backupPathSchema = z.string().min(1);
+
+export type ConflictChoice = z.infer<typeof conflictChoiceSchema>;
 
 export const gdriveCredentialsSchema = z.object({
   clientId: z.string().min(1, { error: () => v('clientIdRequired') }),
   clientSecret: z.string().min(1, { error: () => v('clientSecretRequired') }),
 });
 
-export type GDriveCredentialsInput = z.infer<typeof gdriveCredentialsSchema>;
-
-// ==================== VALIDATION HELPER ====================
-
-export interface ValidationResult<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
+export type ValidationResult<T> = { success: true; data: T } | { success: false; error: string };
 
 export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown): ValidationResult<T> {
   try {
@@ -387,19 +452,25 @@ export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown): Validat
     return { success: true, data: result };
   } catch (err) {
     if (err instanceof z.ZodError) {
-      const messages = err.issues
-        .map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`)
-        .join(', ');
+      const messages = [...new Set(err.issues.map((issue) => issue.message))].join(', ');
       return { success: false, error: messages };
     }
     return { success: false, error: v('validationError') };
   }
 }
 
-// ==================== ID VALIDATION ====================
-
 export const idSchema = z.number().int().positive();
 
 export function validateId(id: unknown): ValidationResult<number> {
   return validateInput(idSchema, id);
+}
+
+export function parseInput<T>(schema: z.ZodSchema<T>, data: unknown): T {
+  const validation = validateInput(schema, data);
+  if (!validation.success) throw new UserFacingError(validation.error);
+  return validation.data;
+}
+
+export function parseId(id: unknown): number {
+  return parseInput(idSchema, id);
 }

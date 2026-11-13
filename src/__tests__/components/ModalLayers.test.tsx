@@ -6,7 +6,8 @@ import { Modal } from '../../components/ui/Modal';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { TabGroup } from '../../components/ui/TabGroup';
 
-const nextFrame = () => act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+const nextFrame = () =>
+  act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
 describe('Modal layers', () => {
   it('Escape closes only the topmost modal', async () => {
@@ -17,7 +18,13 @@ describe('Modal layers', () => {
         <Modal isOpen onClose={closeForm} title="Form">
           <input aria-label="field" />
         </Modal>
-        <ConfirmDialog isOpen onClose={closeConfirm} onConfirm={vi.fn()} title="Sure?" message="m" />
+        <ConfirmDialog
+          isOpen
+          onClose={closeConfirm}
+          onConfirm={vi.fn()}
+          title="Sure?"
+          message="m"
+        />
       </>
     );
     await nextFrame();
@@ -31,24 +38,36 @@ describe('Modal layers', () => {
   it('keeps the page scroll-locked until the last modal closes', () => {
     const { rerender } = render(
       <>
-        <Modal isOpen onClose={vi.fn()} title="A">a</Modal>
-        <Modal isOpen onClose={vi.fn()} title="B">b</Modal>
+        <Modal isOpen onClose={vi.fn()} title="A">
+          a
+        </Modal>
+        <Modal isOpen onClose={vi.fn()} title="B">
+          b
+        </Modal>
       </>
     );
     expect(document.body.style.overflow).toBe('hidden');
 
     rerender(
       <>
-        <Modal isOpen onClose={vi.fn()} title="A">a</Modal>
-        <Modal isOpen={false} onClose={vi.fn()} title="B">b</Modal>
+        <Modal isOpen onClose={vi.fn()} title="A">
+          a
+        </Modal>
+        <Modal isOpen={false} onClose={vi.fn()} title="B">
+          b
+        </Modal>
       </>
     );
     expect(document.body.style.overflow).toBe('hidden');
 
     rerender(
       <>
-        <Modal isOpen={false} onClose={vi.fn()} title="A">a</Modal>
-        <Modal isOpen={false} onClose={vi.fn()} title="B">b</Modal>
+        <Modal isOpen={false} onClose={vi.fn()} title="A">
+          a
+        </Modal>
+        <Modal isOpen={false} onClose={vi.fn()} title="B">
+          b
+        </Modal>
       </>
     );
     expect(document.body.style.overflow).toBe('');
@@ -86,7 +105,15 @@ describe('Modal layers', () => {
   });
 
   it('gives a confirm dialog an accessible name', () => {
-    render(<ConfirmDialog isOpen onClose={vi.fn()} onConfirm={vi.fn()} title="Delete item?" message="m" />);
+    render(
+      <ConfirmDialog
+        isOpen
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        title="Delete item?"
+        message="m"
+      />
+    );
     expect(screen.getByRole('alertdialog', { name: 'Delete item?' })).toBeInTheDocument();
   });
 });

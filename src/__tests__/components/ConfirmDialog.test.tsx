@@ -28,7 +28,7 @@ describe('ConfirmDialog', () => {
     render(<ConfirmDialog {...defaultProps} onClose={onClose} />);
 
     const cancelButtons = screen.getAllByRole('button');
-    const cancelButton = cancelButtons.find(btn => btn.textContent !== defaultProps.title);
+    const cancelButton = cancelButtons.find((btn) => btn.textContent !== defaultProps.title);
     if (cancelButton) fireEvent.click(cancelButton);
 
     expect(onClose).toHaveBeenCalled();
@@ -60,5 +60,26 @@ describe('ConfirmDialog', () => {
   it('should render with warning type', () => {
     render(<ConfirmDialog {...defaultProps} type="warning" />);
     expect(screen.getByText('Are you sure?')).toBeInTheDocument();
+  });
+
+  it('offers a third choice only when one is given', () => {
+    const onAlternative = vi.fn();
+    const onConfirm = vi.fn();
+    const { rerender } = render(<ConfirmDialog {...defaultProps} onConfirm={onConfirm} />);
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+
+    rerender(
+      <ConfirmDialog
+        {...defaultProps}
+        onConfirm={onConfirm}
+        alternativeText="Skip"
+        onAlternative={onAlternative}
+      />
+    );
+    fireEvent.click(screen.getByText('Skip'));
+
+    expect(screen.getAllByRole('button')).toHaveLength(3);
+    expect(onAlternative).toHaveBeenCalledOnce();
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 });

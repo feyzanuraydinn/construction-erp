@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { getDateRange } from '../../pages/Dashboard';
+import { getDateRange } from '../../pages/dashboard-components/dateRange';
 
 afterEach(() => {
   vi.useRealTimers();

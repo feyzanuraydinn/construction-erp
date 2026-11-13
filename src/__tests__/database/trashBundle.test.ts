@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import { DatabaseService } from '../../database/DatabaseService';
 import { RESTORE_PARENT_MISSING } from '../../database/repositories/trashBundle';
+import { runInSavepoint } from '../../database/savepoint';
 
 let userDataPath: string;
 let db: DatabaseService;
@@ -24,10 +25,18 @@ function latestTrashId(): number {
 
 function seed(): void {
   const run = (sql: string) => db.rawDb.run(sql);
-  run("INSERT INTO companies (id, code, type, account_type, name) VALUES (1, 'CRH-001', 'company', 'customer', 'A')");
-  run("INSERT INTO companies (id, code, type, account_type, name) VALUES (2, 'CRH-002', 'company', 'supplier', 'B')");
-  run("INSERT INTO projects (id, code, name, ownership_type, client_company_id, status) VALUES (10, 'PRJ-10', 'P', 'client', 1, 'active')");
-  run("INSERT INTO projects (id, code, name, ownership_type, status) VALUES (11, 'PRJ-11', 'Q', 'own', 'active')");
+  run(
+    "INSERT INTO companies (id, code, type, account_type, name) VALUES (1, 'CRH-001', 'company', 'customer', 'A')"
+  );
+  run(
+    "INSERT INTO companies (id, code, type, account_type, name) VALUES (2, 'CRH-002', 'company', 'supplier', 'B')"
+  );
+  run(
+    "INSERT INTO projects (id, code, name, ownership_type, client_company_id, status) VALUES (10, 'PRJ-10', 'P', 'client', 1, 'active')"
+  );
+  run(
+    "INSERT INTO projects (id, code, name, ownership_type, status) VALUES (11, 'PRJ-11', 'Q', 'own', 'active')"
+  );
   run(`INSERT INTO transactions (id, scope, company_id, project_id, type, date, description, amount, amount_try)
        VALUES (100, 'cari', 1, 10, 'invoice_out', '2026-01-01', 'A sale tagged P', 1000, 1000)`);
   run(`INSERT INTO transactions (id, scope, company_id, project_id, type, date, description, amount, amount_try)
@@ -38,7 +47,9 @@ function seed(): void {
        VALUES (103, 'cari', 1, NULL, 'payment_in', '2026-01-04', 'A pays', 200, 200)`);
   run('INSERT INTO payment_allocations (payment_id, invoice_id, amount) VALUES (102, 101, 300)');
   run("INSERT INTO project_parties (project_id, company_id, role) VALUES (10, 2, 'supplier')");
-  run("INSERT INTO materials (id, code, name, unit, current_stock) VALUES (50, 'MLZ-50', 'Cement', 'bag', 40)");
+  run(
+    "INSERT INTO materials (id, code, name, unit, current_stock) VALUES (50, 'MLZ-50', 'Cement', 'bag', 40)"
+  );
   run(`INSERT INTO stock_movements (id, material_id, movement_type, quantity, project_id, company_id, date)
        VALUES (500, 50, 'in', 50, 10, 2, '2026-01-05')`);
   run(`INSERT INTO stock_movements (id, material_id, movement_type, quantity, project_id, date)
@@ -172,14 +183,73 @@ describe('deleting a material', () => {
 
 describe('items trashed by older versions', () => {
   it('still restore from the root row only', () => {
-    db.rawDb.run("INSERT INTO companies (id, code, type, account_type, name) VALUES (3, 'CRH-003', 'person', 'customer', 'Old')");
+    db.rawDb.run(
+      "INSERT INTO companies (id, code, type, account_type, name) VALUES (3, 'CRH-003', 'person', 'customer', 'Old')"
+    );
     const legacyCompany = db.companies.getById(3);
     db.rawDb.run('DELETE FROM companies WHERE id = 3');
-    db.rawDb.run("INSERT INTO trash (type, data) VALUES ('company', ?)", [JSON.stringify(legacyCompany)]);
+    db.rawDb.run("INSERT INTO trash (type, data) VALUES ('company', ?)", [
+      JSON.stringify(legacyCompany),
+    ]);
 
     expect(db.trash.restore(latestTrashId())).toEqual({ success: true });
 
     expect(value('SELECT name FROM companies WHERE id = 3')).toBe('Old');
     expect(value('PRAGMA foreign_keys')).toBe(1);
+  });
+
+  it('keeps rows of an unknown kind in the trash', () => {
+    db.rawDb.run("INSERT INTO trash (type, data) VALUES ('invoice_template', ?)", [
+      JSON.stringify({ id: 4 }),
+    ]);
+
+    expect(db.trash.restore(latestTrashId())).toEqual({
+      success: false,
+      error: 'unknown_type',
+      detail: 'invoice_template',
+    });
+    expect(count('trash', "type = 'invoice_template'")).toBe(1);
+  });
+
+  it('rejects rows without a usable id', () => {
+    db.rawDb.run("INSERT INTO trash (type, data) VALUES ('company', ?)", [
+      JSON.stringify({ id: 0, name: 'X' }),
+    ]);
+
+    expect(db.trash.restore(latestTrashId())).toEqual({ success: false, error: 'invalid_data' });
+  });
+});
+
+describe('deleting inside a larger change', () => {
+  it('works when the caller already opened a transaction and rolls back with it', () => {
+    db.rawDb.run(
+      "INSERT INTO companies (id, code, type, account_type, name) VALUES (7, 'CRH-007', 'company', 'supplier', 'Demir')"
+    );
+    db.rawDb.run(
+      "INSERT INTO materials (id, code, name, unit) VALUES (8, 'MLZ-008', 'Çimento', 'torba')"
+    );
+    const trashBefore = count('trash');
+
+    expect(() =>
+      runInSavepoint(db.rawDb, () => {
+        expect(db.companies.delete(7)).toEqual({ success: true });
+        expect(db.materials.delete(8)).toEqual({ success: true });
+        throw new Error('outer change failed');
+      })
+    ).toThrow('outer change failed');
+
+    expect(count('companies', 'id = 7')).toBe(1);
+    expect(count('materials', 'id = 8')).toBe(1);
+    expect(count('trash')).toBe(trashBefore);
+  });
+
+  it('keeps the original error when the database already ended the transaction', () => {
+    expect(() =>
+      runInSavepoint(db.rawDb, () => {
+        db.rawDb.run('ROLLBACK');
+        throw new Error('first problem');
+      })
+    ).toThrow('first problem');
+    expect(() => db.rawDb.run('BEGIN; ROLLBACK;')).not.toThrow();
   });
 });

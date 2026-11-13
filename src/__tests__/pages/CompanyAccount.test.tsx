@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import '../../i18n';
 import CompanyAccount from '../../pages/CompanyAccount';
 import type { TransactionWithDetails, Category } from '../../types';
-
-// ==================== MOCKS ====================
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', () => ({
@@ -19,8 +17,6 @@ const mockToast = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi
 vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
-
-// ==================== TEST DATA ====================
 
 const mockTransactions: TransactionWithDetails[] = [
   {
@@ -92,17 +88,47 @@ const mockTransactions: TransactionWithDetails[] = [
 ];
 
 const mockCategories: Category[] = [
-  { id: 4, name: 'Kira Geliri', type: 'invoice_out', color: '#22c55e', is_default: 1, created_at: '2024-01-01' },
-  { id: 18, name: 'Ofis Kirası', type: 'invoice_in', color: '#ef4444', is_default: 1, created_at: '2024-01-01' },
-  { id: 19, name: 'Elektrik/Su/Doğalgaz', type: 'invoice_in', color: '#f59e0b', is_default: 1, created_at: '2024-01-01' },
-  { id: 30, name: 'Nakit', type: 'payment', color: '#3b82f6', is_default: 1, created_at: '2024-01-01' },
+  {
+    id: 4,
+    name: 'Kira Geliri',
+    type: 'invoice_out',
+    color: '#22c55e',
+    is_default: 1,
+    created_at: '2024-01-01',
+  },
+  {
+    id: 18,
+    name: 'Ofis Kirası',
+    type: 'invoice_in',
+    color: '#ef4444',
+    is_default: 1,
+    created_at: '2024-01-01',
+  },
+  {
+    id: 19,
+    name: 'Elektrik/Su/Doğalgaz',
+    type: 'invoice_in',
+    color: '#f59e0b',
+    is_default: 1,
+    created_at: '2024-01-01',
+  },
+  {
+    id: 30,
+    name: 'Nakit',
+    type: 'payment',
+    color: '#3b82f6',
+    is_default: 1,
+    created_at: '2024-01-01',
+  },
 ];
 
-// ==================== HELPERS ====================
-
 function setupMocksWithData() {
-  (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockTransactions);
-  (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockCategories);
+  (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockTransactions
+  );
+  (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockCategories
+  );
 }
 
 function setupMocksEmpty() {
@@ -110,15 +136,11 @@ function setupMocksEmpty() {
   (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 }
 
-// ==================== TESTS ====================
-
 describe('CompanyAccount', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupMocksWithData();
   });
-
-  // ---------- Initial render ----------
 
   it('should render page title and description', async () => {
     await act(async () => {
@@ -127,7 +149,9 @@ describe('CompanyAccount', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Firma Hesabı')).toBeInTheDocument();
-      expect(screen.getByText('Projelere bağlı olmayan genel firma gelir ve giderleri')).toBeInTheDocument();
+      expect(
+        screen.getByText('Projelere bağlı olmayan genel firma gelir ve giderleri')
+      ).toBeInTheDocument();
     });
   });
 
@@ -143,23 +167,21 @@ describe('CompanyAccount', () => {
     });
   });
 
-  // ---------- Loading state ----------
-
   it('should show loading spinner while data is loading', async () => {
-    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
 
     await act(async () => {
       render(<CompanyAccount />);
     });
 
-    // Page title should be visible since it is outside the loading check
     expect(screen.getByText('Firma Hesabı')).toBeInTheDocument();
-    // The loading spinner should be in the card body
     expect(screen.getByRole('status', { name: 'Yükleniyor...' })).toBeInTheDocument();
   });
-
-  // ---------- Empty state ----------
 
   it('should show empty state when no transactions exist', async () => {
     setupMocksEmpty();
@@ -174,8 +196,6 @@ describe('CompanyAccount', () => {
     });
   });
 
-  // ---------- Stats cards ----------
-
   it('should display financial stat cards', async () => {
     await act(async () => {
       render(<CompanyAccount />);
@@ -184,13 +204,10 @@ describe('CompanyAccount', () => {
     await waitFor(() => {
       expect(screen.getByText('Genel Gelir')).toBeInTheDocument();
       expect(screen.getByText('Genel Gider')).toBeInTheDocument();
-      // "Net Durum" may appear in both stat card and print view
       const netElements = screen.getAllByText('Net Durum');
       expect(netElements.length).toBeGreaterThanOrEqual(1);
     });
   });
-
-  // ---------- Transaction table ----------
 
   it('should render transactions in the table', async () => {
     await act(async () => {
@@ -198,7 +215,6 @@ describe('CompanyAccount', () => {
     });
 
     await waitFor(() => {
-      // Transaction descriptions appear in the table (may also appear in print view)
       const kiraElements = screen.getAllByText('Kira geliri');
       expect(kiraElements.length).toBeGreaterThanOrEqual(1);
       const ofisElements = screen.getAllByText('Ofis kirası ödemesi');
@@ -225,23 +241,21 @@ describe('CompanyAccount', () => {
     });
   });
 
-  // ---------- Expense breakdown sidebar ----------
-
   it('should display expense breakdown section', async () => {
     await act(async () => {
       render(<CompanyAccount />);
     });
 
     await waitFor(() => {
-      // "Gider Dağılımı" may appear in both sidebar and print view
       const elements = screen.getAllByText('Gider Dağılımı');
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });
   });
 
   it('should show empty expense breakdown when no expenses', async () => {
-    // Only income transaction, no expenses
-    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([mockTransactions[0]]);
+    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
+      mockTransactions[0],
+    ]);
 
     await act(async () => {
       render(<CompanyAccount />);
@@ -251,8 +265,6 @@ describe('CompanyAccount', () => {
       expect(screen.getByText('Gider kaydı yok')).toBeInTheDocument();
     });
   });
-
-  // ---------- Document number display ----------
 
   it('should display document numbers when available', async () => {
     await act(async () => {
@@ -267,22 +279,19 @@ describe('CompanyAccount', () => {
     });
   });
 
-  // ---------- Error handling ----------
-
   it('should handle API error gracefully', async () => {
-    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('DB Error'));
+    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('DB Error')
+    );
 
     await act(async () => {
       render(<CompanyAccount />);
     });
 
-    // After error, loading should be false and empty state should show
     await waitFor(() => {
       expect(screen.getByText('İşlem bulunamadı')).toBeInTheDocument();
     });
   });
-
-  // ---------- Transaction section title ----------
 
   it('should render transactions section heading', async () => {
     await act(async () => {
@@ -290,7 +299,6 @@ describe('CompanyAccount', () => {
     });
 
     await waitFor(() => {
-      // "İşlemler" may appear in both the card header and print view
       const elements = screen.getAllByText('İşlemler');
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });

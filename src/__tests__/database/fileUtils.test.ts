@@ -3,12 +3,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import {
-  writeFileAtomic,
-  fileTimestamp,
-  localDateStamp,
-  pruneBackupFiles,
-} from '../../database/fileUtils';
+import { writeFileAtomic, fileTimestamp, pruneBackupFiles } from '../../database/fileUtils';
+import { toLocalDateString } from '../../utils/dates';
 
 let dir: string;
 
@@ -36,11 +32,11 @@ describe('writeFileAtomic', () => {
   });
 });
 
-describe('fileTimestamp / localDateStamp', () => {
+describe('fileTimestamp / toLocalDateString', () => {
   it('formats local time so names sort chronologically', () => {
     const date = new Date(2026, 0, 5, 7, 8, 9, 42);
     expect(fileTimestamp(date)).toBe('2026-01-05_07-08-09-042');
-    expect(localDateStamp(date)).toBe('2026-01-05');
+    expect(toLocalDateString(date)).toBe('2026-01-05');
     expect(fileTimestamp(new Date(2026, 0, 5, 10)) > fileTimestamp(date)).toBe(true);
   });
 });

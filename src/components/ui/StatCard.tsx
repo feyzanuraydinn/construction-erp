@@ -1,62 +1,44 @@
-import React, { ReactNode, memo } from 'react';
+import { ReactNode, memo } from 'react';
 import type { IconType } from 'react-icons';
+import { cn } from '../../utils/cn';
 
-type StatCardColor = 'blue' | 'green' | 'red' | 'yellow' | 'purple' | 'gray' | 'orange';
+export type StatCardColor = 'blue' | 'green' | 'red' | 'yellow' | 'purple' | 'gray' | 'orange';
+
+export function signColor(amount: number): 'green' | 'red' {
+  return amount >= 0 ? 'green' : 'red';
+}
+
+const VALUE_CHAR_WIDTH_EM = 0.62;
 
 interface StatCardProps {
   title: string;
   value: ReactNode;
   subtitle?: string;
   icon?: IconType;
-  trend?: 'up' | 'down';
-  trendValue?: string;
   color?: StatCardColor;
   className?: string;
   highlighted?: boolean;
+  valueColor?: StatCardColor;
 }
 
-interface ColorSet {
-  bg: string;
-  icon: string;
-  text: string;
-}
+const valueColors: Record<StatCardColor, string> = {
+  blue: 'text-blue-600 dark:text-blue-400',
+  green: 'text-green-600 dark:text-green-400',
+  red: 'text-red-600 dark:text-red-400',
+  yellow: 'text-yellow-600 dark:text-yellow-400',
+  purple: 'text-purple-600 dark:text-purple-400',
+  gray: 'text-gray-600 dark:text-gray-400',
+  orange: 'text-orange-600 dark:text-orange-400',
+};
 
-const colors: Record<StatCardColor, ColorSet> = {
-  blue: {
-    bg: 'bg-blue-50 dark:bg-blue-900/20',
-    icon: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400',
-    text: 'text-blue-600 dark:text-blue-400',
-  },
-  green: {
-    bg: 'bg-green-50 dark:bg-green-900/20',
-    icon: 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400',
-    text: 'text-green-600 dark:text-green-400',
-  },
-  red: {
-    bg: 'bg-red-50 dark:bg-red-900/20',
-    icon: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400',
-    text: 'text-red-600 dark:text-red-400',
-  },
-  yellow: {
-    bg: 'bg-yellow-50 dark:bg-yellow-900/20',
-    icon: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/40 dark:text-yellow-400',
-    text: 'text-yellow-600 dark:text-yellow-400',
-  },
-  purple: {
-    bg: 'bg-purple-50 dark:bg-purple-900/20',
-    icon: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-400',
-    text: 'text-purple-600 dark:text-purple-400',
-  },
-  gray: {
-    bg: 'bg-gray-50 dark:bg-gray-700/30',
-    icon: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
-    text: 'text-gray-600 dark:text-gray-400',
-  },
-  orange: {
-    bg: 'bg-orange-50 dark:bg-orange-900/20',
-    icon: 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400',
-    text: 'text-orange-600 dark:text-orange-400',
-  },
+const iconColors: Record<StatCardColor, string> = {
+  blue: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400',
+  green: 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400',
+  red: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400',
+  yellow: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/40 dark:text-yellow-400',
+  purple: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-400',
+  gray: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+  orange: 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400',
 };
 
 const highlightedColors: Record<
@@ -119,51 +101,56 @@ export const StatCard = memo(function StatCard({
   value,
   subtitle,
   icon: Icon,
-  trend,
-  trendValue,
   color = 'blue',
-  className = '',
+  className,
   highlighted = false,
+  valueColor: valueTone,
 }: StatCardProps) {
-  const colorSet = colors[color] || colors.blue;
   const highlightSet = highlightedColors[color] || highlightedColors.blue;
 
   const cardBg = highlighted
     ? `${highlightSet.bg} ${highlightSet.border}`
     : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700';
   const titleColor = highlighted ? highlightSet.title : 'text-gray-500 dark:text-gray-400';
-  const valueColor = highlighted ? highlightSet.value : 'text-gray-900 dark:text-gray-100';
+  const valueColor = highlighted
+    ? highlightSet.value
+    : valueTone
+      ? valueColors[valueTone]
+      : 'text-gray-900 dark:text-gray-100';
   const subtitleColor = highlighted ? highlightSet.subtitle : 'text-gray-500 dark:text-gray-400';
+  const fitsOneLine = typeof value === 'string' && value.length > 0;
+  const valueSize = fitsOneLine
+    ? `whitespace-nowrap [--stat-value-max:1rem] sm:[--stat-value-max:1.25rem] lg:[--stat-value-max:1.5rem]`
+    : 'text-base sm:text-xl lg:text-2xl break-words';
+  const valueStyle = fitsOneLine
+    ? {
+        fontSize: `min(var(--stat-value-max), calc(100cqi / ${(value.length * VALUE_CHAR_WIDTH_EM).toFixed(2)}))`,
+      }
+    : undefined;
 
   return (
     <div
-      className={`rounded-xl shadow-sm border p-4 sm:p-6 overflow-hidden ${cardBg} ${className}`}
+      className={cn('rounded-xl shadow-sm border p-4 sm:p-6 overflow-hidden', cardBg, className)}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <p className={`text-xs sm:text-sm font-medium truncate ${titleColor}`}>{title}</p>
+        <div className="flex-1 min-w-0 [container-type:inline-size]">
+          <p className={`text-xs sm:text-sm font-medium truncate ${titleColor}`} title={title}>
+            {title}
+          </p>
           <p
-            className={`mt-1 sm:mt-2 text-base sm:text-xl lg:text-2xl font-bold break-words leading-tight ${valueColor}`}
+            className={`mt-1 sm:mt-2 font-bold leading-tight ${valueSize} ${valueColor}`}
+            style={valueStyle}
           >
             {value}
           </p>
           {subtitle && (
-            <p className={`mt-1 text-xs sm:text-sm truncate ${subtitleColor}`}>{subtitle}</p>
-          )}
-          {trend && (
-            <div className="mt-2 flex items-center gap-1">
-              <span
-                className={`text-xs sm:text-sm font-medium ${
-                  trend === 'up' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                }`}
-              >
-                {trend === 'up' ? '↑' : '↓'} {trendValue}
-              </span>
-            </div>
+            <p className={`mt-1 text-xs sm:text-sm truncate ${subtitleColor}`} title={subtitle}>
+              {subtitle}
+            </p>
           )}
         </div>
         {Icon && (
-          <div className={`p-2 sm:p-3 rounded-xl flex-shrink-0 ${colorSet.icon}`}>
+          <div className={`p-2 sm:p-3 rounded-xl flex-shrink-0 ${iconColors[color]}`}>
             <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
         )}

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { validateBackupPath, RateLimiter, sanitizeError } from '../../utils/security';
+import { UserFacingError } from '../../utils/userFacingError';
 
 describe('security utils', () => {
   describe('validateBackupPath', () => {
@@ -14,7 +15,9 @@ describe('security utils', () => {
     });
 
     it('should return true for Windows paths', () => {
-      expect(validateBackupPath('C:\\Users\\test\\backup', 'C:\\Users\\test\\backup\\file.db')).toBe(true);
+      expect(
+        validateBackupPath('C:\\Users\\test\\backup', 'C:\\Users\\test\\backup\\file.db')
+      ).toBe(true);
     });
 
     it('should reject path traversal attempts', () => {
@@ -81,45 +84,28 @@ describe('security utils', () => {
       expect(limiter.canMakeRequest()).toBe(true);
     });
 
-    it('should correctly report remaining requests', () => {
-      const limiter = new RateLimiter(3, 60000);
-      expect(limiter.getRemainingRequests()).toBe(3);
-      limiter.canMakeRequest();
-      expect(limiter.getRemainingRequests()).toBe(2);
-      limiter.canMakeRequest();
-      expect(limiter.getRemainingRequests()).toBe(1);
-      limiter.canMakeRequest();
-      expect(limiter.getRemainingRequests()).toBe(0);
-    });
-
-    it('should return reset time', () => {
-      const limiter = new RateLimiter(1, 60000);
-      expect(limiter.getResetTime()).toBe(0); // No requests yet
-
-      limiter.canMakeRequest();
-      const resetTime = limiter.getResetTime();
-      expect(resetTime).toBeGreaterThan(0);
-      expect(resetTime).toBeLessThanOrEqual(60000);
-    });
-
     afterEach(() => {
       vi.useRealTimers();
     });
   });
 
   describe('sanitizeError', () => {
-    it('should pass through validation errors', () => {
-      expect(sanitizeError(new Error('Geçersiz ID'))).toBe('Geçersiz ID');
-      expect(sanitizeError(new Error('Zorunlu alan: isim'))).toBe('Zorunlu alan: isim');
-      expect(sanitizeError(new Error('Bu kayıt zaten var'))).toBe('Bu kayıt zaten var');
+    it('passes only messages meant for the user', () => {
+      expect(sanitizeError(new UserFacingError('Geçersiz ID'))).toBe('Geçersiz ID');
+      expect(sanitizeError(new Error('Geçersiz ID'))).toBe('error.unexpected');
+      expect(sanitizeError(new Error('ENOENT: no such file'))).toBe('error.unexpected');
     });
 
     it('should sanitize UNIQUE constraint errors', () => {
-      expect(sanitizeError(new Error('UNIQUE constraint failed: companies.name'))).toBe('error.db.uniqueConstraint');
+      expect(sanitizeError(new Error('UNIQUE constraint failed: companies.name'))).toBe(
+        'error.db.uniqueConstraint'
+      );
     });
 
     it('should sanitize FOREIGN KEY constraint errors', () => {
-      expect(sanitizeError(new Error('FOREIGN KEY constraint failed'))).toBe('error.db.foreignKeyConstraint');
+      expect(sanitizeError(new Error('FOREIGN KEY constraint failed'))).toBe(
+        'error.db.foreignKeyConstraint'
+      );
     });
 
     it('should sanitize NOT NULL constraint errors', () => {
@@ -129,8 +115,8 @@ describe('security utils', () => {
     });
 
     it('should sanitize SQL keyword errors', () => {
-      expect(sanitizeError(new Error('Error in SELECT * FROM users'))).toBe('error.db.genericDbError');
-      expect(sanitizeError(new Error('INSERT INTO failed'))).toBe('error.db.genericDbError');
+      expect(sanitizeError(new Error('Error in SELECT * FROM users'))).toBe('error.unexpected');
+      expect(sanitizeError(new Error('INSERT INTO failed'))).toBe('error.unexpected');
     });
 
     it('should sanitize database locked errors', () => {
@@ -142,8 +128,8 @@ describe('security utils', () => {
     });
 
     it('should handle non-Error objects', () => {
-      expect(sanitizeError('simple string error')).toBe('simple string error');
-      expect(sanitizeError(42)).toBe('42');
+      expect(sanitizeError('simple string error')).toBe('error.unexpected');
+      expect(sanitizeError(42)).toBe('error.unexpected');
     });
 
     it('should return generic message for long/complex messages', () => {

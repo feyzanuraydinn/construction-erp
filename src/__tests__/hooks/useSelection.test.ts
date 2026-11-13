@@ -87,7 +87,6 @@ describe('useSelection Hook', () => {
         result.current.handleSelectAll([1, 2], true);
       });
 
-      // Previous selection (10) should be replaced
       expect(result.current.selectedIds.has(10)).toBe(false);
       expect(result.current.selectedIds.size).toBe(2);
     });

@@ -8,7 +8,6 @@ import { TabGroup } from '../../components/ui/TabGroup';
 import { StatCard } from '../../components/ui/StatCard';
 import { SelectAllCheckbox, RowCheckbox } from '../../components/ui/SelectAllCheckbox';
 
-// ==================== LoadingSpinner ====================
 describe('LoadingSpinner', () => {
   it('should render with role="status"', () => {
     render(<LoadingSpinner />);
@@ -27,12 +26,10 @@ describe('LoadingSpinner', () => {
   });
 });
 
-// ==================== EmptyState ====================
 describe('EmptyState', () => {
   it('should render default title', () => {
     render(<EmptyState />);
-    // Default uses i18n key emptyState.noData
-    const el = screen.getByText(/./); // some text should exist
+    const el = screen.getByText(/./);
     expect(el).toBeInTheDocument();
   });
 
@@ -57,18 +54,11 @@ describe('EmptyState', () => {
   });
 });
 
-// ==================== Divider ====================
 describe('Divider', () => {
   it('should render vertical divider by default', () => {
     const { container } = render(<Divider />);
     const divider = container.firstChild as HTMLElement;
     expect(divider.className).toContain('w-px');
-  });
-
-  it('should render horizontal divider', () => {
-    const { container } = render(<Divider direction="horizontal" />);
-    const divider = container.firstChild as HTMLElement;
-    expect(divider.className).toContain('h-px');
   });
 
   it('should apply custom className', () => {
@@ -77,7 +67,6 @@ describe('Divider', () => {
   });
 });
 
-// ==================== TabGroup ====================
 describe('TabGroup', () => {
   const tabs = [
     { key: 'tab1', label: 'Tab 1' },
@@ -112,7 +101,6 @@ describe('TabGroup', () => {
   });
 });
 
-// ==================== StatCard ====================
 describe('StatCard', () => {
   it('should render title and value', () => {
     render(<StatCard title="Revenue" value="₺100,000" />);
@@ -124,24 +112,13 @@ describe('StatCard', () => {
     render(<StatCard title="Revenue" value="₺100,000" subtitle="Last month" />);
     expect(screen.getByText('Last month')).toBeInTheDocument();
   });
-
-  it('should render trend indicator when provided', () => {
-    render(<StatCard title="Revenue" value="₺100,000" trend="up" trendValue="+15%" />);
-    // trend arrow and value are in the same span: "↑ +15%"
-    expect(screen.getByText(/\+15%/)).toBeInTheDocument();
-  });
 });
 
-// ==================== SelectAllCheckbox ====================
 describe('SelectAllCheckbox', () => {
   it('should render unchecked when no items selected', () => {
     const onSelectAll = vi.fn();
     render(
-      <SelectAllCheckbox
-        itemIds={[1, 2, 3]}
-        selectedIds={new Set()}
-        onSelectAll={onSelectAll}
-      />
+      <SelectAllCheckbox itemIds={[1, 2, 3]} selectedIds={new Set()} onSelectAll={onSelectAll} />
     );
     const checkbox = screen.getByRole('checkbox');
     expect(checkbox).not.toBeChecked();
@@ -163,11 +140,7 @@ describe('SelectAllCheckbox', () => {
   it('should call onSelectAll with true when clicked while unchecked', () => {
     const onSelectAll = vi.fn();
     render(
-      <SelectAllCheckbox
-        itemIds={[1, 2, 3]}
-        selectedIds={new Set()}
-        onSelectAll={onSelectAll}
-      />
+      <SelectAllCheckbox itemIds={[1, 2, 3]} selectedIds={new Set()} onSelectAll={onSelectAll} />
     );
     fireEvent.click(screen.getByRole('checkbox'));
     expect(onSelectAll).toHaveBeenCalledWith([1, 2, 3], true);
@@ -176,36 +149,18 @@ describe('SelectAllCheckbox', () => {
 
 describe('RowCheckbox', () => {
   it('should render unchecked when id not in selectedIds', () => {
-    render(
-      <RowCheckbox
-        id={1}
-        selectedIds={new Set()}
-        onSelectOne={vi.fn()}
-      />
-    );
+    render(<RowCheckbox id={1} selectedIds={new Set()} onSelectOne={vi.fn()} />);
     expect(screen.getByRole('checkbox')).not.toBeChecked();
   });
 
   it('should render checked when id in selectedIds', () => {
-    render(
-      <RowCheckbox
-        id={1}
-        selectedIds={new Set([1])}
-        onSelectOne={vi.fn()}
-      />
-    );
+    render(<RowCheckbox id={1} selectedIds={new Set([1])} onSelectOne={vi.fn()} />);
     expect(screen.getByRole('checkbox')).toBeChecked();
   });
 
   it('should call onSelectOne when clicked', () => {
     const onSelectOne = vi.fn();
-    render(
-      <RowCheckbox
-        id={1}
-        selectedIds={new Set()}
-        onSelectOne={onSelectOne}
-      />
-    );
+    render(<RowCheckbox id={1} selectedIds={new Set()} onSelectOne={onSelectOne} />);
     fireEvent.click(screen.getByRole('checkbox'));
     expect(onSelectOne).toHaveBeenCalledWith(1, true);
   });

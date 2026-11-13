@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { usePrint } from '../../hooks/usePrint';
 
-// Mock react-i18next
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -10,7 +9,6 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock toast context
 const mockToast = {
   success: vi.fn(),
   error: vi.fn(),
@@ -72,9 +70,7 @@ describe('usePrint', () => {
   });
 
   it('should show error toast when print throws an exception', async () => {
-    vi.mocked(window.electronAPI.app.print).mockRejectedValueOnce(
-      new Error('Connection failed')
-    );
+    vi.mocked(window.electronAPI.app.print).mockRejectedValueOnce(new Error('Connection failed'));
 
     const { result } = renderHook(() => usePrint());
 

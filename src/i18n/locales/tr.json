@@ -5,17 +5,14 @@
     "searchShortcut": "Ara (Ctrl+K)",
     "backupSuccess": "Veritabanı yedeği başarıyla oluşturuldu",
     "backupError": "Yedek oluşturulamadı",
-    "loading": "Yükleniyor...",
     "closeConfirmTitle": "Çıkış Onayı",
     "closeConfirmMessage": "Çıkmak istediğinize emin misiniz?",
     "closeConfirmDetail": "Çıkmadan önce verileriniz yerel yedek dosyasına kaydedilecek ve buluta yüklenecek.",
     "closeConfirmDetailPending": "Kaydedilmemiş değişiklikleriniz var. Çıkmadan önce yerel yedek alınacak ve buluta yüklenecek.",
-    "closeConfirmYes": "Evet, Kapat",
     "closeInProgress": "Veriler yedekleniyor ve buluta yükleniyor...",
     "collapseSidebar": "Kenar çubuğunu daralt",
     "expandSidebar": "Kenar çubuğunu genişlet"
   },
-
   "menu": {
     "dashboard": "Dashboard",
     "companies": "Cari Hesaplar",
@@ -27,7 +24,6 @@
     "settings": "Ayarlar",
     "trash": "Çöp Kutusu"
   },
-
   "common": {
     "save": "Kaydet",
     "cancel": "İptal",
@@ -37,21 +33,11 @@
     "close": "Kapat",
     "closing": "Kapatılıyor...",
     "warning": "Uyarı",
-    "add": "Ekle",
-    "export": "Dışa Aktar",
     "exportToExcel": "Excel'e Aktar",
     "share": "Paylaş",
-    "import": "İçe Aktar",
-    "refresh": "Yenile",
-    "refreshing": "Güncelleniyor...",
-    "search": "Ara",
     "filter": "Filtrele",
     "all": "Tümü",
-    "yes": "Evet",
-    "no": "Hayır",
-    "confirm": "Onayla",
     "back": "Geri",
-    "next": "İleri",
     "loading": "Yükleniyor...",
     "selectAll": "Tümünü seç",
     "selectRow": "Satır seç",
@@ -61,29 +47,13 @@
     "amount": "Tutar",
     "description": "Açıklama",
     "notes": "Notlar",
-    "status": "Durum",
     "type": "Tür",
     "category": "Kategori",
-    "name": "Ad",
-    "code": "Kod",
-    "phone": "Telefon",
-    "email": "E-posta",
-    "address": "Adres",
     "total": "Toplam",
-    "detail": "Detay",
-    "new": "Yeni",
-    "view": "Görüntüle",
     "print": "Yazdır",
-    "download": "İndir",
-    "upload": "Yükle",
     "restore": "Geri Yükle",
     "currency": "Para Birimi",
     "documentNo": "Belge No",
-    "source": "Kaynak",
-    "selected": "seçili",
-    "records": "kayıt",
-    "dataStale": "Veriler güncelleniyor...",
-    "dataRefresh": "Verileri yenile",
     "exportSuccess": "Veriler başarıyla dışa aktarıldı",
     "exportError": "Dışa aktarma sırasında hata oluştu",
     "deleteError": "Silme sırasında hata oluştu",
@@ -93,12 +63,11 @@
     "printAction": "Yazdır",
     "printError": "Yazdırma hatası: {{error}}",
     "printUnknownError": "Yazdırma sırasında bir hata oluştu",
-    "saveError": "Kaydetme sırasında hata oluştu",
-    "loadError": "Veriler yüklenirken hata oluştu",
+    "saveError": "Kaydedilemedi: {{error}}",
+    "loadError": "Veriler yüklenemedi: {{error}}",
     "categoryCreateError": "Kategori oluşturulurken hata oluştu",
     "categoryDeleteError": "Kategori silinirken hata oluştu"
   },
-
   "errorBoundary": {
     "databaseError": "Veritabanı Hatası",
     "networkError": "Bağlantı Hatası",
@@ -116,16 +85,11 @@
     "pageLoadError": "Sayfa yüklenirken hata oluştu",
     "pageLoadFailed": "{{page}} yüklenemedi.",
     "thisPage": "Bu sayfa",
-    "severityCritical": "Kritik",
     "severityHigh": "Yüksek Öncelik",
     "severityMedium": "Orta Öncelik",
     "severityLow": "Düşük Öncelik",
-    "componentLoadFailed": "Bileşen yüklenemedi",
-    "componentError": "{{component}} görüntülenirken bir hata oluştu.",
-    "stackTrace": "Stack Trace",
-    "errorContext": "Hata Bağlamı"
+    "stackTrace": "Stack Trace"
   },
-
   "validation": {
     "dateFormat": "Geçerli tarih formatı: YYYY-MM-DD",
     "positiveNumber": "Geçerli pozitif bir sayı giriniz",
@@ -149,16 +113,15 @@
     "nonNegative": "Negatif olamaz",
     "endBeforeStart": "Bitiş tarihi başlangıç tarihinden önce olamaz"
   },
-
   "pagination": {
     "records": "kayıt",
     "firstPage": "İlk Sayfa",
     "prevPage": "Önceki Sayfa",
     "nextPage": "Sonraki Sayfa",
     "lastPage": "Son Sayfa",
-    "navigation": "Sayfa navigasyonu"
+    "navigation": "Sayfa navigasyonu",
+    "pageSize": "Sayfa başına kayıt"
   },
-
   "commandPalette": {
     "placeholder": "Cari, proje veya malzeme ara...",
     "noResults": "Sonuç bulunamadı",
@@ -170,16 +133,13 @@
     "project": "Proje",
     "material": "Malzeme"
   },
-
   "confirmDialog": {
     "confirm": "Onayla",
     "cancel": "İptal"
   },
-
   "emptyState": {
     "noData": "Veri bulunamadı"
   },
-
   "enums": {
     "companyType": {
       "person": "Şahıs",
@@ -209,6 +169,10 @@
       "own": "Kendi Projemiz",
       "client": "Müşteri Projesi"
     },
+    "ownershipTypeShort": {
+      "own": "Kendi",
+      "client": "Müşteri"
+    },
     "transactionType": {
       "invoice_out": "Satış Faturası",
       "payment_in": "Tahsilat",
@@ -220,6 +184,11 @@
       "project": "Proje İşlemi",
       "company": "Firma Genel"
     },
+    "transactionScopeShort": {
+      "cari": "Cari",
+      "project": "Proje",
+      "company": "Firma"
+    },
     "currency": {
       "TRY": "TRY (₺)",
       "USD": "USD ($)",
@@ -229,6 +198,12 @@
       "in": "Giriş (Satın Alma)",
       "out": "Çıkış (Kullanım)",
       "adjustment": "Sayım Düzeltme",
+      "waste": "Fire/Kayıp"
+    },
+    "movementTypeShort": {
+      "in": "Giriş",
+      "out": "Çıkış",
+      "adjustment": "Sayım",
       "waste": "Fire/Kayıp"
     },
     "materialCategory": {
@@ -280,7 +255,6 @@
       "12": "Ara"
     }
   },
-
   "dashboard": {
     "title": "Gösterge Paneli",
     "subtitle": "Genel bakış ve özet bilgiler",
@@ -305,17 +279,14 @@
     "companyGeneral": "Firma Genel",
     "activeProjects": "Aktif Projeler",
     "noActiveProjects": "Aktif proje bulunmuyor",
-    "own": "Kendi",
-    "client": "Müşteri",
     "budgetUsage": "Bütçe Kullanımı",
     "projectProfit": "Proje Karı",
     "debtors": "Bize Borçlu Cariler",
-    "debtorsSubtitle": "Bize borçlu olanlar",
+    "debtorsSubtitle": "Bize borçlu olanlar (güncel bakiye)",
     "noDebtors": "Borçlu cari bulunmuyor",
     "creditors": "Bizim Borçlu Olduklarımız",
-    "creditorsSubtitle": "Biz borçluyuz",
+    "creditorsSubtitle": "Biz borçluyuz (güncel bakiye)",
     "noCreditors": "Alacaklı cari bulunmuyor",
-    "transactionDetail": "İşlem Detayı",
     "dateFilters": {
       "year": "Bu Yıl",
       "month": "Bu Ay",
@@ -326,20 +297,8 @@
     "updating": "Veriler güncelleniyor...",
     "refresh": "Verileri yenile",
     "updatingShort": "Güncelleniyor...",
-    "refreshShort": "Yenile",
-    "labels": {
-      "date": "Tarih",
-      "type": "Tür",
-      "source": "Kaynak",
-      "cari": "Cari",
-      "project": "Proje",
-      "company": "Firma",
-      "amount": "Tutar",
-      "category": "Kategori",
-      "description": "Açıklama"
-    }
+    "refreshShort": "Yenile"
   },
-
   "companies": {
     "title": "Cari Hesaplar",
     "subtitle": "Müşteri, tedarikçi ve taşeron yönetimi",
@@ -361,7 +320,7 @@
     "createSuccess": "Cari hesap başarıyla oluşturuldu",
     "updateSuccess": "Cari hesap başarıyla güncellendi",
     "bulkDeleteTitle": "Toplu Silme",
-    "bulkDeleteMessage": "{{count}} cari hesabı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+    "bulkDeleteMessage": "{{count}} cari hesabı silmek istediğinize emin misiniz? Silinenler Çöp Kutusu'ndan geri yüklenebilir.",
     "bulkDeleteConfirm": "{{count}} Kayıt Sil",
     "bulkDeleteCount": "{{count}} cari sil",
     "bulkDeleteSuccess": "{{count}} cari hesap başarıyla silindi",
@@ -378,9 +337,7 @@
       "actions": "İşlemler"
     },
     "form": {
-      "person": "Şahıs",
       "personDesc": "Bireysel hesap",
-      "company": "Kuruluş",
       "companyDesc": "Firma hesabı",
       "accountType": "Cari Tipi *",
       "fullName": "Ad Soyad *",
@@ -400,15 +357,9 @@
       "notes": "Notlar",
       "phonePlaceholder": "0(5XX) XXX XX XX",
       "emailPlaceholder": "ornek@email.com",
-      "ibanPlaceholder": "TR00 0000 0000 0000 0000 0000 00",
-      "validation": {
-        "phoneLength": "Telefon numarası 11 haneli olmalıdır",
-        "tcLength": "TC Kimlik No 11 haneli olmalıdır",
-        "ibanLength": "IBAN 24 haneli olmalıdır (TR hariç)"
-      }
+      "ibanPlaceholder": "TR00 0000 0000 0000 0000 0000 00"
     }
   },
-
   "projects": {
     "title": "Projeler",
     "subtitle": "İnşaat projelerini yönetin",
@@ -426,7 +377,7 @@
     "createSuccess": "Proje başarıyla oluşturuldu",
     "updateSuccess": "Proje başarıyla güncellendi",
     "bulkDeleteTitle": "Toplu Silme",
-    "bulkDeleteMessage": "{{count}} projeyi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+    "bulkDeleteMessage": "{{count}} projeyi silmek istediğinize emin misiniz? Silinenler Çöp Kutusu'ndan geri yüklenebilir.",
     "bulkDeleteConfirm": "{{count}} Proje Sil",
     "bulkDeleteCount": "{{count}} proje sil",
     "bulkDeleteSuccess": "{{count}} proje başarıyla silindi",
@@ -440,17 +391,13 @@
       "expense": "Gider",
       "progress": "%",
       "profit": "Kar",
-      "actions": "İşlemler",
-      "own": "Kendi",
-      "client": "Müşteri"
+      "actions": "İşlemler"
     },
     "form": {
       "projectCode": "Proje Kodu",
       "status": "Durum *",
       "projectName": "Proje Adı *",
       "ownership": "Proje Sahipliği",
-      "ownProject": "Kendi Projemiz",
-      "clientProject": "Müşteri Projesi",
       "relatedCompany": "İlgili Cari Hesap",
       "selectCompany": "Cari hesap seçin...",
       "projectType": "Proje Tipi *",
@@ -469,7 +416,6 @@
       "filterOwnership": "Sahiplik"
     }
   },
-
   "stock": {
     "title": "Stok Yönetimi",
     "subtitle": "Malzeme ve stok takibi",
@@ -495,14 +441,13 @@
     "movementSaveSuccess": "Stok hareketi başarıyla kaydedildi",
     "bulkDeleteMaterials": "{{count}} malzeme sil",
     "bulkDeleteMovements": "{{count}} hareket sil",
-    "bulkDeleteSuccess": "{{count}} kayıt başarıyla silindi",
     "bulkDeleteMaterialSuccess": "{{count}} malzeme başarıyla silindi",
     "bulkDeleteMovementSuccess": "{{count}} hareket başarıyla silindi",
     "bulkDeletePartial": "{{success}} silindi, {{error}} silinemedi",
     "bulkDeleteTitle": "Toplu Silme",
-    "bulkDeleteMaterialMessage": "{{count}} malzemeyi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+    "bulkDeleteMaterialMessage": "{{count}} malzemeyi silmek istediğinize emin misiniz? Silinenler Çöp Kutusu'ndan geri yüklenebilir.",
     "bulkDeleteMaterialConfirm": "{{count}} Malzeme Sil",
-    "bulkDeleteMovementMessage": "{{count}} stok hareketini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+    "bulkDeleteMovementMessage": "{{count}} stok hareketini silmek istediğinize emin misiniz? Silinenler Çöp Kutusu'ndan geri yüklenebilir.",
     "bulkDeleteMovementConfirm": "{{count}} Hareket Sil",
     "table": {
       "code": "Kod",
@@ -541,7 +486,8 @@
       "date": "Tarih *",
       "documentNo": "Belge No",
       "documentPlaceholder": "Irsaliye/Fatura",
-      "description": "Açıklama"
+      "description": "Açıklama",
+      "materialOption": "{{code}} - {{name}} (Stok: {{stock}} {{unit}})"
     },
     "detail": {
       "title": "Malzeme Detayı",
@@ -549,7 +495,6 @@
       "updatedAt": "Son Güncelleme"
     }
   },
-
   "transactions": {
     "title": "Tüm İşlemler",
     "subtitle": "Sistemdeki tüm işlem hareketleri",
@@ -561,20 +506,8 @@
     "filterEndDate": "Bitiş",
     "noTransactions": "İşlem bulunamadı",
     "noTransactionsDesc": "Filtrelere uygun işlem kaydı yok",
-    "transactionDetail": "İşlem Detayı",
-    "editTransaction": "İşlem Düzenle",
-    "updateSuccess": "İşlem başarıyla güncellendi",
-    "updateError": "İşlem güncellenirken hata oluştu",
-    "deleteSuccess": "İşlem başarıyla silindi",
-    "deleteError": "İşlem silinirken hata oluştu",
-    "deleteTitle": "İşlemi Sil",
-    "deleteMessage": "Bu işlemi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
-    "bulkDeleteCount": "{{count}} işlem sil",
-    "bulkDeleteTitle": "Toplu Silme",
-    "bulkDeleteMessage": "Seçili {{count}} işlemi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
-    "bulkDeleteConfirm": "Tümünü Sil",
     "bulkDeleteSuccess": "{{count}} işlem başarıyla silindi",
-    "bulkDeletePartial": "{{success}} silindi, {{error}} silinemedi",
+    "bulkDeletePartial": "{{success}} işlem silindi, {{error}} işlem silinemedi",
     "companyGeneral": "Firma Genel",
     "stats": {
       "salesInvoices": "Satış Faturaları",
@@ -586,8 +519,11 @@
       "cashFlow": "Nakit Akışı",
       "cashFlowSubtitle": "Tahsilat - Ödeme",
       "netStatus": "Açık Bakiye",
-      "netStatusSubtitle": "Carilerle alacak − borç (avanslar düşülmüş; carisiz kayıtlar hariç)",
+      "netStatusSubtitle": "Carilerle alacak − borç",
       "transactionCount": "{{count}} işlem"
+    },
+    "form": {
+      "descriptionPlaceholder": "İşlem açıklaması"
     },
     "table": {
       "date": "Tarih",
@@ -599,30 +535,8 @@
       "category": "Kategori",
       "amount": "Tutar",
       "action": "İşlem"
-    },
-    "scope": {
-      "cari": "Cari",
-      "project": "Proje",
-      "company": "Firma"
-    },
-    "form": {
-      "date": "Tarih",
-      "type": "Tür",
-      "source": "Kaynak",
-      "company": "Cari",
-      "selectCompany": "Cari Seçin",
-      "project": "Proje",
-      "selectProject": "Proje Seçin",
-      "amount": "Tutar",
-      "category": "Kategori",
-      "selectCategory": "Kategori Seçin",
-      "description": "Açıklama",
-      "descriptionPlaceholder": "İşlem açıklaması",
-      "documentNo": "Belge No",
-      "documentPlaceholder": "Fatura/Makbuz numarası"
     }
   },
-
   "analytics": {
     "title": "Analizler & Raporlar",
     "subtitle": "Finansal analiz ve grafikler",
@@ -687,7 +601,6 @@
       "total": "Toplam"
     }
   },
-
   "settings": {
     "title": "Ayarlar",
     "subtitle": "Uygulama ayarları ve yedekleme",
@@ -698,8 +611,6 @@
     "noBackup": "Henüz yedek yok",
     "createFirstBackup": "İlk yedeğinizi oluşturun",
     "lastBackup": "Son Yedek",
-    "backupSuccess": "Yedek başarıyla oluşturuldu",
-    "backupError": "Yedek oluşturulamadı",
     "restoreTitle": "Yedeği Geri Yükle",
     "restoreMessage": "\"{{date}}\" tarihli yedeği geri yüklemek istediğinize emin misiniz? Mevcut veriler bu yedekle değiştirilecek.",
     "restoreSuccess": "Yedek başarıyla geri yüklendi. Sayfa yenilenecek...",
@@ -757,9 +668,11 @@
     "themeDark": "Koyu",
     "themeSystem": "Sistem",
     "turkish": "Türkçe",
-    "english": "English"
+    "english": "English",
+    "clientId": "Client ID",
+    "clientSecret": "Client Secret",
+    "redirectUri": "Yönlendirme adresi (Redirect URI):"
   },
-
   "trash": {
     "title": "Çöp Kutusu",
     "subtitle": "Silinen öğeler, siz kalıcı olarak silene kadar burada kalır ve geri yüklenebilir",
@@ -767,12 +680,14 @@
     "warning": "Dikkat",
     "warningMessage": "Kalıcı olarak silinen öğeler geri getirilemez. İlişkili işlemler ve veriler de silinecektir.",
     "deletedItems": "Silinen Öğeler ({{count}})",
-    "loading": "Yükleniyor...",
     "empty": "Çöp kutusu boş",
     "emptyDesc": "Silinen öğeler burada görünecektir",
     "restoreSuccess": "Öğe başarıyla geri yüklendi",
     "restoreError": "Geri yükleme sırasında hata oluştu",
     "restoreParentMissing": "Bu öğenin bağlı olduğu kayıt (cari veya proje) silinmiş. Önce onu geri yükleyin.",
+    "restoreNotFound": "Geri yüklenecek öğe bulunamadı",
+    "restoreInvalidData": "Bu öğenin yedek verisi okunamadı",
+    "restoreUnknownType": "Bu türdeki öğeler geri yüklenemiyor",
     "permanentDeleteSuccess": "Öğe kalıcı olarak silindi",
     "permanentDeleteError": "Silme sırasında hata oluştu",
     "emptyTrashSuccess": "Çöp kutusu boşaltıldı",
@@ -790,7 +705,8 @@
       "company": "Cari Hesap",
       "project": "Proje",
       "transaction": "İşlem",
-      "material": "Malzeme"
+      "material": "Malzeme",
+      "stock_movement": "Stok Hareketi"
     },
     "table": {
       "type": "Tür",
@@ -800,7 +716,6 @@
     "unknown": "Bilinmeyen",
     "transactionLabel": "İşlem"
   },
-
   "export": {
     "columns": {
       "date": "Tarih",
@@ -842,15 +757,11 @@
     },
     "preview": {
       "title": "Dışa Aktarma Önizleme",
-      "filterHint": "Filtreleyerek dışa aktarabilirsiniz",
       "recordCount": "{{count}} kayıt",
       "showing": "{{shown}} / {{total}} kayıt gösteriliyor",
-      "selectAll": "Tümünü Seç",
-      "deselectAll": "Tümünü Kaldır",
       "selectedCount": "{{selected}} / {{total}} kayıt seçili"
     },
     "share": {
-      "button": "Paylaş",
       "success": "Paylaşım penceresi açıldı",
       "error": "Paylaşım hatası"
     },
@@ -868,9 +779,7 @@
       "accountCount": "Hesap Sayısı"
     }
   },
-
   "shared": {
-    "excel": "Excel",
     "newTransaction": "Yeni İşlem",
     "preview": "Önizle",
     "clearFilters": "Temizle",
@@ -879,10 +788,6 @@
     "transactionUpdated": "İşlem başarıyla güncellendi",
     "transactionDeleted": "İşlem başarıyla silindi",
     "deleteError": "Silme sırasında hata oluştu",
-    "bulkDeleted": "{{count}} işlem başarıyla silindi",
-    "bulkDeleteError": "Toplu silme sırasında hata oluştu",
-    "bulkDeletePartial": "{{deleted}} işlem silindi, {{failed}} işlem silinemedi",
-    "excelExported": "Excel dosyası başarıyla oluşturuldu",
     "deleteTransaction": {
       "title": "İşlemi Sil",
       "message": "Bu işlemi silmek istediğinize emin misiniz?",
@@ -891,7 +796,7 @@
     },
     "bulkDelete": {
       "title": "Toplu Silme",
-      "message": "Seçili {{count}} işlemi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+      "message": "Seçili {{count}} işlemi silmek istediğinize emin misiniz? Silinenler Çöp Kutusu'ndan geri yüklenebilir.",
       "confirmText": "Tümünü Sil",
       "buttonLabel": "{{count}} işlem sil"
     },
@@ -924,13 +829,10 @@
       "endDateLabel": "Bitiş:",
       "minAmountLabel": "Min Tutar:",
       "maxAmountLabel": "Max Tutar:",
-      "minLabel": "Min:",
-      "maxLabel": "Max:",
       "allTypes": "Tüm Türler",
       "allCompanies": "Tüm Cariler"
     }
   },
-
   "companyDetail": {
     "notFound": {
       "title": "Cari bulunamadı",
@@ -973,7 +875,6 @@
       "notes": "Notlar"
     }
   },
-
   "projectDetail": {
     "transactionsTab": "İşlemler",
     "partiesTab": "Paydaşlar",
@@ -981,10 +882,6 @@
       "title": "Proje bulunamadı",
       "description": "Aradığınız proje mevcut değil",
       "actionLabel": "Projelere Dön"
-    },
-    "badge": {
-      "ownProject": "Kendi Projemiz",
-      "clientProject": "Müşteri Projesi"
     },
     "clientLabel": "Müşteri",
     "goToCompanyAccount": "Cari Hesaba Git",
@@ -998,7 +895,7 @@
       "incomeMinusCost": "Gelir - Maliyet",
       "incomeMinusExpense": "Gelir - Gider",
       "incomeBreakdown": "Satış faturaları · Tahsil edilen: {{collected}}",
-      "expenseBreakdown": "Alış faturaları ve gider kayıtları · Ödenen: {{paid}}",
+      "expenseBreakdown": "Alış faturaları · Ödenen: {{paid}}",
       "estimatedProfit": "Tahmini Kâr",
       "noBudget": "Bütçe belirlenmemiş",
       "budgetStatus": "Bütçe Durumu",
@@ -1022,10 +919,6 @@
       "actualStart": "Gerçek Başlangıç",
       "description": "Açıklama"
     },
-    "tabs": {
-      "transactions": "İşlemler",
-      "stakeholders": "Paydaşlar"
-    },
     "stakeholders": {
       "notFound": "Paydaş bulunamadı",
       "noTransactions": "Bu projede henüz cari hesap ile işlem yapılmamış",
@@ -1037,15 +930,8 @@
     },
     "stakeholderDetail": {
       "title": "{{company_name}} - Proje İşlemleri"
-    },
-    "roles": {
-      "customer": "Müşteri",
-      "supplier": "Tedarikçi",
-      "subcontractor": "Taşeron",
-      "investor": "Yatırımcı"
     }
   },
-
   "companyAccount": {
     "pageTitle": "Firma Hesabı",
     "pageDescription": "Projelere bağlı olmayan genel firma gelir ve giderleri",
@@ -1053,7 +939,6 @@
       "income": "Gelir",
       "expense": "Gider"
     },
-    "otherCategory": "Diğer",
     "stats": {
       "generalIncome": "Genel Gelir",
       "generalExpense": "Genel Gider",
@@ -1069,7 +954,6 @@
     },
     "documentPrefix": "Belge: {{no}}"
   },
-
   "driveLock": {
     "title": "Google Drive bağlantısı koptu",
     "reasonExpired": "Google oturumunun süresi doldu ya da erişim iptal edildi. Google, test modundaki uygulamalarda oturumu yaklaşık 7 günde bir sonlandırır.",
@@ -1085,13 +969,11 @@
     "connectFailed": "Bağlantı kurulamadı.",
     "connectError": "Bağlanılamadı: {{error}}"
   },
-
   "dataReview": {
     "title": "Veri Kontrolü",
     "subtitle": "Yeni sürümde gelir ve gider yalnızca faturalardan ve gider/gelir kayıtlarından hesaplanır; tahsilat ve ödemeler faturaları kapatır, eşleşmeyenler avans sayılır. Bu ekran eski sürümlerden kalan kayıtları kontrol eder.",
     "noIssues": "Sorun yok",
     "needsReview": "İnceleyin",
-    "loadError": "Veri kontrolü yüklenemedi: {{error}}",
     "applied": "Uygulandı: {{changed}} kayıt güncellendi.",
     "applyError": "Uygulanamadı, hiçbir değişiklik yapılmadı: {{error}}",
     "completedToast": "Veri kontrolü tamamlandı.",
@@ -1142,7 +1024,8 @@
       "newRate": "İşlem tarihindeki kur",
       "rateFor": "{{name}} için 1 {{currency}} kaç TL",
       "hint": "Kuru boş bıraktığınız işlemler değişmez ve burada kalır. Aynı dövizdeki fatura ile ödemesinin eşleşmesi yeni kura göre güncellenir.",
-      "apply": "Girilen kurları uygula"
+      "apply": "Girilen kurları uygula",
+      "ratePlaceholder": "1 {{currency}} = ? TL"
     },
     "matches": {
       "title": "Eşleşme sorunları",
@@ -1214,14 +1097,12 @@
       "confirmClean": "Tüm adımlar tamam. Geçiş tamamlanınca bu ekran yalnızca veri bütünlüğü kontrolü için kullanılır."
     }
   },
-
   "matchStatus": {
     "unmatched": "Eşleşmemiş",
     "partial": "Kısmi eşleşme",
     "titleOut": "Faturayla kapatılmamış {{amount}}: verilen avans olarak açık duruyor, gidere dahil değil.",
     "titleIn": "Faturayla kapatılmamış {{amount}}: alınan avans olarak açık duruyor, gelire dahil değil."
   },
-
   "transactionModal": {
     "editTitle": "İşlem Düzenle",
     "newProjectTransaction": "Yeni Proje İşlemi",
@@ -1230,7 +1111,6 @@
     "amountTL": "Tutar (TL)",
     "invoiceNo": "Fatura no",
     "invoiceWaybillNo": "Fatura/İrsaliye no",
-    "currentRate": "Güncel Kur",
     "tryEquivalent": "TL Karşılığı",
     "companyOptional": "Cari (Opsiyonel)",
     "selectCompany": "Cari seçin...",
@@ -1249,7 +1129,6 @@
     "exchangeRate": "Kur (1 {{currency}} = ? TL)",
     "useCurrentRate": "Güncel kuru kullan",
     "saveError": "İşlem kaydedilemedi: {{error}}",
-    "allocationSaveError": "İşlem kaydedildi ancak fatura eşleştirmeleri kaydedilemedi: {{error}}",
     "allocationExceedsPayment": "Eşleştirme toplamı ({{allocated}}) ödeme tutarını ({{payment}}) aşıyor.",
     "clearMatches": "Eşleşmeleri kaldır",
     "removeMatch": "Eşleşmeyi kaldır",
@@ -1272,9 +1151,15 @@
     "restIncomeHint": "Faturası olmayan gelir. Tahsilatla eşleşmiş bir gelir kaydı oluşturulur; gelire girer.",
     "restCategory": "Gider/gelir kategorisi",
     "restChoiceRequired": "Faturayla eşleşmeyen tutar için seçim yapın: avans mı, gider/gelir mi?",
-    "restCategoryRequired": "Gider/gelir kaydı için bir kategori seçin."
+    "restCategoryRequired": "Gider/gelir kaydı için bir kategori seçin.",
+    "openAdvanceTitle": "Eşleşmemiş avans var",
+    "openAdvanceMessage": "Bu faturayı kapatabilecek {{amount}} eşleşmemiş ödeme var. Eşleştirmeden kaydederseniz faturanın {{open}} kısmı açık kalır, ödeme de avans olarak durmaya devam eder.",
+    "openAdvanceMessageSale": "Bu faturayı kapatabilecek {{amount}} eşleşmemiş tahsilat var. Eşleştirmeden kaydederseniz faturanın {{open}} kısmı açık kalır, tahsilat da avans olarak durmaya devam eder.",
+    "openAdvanceAutoMatch": "Otomatik dağıt ve kaydet",
+    "openAdvanceSkip": "Eşleştirmeden kaydet",
+    "openAdvanceBack": "Geri dön",
+    "currentRateLine": "Güncel Kur: 1 {{currency}} = {{rate}} TL"
   },
-
   "categories": {
     "Daire/Konut Satışı": "Daire/Konut Satışı",
     "Dükkan/Ofis Satışı": "Dükkan/Ofis Satışı",
@@ -1314,7 +1199,6 @@
     "Kredi Kartı": "Kredi Kartı",
     "Takas/Mahsup": "Takas/Mahsup"
   },
-
   "print": {
     "reportDate": "Rapor Tarihi:",
     "transactionList": "İşlem Listesi",
@@ -1324,7 +1208,6 @@
     "company": "Cari",
     "category": "Kategori",
     "amount": "Tutar",
-    "documentNo": "Belge No",
     "salesInvoice": "Satış Faturası:",
     "collection": "Tahsilat:",
     "purchaseInvoice": "Alış Faturası:",
@@ -1352,8 +1235,6 @@
     "email": "E-posta",
     "footerReport": "Bu rapor {{date}} tarihinde oluşturulmuştur.",
     "projectCode": "Proje Kodu: {{code}} | {{ownership}}",
-    "ownProject": "Kendi Projemiz",
-    "clientProject": "Müşteri Projesi",
     "contactInfo": "İletişim Bilgileri",
     "phoneLine": "Telefon:",
     "emailLine": "E-posta:",
@@ -1369,35 +1250,11 @@
     "companyAccountReport": "Firma Hesabı Raporu",
     "generalCompanyIncomeExpense": "Genel Firma Gelir ve Giderleri",
     "netStatus": "Net Durum",
-    "typeLabels": {
-      "person": "Şahıs",
-      "company": "Kuruluş"
-    },
-    "accountTypeLabels": {
-      "customer": "Müşteri",
-      "supplier": "Tedarikçi",
-      "subcontractor": "Taşeron",
-      "investor": "Yatırımcı",
-      "landowner": "Arsa Sahibi"
-    },
-    "roleLabels": {
-      "customer": "Müşteri",
-      "supplier": "Tedarikçi",
-      "subcontractor": "Taşeron",
-      "investor": "Yatırımcı"
-    },
-    "transactionTypeLabels": {
-      "invoice_out": "Satış Faturası",
-      "payment_in": "Tahsilat",
-      "invoice_in": "Alış Faturası",
-      "payment_out": "Ödeme"
-    },
     "filterType": "Tür: {{value}}",
     "filterCategory": "Kategori: {{value}}",
     "filterStartDate": "Başlangıç: {{value}}",
     "filterEndDate": "Bitiş: {{value}}"
   },
-
   "error": {
     "unexpected": "Beklenmeyen bir hata oluştu.",
     "db": {
@@ -1409,8 +1266,7 @@
       "systemError": "Bir sistem hatası oluştu.",
       "databaseLocked": "Veritabanı meşgul, lütfen tekrar deneyin.",
       "diskIOError": "Disk okuma/yazma hatası oluştu.",
-      "databaseCorrupted": "Veritabanı dosyası bozulmuş olabilir.",
-      "genericDbError": "Bir veritabanı hatası oluştu."
+      "databaseCorrupted": "Veritabanı dosyası bozulmuş olabilir."
     },
     "backup": {
       "invalidPath": "Geçersiz yedek dosyası yolu.",
@@ -1421,14 +1277,6 @@
     "errorTitle": "Hata",
     "streamError": "Stream hatası yakalandı (EPIPE), göz ardı ediliyor",
     "unexpectedError": "Beklenmeyen bir hata oluştu: {{error}}",
-    "closeDialog": {
-      "title": "Yedeklenmemiş Değişiklikler",
-      "message": "Son yedeklemeden bu yana değişiklikler var.",
-      "detail": "Kapatmadan önce yedek almak ister misiniz?",
-      "backupAndClose": "Yedekle ve Kapat",
-      "closeWithout": "Yedeklemeden Kapat",
-      "cancel": "İptal"
-    },
     "updater": {
       "availableTitle": "Güncelleme Mevcut",
       "availableMessage": "Yeni versiyon {{version}} mevcut.\n\nGüncellemek ister misiniz?",
@@ -1469,12 +1317,10 @@
       "excelSaveTitle": "Excel Olarak Kaydet",
       "noData": "Veri bulunamadı",
       "sheetName": "Veri",
-      "pdfSaveTitle": "PDF Olarak Kaydet"
+      "excelFiles": "Excel Dosyaları",
+      "allFiles": "Tüm Dosyalar"
     },
     "transaction": {
-      "invalidEntityType": "Geçersiz entity tipi",
-      "invalidInvoiceType": "Geçersiz fatura tipi",
-      "allocationsMustBeArray": "Eşleştirmeler dizi olmalıdır",
       "allocationExceedsPayment": "Eşleştirme toplamı ödeme tutarını aşamaz.",
       "allocationExceedsInvoice": "Bir faturaya kalan bakiyesinden fazla eşleştirme yapılamaz.",
       "allocationTypeMismatch": "Tahsilat yalnızca satış faturalarıyla, ödeme yalnızca alış faturalarıyla eşleştirilebilir.",
@@ -1495,9 +1341,7 @@
       "dbFileMissing": "Veritabanı dosyası bulunamadı.",
       "invalidChoice": "Geçersiz seçim."
     },
-    "backup": {
-      "selectFolderTitle": "Yedek Klasörü Seçin"
-    }
+    "backup": {}
   },
   "sync": {
     "synced": "Senkron",

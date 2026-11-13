@@ -4,14 +4,10 @@ import '../../i18n';
 import Trash from '../../pages/Trash';
 import type { TrashItem } from '../../types';
 
-// ==================== MOCKS ====================
-
 const mockToast = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() };
 vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
-
-// ==================== HELPERS ====================
 
 const mockTrashItems: TrashItem[] = [
   {
@@ -40,15 +36,11 @@ const mockTrashItems: TrashItem[] = [
   },
 ];
 
-// ==================== TESTS ====================
-
 describe('Trash', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   });
-
-  // ---------- Initial render ----------
 
   it('should render page title and subtitle', async () => {
     await act(async () => {
@@ -57,24 +49,25 @@ describe('Trash', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Çöp Kutusu')).toBeInTheDocument();
-      expect(screen.getByText('Silinen öğeler, siz kalıcı olarak silene kadar burada kalır ve geri yüklenebilir')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Silinen öğeler, siz kalıcı olarak silene kadar burada kalır ve geri yüklenebilir'
+        )
+      ).toBeInTheDocument();
     });
   });
 
-  // ---------- Loading state ----------
-
   it('should show loading spinner while data is loading', async () => {
-    (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
 
     await act(async () => {
       render(<Trash />);
     });
 
-    // The card header should be visible but content should be loading
     expect(screen.getByText('Çöp Kutusu')).toBeInTheDocument();
   });
-
-  // ---------- Empty state ----------
 
   it('should show empty state when trash is empty', async () => {
     await act(async () => {
@@ -98,8 +91,6 @@ describe('Trash', () => {
 
     expect(screen.queryByText('Çöp Kutusunu Boşalt')).not.toBeInTheDocument();
   });
-
-  // ---------- Data rendering ----------
 
   it('should render trash items in the table', async () => {
     (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockTrashItems);
@@ -151,7 +142,11 @@ describe('Trash', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Dikkat')).toBeInTheDocument();
-      expect(screen.getByText('Kalıcı olarak silinen öğeler geri getirilemez. İlişkili işlemler ve veriler de silinecektir.')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Kalıcı olarak silinen öğeler geri getirilemez. İlişkili işlemler ve veriler de silinecektir.'
+        )
+      ).toBeInTheDocument();
     });
   });
 
@@ -167,8 +162,6 @@ describe('Trash', () => {
     });
   });
 
-  // ---------- Restore interaction ----------
-
   it('should show restore confirmation dialog when restore button is clicked', async () => {
     (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockTrashItems);
 
@@ -180,18 +173,17 @@ describe('Trash', () => {
       expect(screen.getByText('ABC İnşaat')).toBeInTheDocument();
     });
 
-    // Click the restore button (ghost-success icon button) for the first item
     const restoreButtons = screen.getAllByTitle('Geri Yükle');
     await act(async () => {
       fireEvent.click(restoreButtons[0]);
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/"ABC İnşaat" öğesini geri yüklemek istediğinizden emin misiniz\?/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/"ABC İnşaat" öğesini geri yüklemek istediğinizden emin misiniz\?/)
+      ).toBeInTheDocument();
     });
   });
-
-  // ---------- Permanent delete interaction ----------
 
   it('should show permanent delete confirmation when delete button is clicked', async () => {
     (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockTrashItems);
@@ -204,7 +196,6 @@ describe('Trash', () => {
       expect(screen.getByText('ABC İnşaat')).toBeInTheDocument();
     });
 
-    // Click the permanent delete button (ghost-danger icon button) for the first item
     const deleteButtons = screen.getAllByTitle('Sil');
     await act(async () => {
       fireEvent.click(deleteButtons[0]);
@@ -215,23 +206,25 @@ describe('Trash', () => {
     });
   });
 
-  // ---------- Error handling ----------
-
   it('should show error toast when loading fails', async () => {
-    (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('DB Error'));
+    (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('DB Error')
+    );
 
     await act(async () => {
       render(<Trash />);
     });
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith('Veriler yüklenirken hata oluştu');
+      expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('Veriler yüklenemedi:'));
     });
   });
 
   it('should show error toast when restore fails', async () => {
     (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockTrashItems);
-    (window.electronAPI.trash.restore as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Restore Error'));
+    (window.electronAPI.trash.restore as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Restore Error')
+    );
 
     await act(async () => {
       render(<Trash />);
@@ -241,18 +234,13 @@ describe('Trash', () => {
       expect(screen.getByText('ABC İnşaat')).toBeInTheDocument();
     });
 
-    // Click restore button
     const restoreButtons = screen.getAllByTitle('Geri Yükle');
     await act(async () => {
       fireEvent.click(restoreButtons[0]);
     });
 
-    // Confirm restore - find the button inside the confirm dialog (not icon buttons in table)
     await waitFor(() => {
-      // The confirm dialog has a button with text "Geri Yükle" (confirmText)
-      // Use getAllByRole and find the one that's NOT an icon button (has text content)
       const allRestoreButtons = screen.getAllByRole('button', { name: 'Geri Yükle' });
-      // The last one is the confirm dialog button
       const confirmBtn = allRestoreButtons[allRestoreButtons.length - 1];
       fireEvent.click(confirmBtn);
     });
@@ -295,7 +283,60 @@ describe('Trash', () => {
     expect(mockToast.success).not.toHaveBeenCalled();
   });
 
-  // ---------- Table headers ----------
+  it('shows a specific message for each restore problem', async () => {
+    (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockTrashItems);
+    (window.electronAPI.trash.restore as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      error: 'invalid_data',
+    });
+
+    await act(async () => {
+      render(<Trash />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('ABC İnşaat')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByTitle('Geri Yükle')[0]);
+    });
+    await waitFor(() => {
+      const allRestoreButtons = screen.getAllByRole('button', { name: 'Geri Yükle' });
+      fireEvent.click(allRestoreButtons[allRestoreButtons.length - 1]);
+    });
+
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalledWith('Bu öğenin yedek verisi okunamadı');
+    });
+  });
+
+  it('names and labels deleted stock movements', async () => {
+    (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: 9,
+        type: 'stock_movement',
+        data: JSON.stringify({
+          id: 4,
+          material_id: 1,
+          movement_type: 'in',
+          quantity: 12.5,
+          description: null,
+          date: '2026-11-10',
+        }),
+        deleted_at: '2026-11-12T10:00:00Z',
+      },
+    ]);
+
+    await act(async () => {
+      render(<Trash />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Stok Hareketi')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/12,50/)).toBeInTheDocument();
+    expect(screen.queryByText('stock_movement')).not.toBeInTheDocument();
+  });
 
   it('should render table column headers', async () => {
     (window.electronAPI.trash.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockTrashItems);

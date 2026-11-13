@@ -1,11 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  isIncomeType,
-  isExpenseType,
   isPositiveTransaction,
   getTransactionColor,
   getTransactionTextColor,
-  getTransactionBadgeVariant,
+  transactionSign,
   getPrintTransactionTextColor,
   getSimpleTransactionTextColor,
   getSimpleTransactionBadgeVariant,
@@ -13,30 +11,6 @@ import {
 import type { TransactionType } from '../../types';
 
 describe('transactionHelpers', () => {
-  describe('isIncomeType', () => {
-    it('should return true for invoice_out', () => {
-      expect(isIncomeType('invoice_out')).toBe(true);
-    });
-
-    it('should return false for other types', () => {
-      expect(isIncomeType('invoice_in')).toBe(false);
-      expect(isIncomeType('payment_in')).toBe(false);
-      expect(isIncomeType('payment_out')).toBe(false);
-    });
-  });
-
-  describe('isExpenseType', () => {
-    it('should return true for invoice_in', () => {
-      expect(isExpenseType('invoice_in')).toBe(true);
-    });
-
-    it('should return false for other types', () => {
-      expect(isExpenseType('invoice_out')).toBe(false);
-      expect(isExpenseType('payment_in')).toBe(false);
-      expect(isExpenseType('payment_out')).toBe(false);
-    });
-  });
-
   describe('isPositiveTransaction', () => {
     it('should return true for invoice_out and payment_in', () => {
       expect(isPositiveTransaction('invoice_out')).toBe(true);
@@ -71,16 +45,18 @@ describe('transactionHelpers', () => {
     });
 
     it('should return gray for unknown type', () => {
-      expect(getTransactionTextColor('unknown' as TransactionType)).toBe('text-gray-600 dark:text-gray-400');
+      expect(getTransactionTextColor('unknown' as TransactionType)).toBe(
+        'text-gray-600 dark:text-gray-400'
+      );
     });
   });
 
-  describe('getTransactionBadgeVariant', () => {
-    it('should return correct badge variants', () => {
-      expect(getTransactionBadgeVariant('invoice_out')).toBe('success');
-      expect(getTransactionBadgeVariant('payment_in')).toBe('info');
-      expect(getTransactionBadgeVariant('invoice_in')).toBe('danger');
-      expect(getTransactionBadgeVariant('payment_out')).toBe('warning');
+  describe('transactionSign', () => {
+    it('marks money coming in with + and money going out with -', () => {
+      expect(transactionSign('invoice_out')).toBe('+');
+      expect(transactionSign('payment_in')).toBe('+');
+      expect(transactionSign('invoice_in')).toBe('-');
+      expect(transactionSign('payment_out')).toBe('-');
     });
   });
 
@@ -95,8 +71,12 @@ describe('transactionHelpers', () => {
 
   describe('getSimpleTransactionTextColor', () => {
     it('should return green for income types', () => {
-      expect(getSimpleTransactionTextColor('invoice_out')).toBe('text-green-600 dark:text-green-400');
-      expect(getSimpleTransactionTextColor('payment_in')).toBe('text-green-600 dark:text-green-400');
+      expect(getSimpleTransactionTextColor('invoice_out')).toBe(
+        'text-green-600 dark:text-green-400'
+      );
+      expect(getSimpleTransactionTextColor('payment_in')).toBe(
+        'text-green-600 dark:text-green-400'
+      );
     });
 
     it('should return red for expense types', () => {

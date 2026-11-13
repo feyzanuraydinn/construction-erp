@@ -1,4 +1,4 @@
-import React, {
+import {
   InputHTMLAttributes,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
@@ -8,10 +8,55 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { IconType } from 'react-icons';
+import type { SelectOption } from '../../types';
+import { cn } from '../../utils/cn';
 
-interface SelectOption {
-  value: string | number;
-  label: string;
+const FIELD_CLASS =
+  'w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:ring-blue-400 dark:focus:border-blue-400 transition-all duration-200';
+const PLACEHOLDER_CLASS = 'placeholder-gray-400 dark:placeholder-gray-500';
+
+function fieldBorderClass(error?: string): string {
+  return error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600';
+}
+
+function errorAria(error: string | undefined, errorId: string) {
+  return {
+    'aria-invalid': error ? true : undefined,
+    'aria-describedby': error ? errorId : undefined,
+  };
+}
+
+export function FieldLabel({
+  htmlFor,
+  label,
+  className,
+}: {
+  htmlFor?: string;
+  label?: string;
+  className?: string;
+}) {
+  if (!label) return null;
+  return (
+    <label
+      htmlFor={htmlFor}
+      className={cn('block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1', className)}
+    >
+      {label}
+    </label>
+  );
+}
+
+function FieldError({ id, error, className }: { id: string; error?: string; className?: string }) {
+  if (!error) return null;
+  return (
+    <p
+      id={id}
+      className={cn('mt-1 text-sm text-red-500 dark:text-red-400', className)}
+      role="alert"
+    >
+      {error}
+    </p>
+  );
 }
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -41,7 +86,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   const errorId = `${inputId}-error`;
   return (
     <div className={className}>
-      {label && <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>}
+      <FieldLabel htmlFor={inputId} label={label} />
       <div className="relative">
         {Icon && (
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
@@ -51,22 +96,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         <input
           ref={ref}
           id={inputId}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? errorId : undefined}
-          className={`
-            w-full px-3 py-2 border rounded-lg
-            bg-white dark:bg-gray-800 dark:text-gray-100
-            focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-            dark:focus:ring-blue-400 dark:focus:border-blue-400
-            placeholder-gray-400 dark:placeholder-gray-500
-            transition-all duration-200
-            ${Icon ? 'pl-10' : ''}
-            ${error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600'}
-          `}
+          {...errorAria(error, errorId)}
+          className={`${FIELD_CLASS} ${PLACEHOLDER_CLASS} ${Icon ? 'pl-10' : ''} ${fieldBorderClass(error)}`}
           {...props}
         />
       </div>
-      {error && <p id={errorId} className="mt-1 text-sm text-red-500 dark:text-red-400" role="alert">{error}</p>}
+      <FieldError id={errorId} error={error} />
     </div>
   );
 });
@@ -87,28 +122,21 @@ export const Select = memo(function Select({
   const displayPlaceholder = placeholder ?? t('common.select');
   return (
     <div className={className}>
-      {label && <label htmlFor={selectId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>}
+      <FieldLabel htmlFor={selectId} label={label} />
       <select
         id={selectId}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
-        className={`
-          w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100
-          focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-          dark:focus:ring-blue-400 dark:focus:border-blue-400
-          transition-all duration-200
-          ${error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600'}
-        `}
+        {...errorAria(error, errorId)}
+        className={`${FIELD_CLASS} ${fieldBorderClass(error)}`}
         {...props}
       >
         <option value="">{displayPlaceholder}</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
-            {t(option.label, option.label)}
+            {option.label}
           </option>
         ))}
       </select>
-      {error && <p id={errorId} className="mt-1 text-sm text-red-500 dark:text-red-400" role="alert">{error}</p>}
+      <FieldError id={errorId} error={error} />
     </div>
   );
 });
@@ -122,25 +150,16 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
   const errorId = `${textareaId}-error`;
   return (
     <div className={className}>
-      {label && <label htmlFor={textareaId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>}
+      <FieldLabel htmlFor={textareaId} label={label} />
       <textarea
         ref={ref}
         id={textareaId}
         rows={rows}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
-        className={`
-          w-full px-3 py-2 border rounded-lg
-          bg-white dark:bg-gray-800 dark:text-gray-100
-          focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-          dark:focus:ring-blue-400 dark:focus:border-blue-400
-          placeholder-gray-400 dark:placeholder-gray-500
-          transition-all duration-200 resize-none
-          ${error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600'}
-        `}
+        {...errorAria(error, errorId)}
+        className={`${FIELD_CLASS} ${PLACEHOLDER_CLASS} resize-none ${fieldBorderClass(error)}`}
         {...props}
       />
-      {error && <p id={errorId} className="mt-1 text-sm text-red-500 dark:text-red-400" role="alert">{error}</p>}
+      <FieldError id={errorId} error={error} />
     </div>
   );
 });

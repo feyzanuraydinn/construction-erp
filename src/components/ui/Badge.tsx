@@ -1,9 +1,16 @@
-import React, { ReactNode, memo } from 'react';
+import { ReactNode, memo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FiHome, FiUser } from 'react-icons/fi';
 import { formatCurrency as formatCurrencyUtil } from '../../utils/formatters';
-import type { ProjectStatus, CompanyType, AccountType, TransactionWithDetails } from '../../types';
-
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'gray' | 'purple' | 'default';
+import type {
+  ProjectStatus,
+  CompanyType,
+  AccountType,
+  OwnershipType,
+  BadgeVariant,
+} from '../../types';
+import { MONEY_TOLERANCE } from '../../utils/money';
+import { cn } from '../../utils/cn';
 
 interface BadgeProps {
   children: ReactNode;
@@ -18,7 +25,6 @@ const variants: Record<BadgeVariant, string> = {
   info: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   gray: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
   purple: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-  default: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
 };
 
 export const Badge = memo(function Badge({
@@ -28,11 +34,11 @@ export const Badge = memo(function Badge({
 }: BadgeProps) {
   return (
     <span
-      className={`
-        inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap flex-shrink-0
-        ${variants[variant]}
-        ${className}
-      `}
+      className={cn(
+        'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap flex-shrink-0',
+        variants[variant],
+        className
+      )}
     >
       {children}
     </span>
@@ -41,6 +47,7 @@ export const Badge = memo(function Badge({
 
 interface StatusBadgeProps {
   status: ProjectStatus;
+  className?: string;
 }
 
 const statusVariants: Record<ProjectStatus, BadgeVariant> = {
@@ -50,17 +57,22 @@ const statusVariants: Record<ProjectStatus, BadgeVariant> = {
   cancelled: 'danger',
 };
 
-export const StatusBadge = memo(function StatusBadge({ status }: StatusBadgeProps) {
+export const StatusBadge = memo(function StatusBadge({ status, className }: StatusBadgeProps) {
   const { t } = useTranslation();
 
   const variant = statusVariants[status] || 'gray';
   const label = t(`enums.projectStatus.${status}`, status);
 
-  return <Badge variant={variant}>{label}</Badge>;
+  return (
+    <Badge className={className} variant={variant}>
+      {label}
+    </Badge>
+  );
 });
 
 interface TypeBadgeProps {
   type: CompanyType;
+  className?: string;
 }
 
 const typeVariants: Record<CompanyType, { variant: BadgeVariant; icon: string }> = {
@@ -68,14 +80,17 @@ const typeVariants: Record<CompanyType, { variant: BadgeVariant; icon: string }>
   company: { variant: 'purple', icon: '🏢' },
 };
 
-export const TypeBadge = memo(function TypeBadge({ type }: TypeBadgeProps) {
+export const TypeBadge = memo(function TypeBadge({ type, className }: TypeBadgeProps) {
   const { t } = useTranslation();
 
-  const config = typeVariants[type] || { variant: 'gray' as BadgeVariant, icon: '' };
+  const config: { variant: BadgeVariant; icon: string } = typeVariants[type] || {
+    variant: 'gray',
+    icon: '',
+  };
   const label = t(`enums.companyType.${type}`, type);
 
   return (
-    <Badge variant={config.variant}>
+    <Badge className={className} variant={config.variant}>
       {config.icon} {label}
     </Badge>
   );
@@ -83,6 +98,7 @@ export const TypeBadge = memo(function TypeBadge({ type }: TypeBadgeProps) {
 
 interface AccountTypeBadgeProps {
   accountType: AccountType;
+  className?: string;
 }
 
 const accountTypeVariants: Record<AccountType, BadgeVariant> = {
@@ -94,28 +110,67 @@ const accountTypeVariants: Record<AccountType, BadgeVariant> = {
 
 export const AccountTypeBadge = memo(function AccountTypeBadge({
   accountType,
+  className,
 }: AccountTypeBadgeProps) {
   const { t } = useTranslation();
 
   const variant = accountTypeVariants[accountType] || 'gray';
   const label = t(`enums.accountType.${accountType}`, accountType);
 
-  return <Badge variant={variant}>{label}</Badge>;
+  return (
+    <Badge className={className} variant={variant}>
+      {label}
+    </Badge>
+  );
+});
+
+interface OwnershipBadgeProps {
+  ownership: OwnershipType;
+  short?: boolean;
+  withIcon?: boolean;
+  className?: string;
+}
+
+export const OwnershipBadge = memo(function OwnershipBadge({
+  ownership,
+  short = false,
+  withIcon = false,
+  className,
+}: OwnershipBadgeProps) {
+  const { t } = useTranslation();
+  const own = ownership === 'own';
+  const Icon = own ? FiHome : FiUser;
+  const label = t(
+    short ? `enums.ownershipTypeShort.${ownership}` : `enums.ownershipType.${ownership}`
+  );
+  return (
+    <Badge className={className} variant={own ? 'info' : 'purple'}>
+      {withIcon ? (
+        <>
+          <Icon size={12} className="mr-1" /> {label}
+        </>
+      ) : (
+        label
+      )}
+    </Badge>
+  );
 });
 
 interface BalanceBadgeProps {
   amount: number;
   showIcon?: boolean;
   size?: 'sm' | 'md' | 'lg';
+  className?: string;
 }
 
 export const BalanceBadge = memo(function BalanceBadge({
   amount,
   showIcon = true,
   size = 'md',
+  className,
 }: BalanceBadgeProps) {
-  const isPositive = amount >= 0.005;
-  const isNegative = amount <= -0.005;
+  const isPositive = amount >= MONEY_TOLERANCE;
+  const isNegative = amount <= -MONEY_TOLERANCE;
 
   const formatAmount = (value: number) => formatCurrencyUtil(Math.abs(value));
 
@@ -135,39 +190,16 @@ export const BalanceBadge = memo(function BalanceBadge({
 
   return (
     <span
-      className={`
-        inline-flex items-center gap-1 rounded-lg font-medium whitespace-nowrap
-        ${sizeClasses[size]}
-        ${bgClasses}
-      `}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-lg font-medium whitespace-nowrap',
+        sizeClasses[size],
+        bgClasses,
+        className
+      )}
     >
       {showIcon && <span>{icon}</span>}
       {isNegative ? '-' : isPositive ? '+' : ''}
       {formatAmount(amount)}
-    </span>
-  );
-});
-
-interface MatchStatusBadgeProps {
-  transaction: Pick<TransactionWithDetails, 'type' | 'scope' | 'amount' | 'amount_try' | 'allocated_amount'>;
-  className?: string;
-}
-
-export const MatchStatusBadge = memo(function MatchStatusBadge({ transaction, className = '' }: MatchStatusBadgeProps) {
-  const { t } = useTranslation();
-  if (transaction.type !== 'payment_in' && transaction.type !== 'payment_out') return null;
-  if (transaction.scope === 'company') return null;
-  const total = transaction.amount_try || transaction.amount;
-  const matched = transaction.allocated_amount ?? 0;
-  const open = Math.round((total - matched) * 100) / 100;
-  if (open <= 0.005) return null;
-  const partial = matched > 0.005;
-  const title = t(transaction.type === 'payment_out' ? 'matchStatus.titleOut' : 'matchStatus.titleIn', {
-    amount: formatCurrencyUtil(open),
-  });
-  return (
-    <span title={title} className={`inline-flex ${className}`}>
-      <Badge variant="warning">{partial ? t('matchStatus.partial') : t('matchStatus.unmatched')}</Badge>
     </span>
   );
 });

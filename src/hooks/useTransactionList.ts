@@ -1,11 +1,18 @@
-import { useState, useReducer, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useReducer, useMemo, useCallback, useRef } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
-import { useKeyboardShortcuts, usePagination, paginateArray, invalidateCachePattern } from './index';
-import { exportToCSV, shareExcel, formatRecordsForExport, getTransactionColumns, buildTransactionSummary } from '../utils/exportUtils';
-import type { TransactionWithDetails, PaymentAllocationWithDetails } from '../types';
-
-// ==================== SHARED PRINT FILTERS ====================
+import { useKeyboardShortcuts } from './useKeyboardShortcuts';
+import { usePaginatedItems } from './usePagination';
+import { useTransactionDeletion } from './useTransactionDeletion';
+import { useTransactionExport } from './useTransactionExport';
+import { useTransactionAllocations } from './useTransactionAllocations';
+import { useFilteredTransactions } from './transaction-list/useFilteredTransactions';
+import {
+  EMPTY_LIST_FILTERS,
+  listFilterKey,
+  type TransactionListFilters,
+} from './transaction-list/transactionListFilters';
+import type { TransactionWithDetails } from '../types';
 
 export interface PrintFilters {
   type: string;
@@ -14,38 +21,28 @@ export interface PrintFilters {
   endDate: string;
 }
 
-// ==================== SHARED UI STATE ====================
-
-export interface TransactionListUIState {
-  // Filters
-  filterType: string;
-  filterCategory: string;
-  filterMinAmount: string;
-  filterMaxAmount: string;
-  filterStartDate: string;
-  filterEndDate: string;
+export interface TransactionListUIState extends TransactionListFilters {
   showFilters: boolean;
-  // Transaction modal
   modalOpen: boolean;
   editingTransaction: TransactionWithDetails | null;
-  // View modal
   viewingTransaction: TransactionWithDetails | null;
-  // Delete confirm
-  deleteConfirm: TransactionWithDetails | null;
-  // Print
   printModalOpen: boolean;
   printPreviewOpen: boolean;
   printFilters: PrintFilters;
-  // Bulk selection
-  selectedIds: Set<number>;
-  bulkDeleteConfirm: boolean;
-  // Export preview
   exportPreviewOpen: boolean;
   exportFilters: PrintFilters;
 }
 
 export type TransactionListAction =
-  | { type: 'SET_FILTER'; filterType?: string; filterCategory?: string; filterMinAmount?: string; filterMaxAmount?: string; filterStartDate?: string; filterEndDate?: string }
+  | {
+      type: 'SET_FILTER';
+      filterType?: string;
+      filterCategory?: string;
+      filterMinAmount?: string;
+      filterMaxAmount?: string;
+      filterStartDate?: string;
+      filterEndDate?: string;
+    }
   | { type: 'CLEAR_FILTERS' }
   | { type: 'TOGGLE_FILTERS' }
   | { type: 'OPEN_NEW_TRANSACTION' }
@@ -53,41 +50,28 @@ export type TransactionListAction =
   | { type: 'VIEW_TRANSACTION'; transaction: TransactionWithDetails }
   | { type: 'CLOSE_MODAL' }
   | { type: 'CLOSE_VIEW' }
-  | { type: 'CONFIRM_DELETE'; transaction: TransactionWithDetails }
-  | { type: 'CANCEL_DELETE' }
   | { type: 'OPEN_PRINT_MODAL' }
   | { type: 'CLOSE_PRINT_MODAL' }
   | { type: 'OPEN_PRINT_PREVIEW' }
   | { type: 'CLOSE_PRINT_PREVIEW' }
   | { type: 'SET_PRINT_FILTER'; filters: Partial<PrintFilters> }
-  | { type: 'TOGGLE_SELECT'; id: number; checked?: boolean }
-  | { type: 'SELECT_ALL'; ids: number[] }
-  | { type: 'CLEAR_SELECTION' }
-  | { type: 'OPEN_BULK_DELETE' }
-  | { type: 'CANCEL_BULK_DELETE' }
   | { type: 'OPEN_EXPORT_PREVIEW' }
   | { type: 'CLOSE_EXPORT_PREVIEW' }
   | { type: 'SET_EXPORT_FILTER'; filters: Partial<PrintFilters> };
 
+const EMPTY_PRINT_FILTERS: PrintFilters = { type: '', category_id: '', startDate: '', endDate: '' };
+
 const initialUIState: TransactionListUIState = {
-  filterType: '',
-  filterCategory: '',
-  filterMinAmount: '',
-  filterMaxAmount: '',
-  filterStartDate: '',
-  filterEndDate: '',
+  ...EMPTY_LIST_FILTERS,
   showFilters: false,
   modalOpen: false,
   editingTransaction: null,
   viewingTransaction: null,
-  deleteConfirm: null,
   printModalOpen: false,
   printPreviewOpen: false,
-  printFilters: { type: '', category_id: '', startDate: '', endDate: '' },
-  selectedIds: new Set(),
-  bulkDeleteConfirm: false,
+  printFilters: EMPTY_PRINT_FILTERS,
   exportPreviewOpen: false,
-  exportFilters: { type: '', category_id: '', startDate: '', endDate: '' },
+  exportFilters: EMPTY_PRINT_FILTERS,
 };
 
 export function transactionListReducer(
@@ -106,15 +90,7 @@ export function transactionListReducer(
         filterEndDate: action.filterEndDate ?? state.filterEndDate,
       };
     case 'CLEAR_FILTERS':
-      return {
-        ...state,
-        filterType: '',
-        filterCategory: '',
-        filterMinAmount: '',
-        filterMaxAmount: '',
-        filterStartDate: '',
-        filterEndDate: '',
-      };
+      return { ...state, ...EMPTY_LIST_FILTERS };
     case 'TOGGLE_FILTERS':
       return { ...state, showFilters: !state.showFilters };
     case 'OPEN_NEW_TRANSACTION':
@@ -127,10 +103,6 @@ export function transactionListReducer(
       return { ...state, modalOpen: false, editingTransaction: null };
     case 'CLOSE_VIEW':
       return { ...state, viewingTransaction: null };
-    case 'CONFIRM_DELETE':
-      return { ...state, deleteConfirm: action.transaction };
-    case 'CANCEL_DELETE':
-      return { ...state, deleteConfirm: null };
     case 'OPEN_PRINT_MODAL':
       return { ...state, printModalOpen: true };
     case 'CLOSE_PRINT_MODAL':
@@ -141,23 +113,8 @@ export function transactionListReducer(
       return { ...state, printPreviewOpen: false };
     case 'SET_PRINT_FILTER':
       return { ...state, printFilters: { ...state.printFilters, ...action.filters } };
-    case 'TOGGLE_SELECT': {
-      const newIds = new Set(state.selectedIds);
-      const shouldSelect = action.checked !== undefined ? action.checked : !newIds.has(action.id);
-      if (shouldSelect) newIds.add(action.id);
-      else newIds.delete(action.id);
-      return { ...state, selectedIds: newIds };
-    }
-    case 'SELECT_ALL':
-      return { ...state, selectedIds: new Set(action.ids) };
-    case 'CLEAR_SELECTION':
-      return { ...state, selectedIds: new Set() };
-    case 'OPEN_BULK_DELETE':
-      return { ...state, bulkDeleteConfirm: true };
-    case 'CANCEL_BULK_DELETE':
-      return { ...state, bulkDeleteConfirm: false };
     case 'OPEN_EXPORT_PREVIEW':
-      return { ...state, exportPreviewOpen: true, exportFilters: { type: '', category_id: '', startDate: '', endDate: '' } };
+      return { ...state, exportPreviewOpen: true, exportFilters: EMPTY_PRINT_FILTERS };
     case 'CLOSE_EXPORT_PREVIEW':
       return { ...state, exportPreviewOpen: false };
     case 'SET_EXPORT_FILTER':
@@ -167,225 +124,101 @@ export function transactionListReducer(
   }
 }
 
-// ==================== HOOK OPTIONS ====================
+function matchesPrintFilters(tx: TransactionWithDetails, filters: PrintFilters): boolean {
+  if (filters.type && tx.type !== filters.type) return false;
+  if (filters.category_id && tx.category_id !== parseInt(filters.category_id)) return false;
+  if (filters.startDate && tx.date < filters.startDate) return false;
+  if (filters.endDate && tx.date > filters.endDate) return false;
+  return true;
+}
 
 interface UseTransactionListOptions {
   transactions: TransactionWithDetails[];
   loadData: () => void;
-  /** Extra filter function for page-specific filters (e.g. filterCompanyId on ProjectDetail) */
-  extraFilter?: (tx: TransactionWithDetails, ui: TransactionListUIState) => boolean;
-  /** Export filename prefix */
-  exportPrefix?: string;
-  /** Initial page size */
-  pageSize?: number;
+  extraFilter?: (tx: TransactionWithDetails) => boolean;
+  exportPrefix: string;
 }
-
-// ==================== HOOK ====================
 
 export function useTransactionList({
   transactions,
   loadData,
   extraFilter,
-  exportPrefix = 'islemler',
-  pageSize = 25,
+  exportPrefix,
 }: UseTransactionListOptions) {
   const toast = useToast();
   const { t } = useTranslation();
   const printRef = useRef<HTMLDivElement>(null);
   const [ui, dispatch] = useReducer(transactionListReducer, initialUIState);
-  const [viewingAllocations, setViewingAllocations] = useState<PaymentAllocationWithDetails[]>([]);
 
-  // Keyboard shortcuts
+  const { previewRows, exportTransactions, shareTransactions } = useTransactionExport();
+  const viewingAllocations = useTransactionAllocations(ui.viewingTransaction);
+
   useKeyboardShortcuts({
     onNew: () => dispatch({ type: 'OPEN_NEW_TRANSACTION' }),
   });
 
-  // Load allocations when viewing a payment transaction
-  useEffect(() => {
-    const tx = ui.viewingTransaction;
-    if (!tx || (tx.type !== 'payment_in' && tx.type !== 'payment_out')) {
-      setViewingAllocations([]);
-      return;
-    }
+  const filteredTransactions = useFilteredTransactions(transactions, ui, extraFilter);
 
-    let cancelled = false;
-    window.electronAPI.transaction.getAllocationsForPayment(tx.id)
-      .then((allocations) => {
-        if (!cancelled) setViewingAllocations(allocations);
-      })
-      .catch(() => {
-        if (!cancelled) setViewingAllocations([]);
-      });
+  const deletion = useTransactionDeletion(filteredTransactions, loadData);
 
-    return () => { cancelled = true; };
-  }, [ui.viewingTransaction]);
-
-  // Filtered transactions
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      if (ui.filterType && tx.type !== ui.filterType) return false;
-      if (ui.filterCategory && tx.category_id !== parseInt(ui.filterCategory)) return false;
-      if (ui.filterMinAmount) {
-        const min = parseFloat(ui.filterMinAmount);
-        if (!isNaN(min) && (tx.amount_try || tx.amount) < min) return false;
-      }
-      if (ui.filterMaxAmount) {
-        const max = parseFloat(ui.filterMaxAmount);
-        if (!isNaN(max) && (tx.amount_try || tx.amount) > max) return false;
-      }
-      if (ui.filterStartDate && tx.date < ui.filterStartDate) return false;
-      if (ui.filterEndDate && tx.date > ui.filterEndDate) return false;
-      // Extra page-specific filter
-      if (extraFilter && !extraFilter(tx, ui)) return false;
-      return true;
-    });
-  }, [transactions, ui.filterType, ui.filterCategory, ui.filterMinAmount, ui.filterMaxAmount, ui.filterStartDate, ui.filterEndDate, extraFilter]);
-
-  useEffect(() => {
-    if (ui.selectedIds.size === 0) return;
-    const visible = new Set(filteredTransactions.map((tx) => tx.id));
-    const kept = [...ui.selectedIds].filter((id) => visible.has(id));
-    if (kept.length !== ui.selectedIds.size) dispatch({ type: 'SELECT_ALL', ids: kept });
-  }, [filteredTransactions, ui.selectedIds]);
-
-  // Pagination
-  const pagination = usePagination({
-    totalItems: filteredTransactions.length,
-    initialPageSize: pageSize,
-  });
-
-  const paginatedTransactions = useMemo(() => {
-    return paginateArray(filteredTransactions, pagination.currentPage, pagination.pageSize);
-  }, [filteredTransactions, pagination.currentPage, pagination.pageSize]);
-
-  // Handlers
-  const handleDeleteTransaction = useCallback(async () => {
-    if (!ui.deleteConfirm) return;
-    try {
-      await window.electronAPI.transaction.delete(ui.deleteConfirm.id);
-      dispatch({ type: 'CANCEL_DELETE' });
-      toast.success(t('shared.transactionDeleted'));
-      invalidateCachePattern('dashboard:.*');
-      loadData();
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast.error(t('shared.deleteError'));
-    }
-  }, [ui.deleteConfirm, toast, t, loadData]);
-
-  const handleSelectAll = useCallback(
-    (ids: number[], checked: boolean) => {
-      if (checked) {
-        dispatch({ type: 'SELECT_ALL', ids });
-      } else {
-        dispatch({ type: 'CLEAR_SELECTION' });
-      }
-    },
-    []
+  const { pagination, pageItems: paginatedTransactions } = usePaginatedItems(
+    filteredTransactions,
+    listFilterKey(ui)
   );
-
-  const handleSelectOne = useCallback((id: number, checked: boolean) => {
-    dispatch({ type: 'TOGGLE_SELECT', id, checked });
-  }, []);
-
-  const handleBulkDelete = useCallback(async () => {
-    const ids = Array.from(ui.selectedIds);
-    const results = await Promise.allSettled(ids.map((txId) => window.electronAPI.transaction.delete(txId)));
-    const failed = results.filter((r) => r.status === 'rejected').length;
-    if (failed === 0) {
-      toast.success(t('shared.bulkDeleted', { count: ids.length }));
-    } else {
-      console.error('Bulk delete failures:', results.filter((r) => r.status === 'rejected'));
-      toast.error(
-        failed === ids.length
-          ? t('shared.bulkDeleteError')
-          : t('shared.bulkDeletePartial', { deleted: ids.length - failed, failed })
-      );
-    }
-    dispatch({ type: 'CLEAR_SELECTION' });
-    dispatch({ type: 'CANCEL_BULK_DELETE' });
-    invalidateCachePattern('dashboard:.*');
-    loadData();
-  }, [ui.selectedIds, toast, t, loadData]);
 
   const handleSaveTransaction = useCallback(
     (isNew: boolean) => {
       dispatch({ type: 'CLOSE_MODAL' });
       toast.success(isNew ? t('shared.transactionCreated') : t('shared.transactionUpdated'));
-      invalidateCachePattern('dashboard:.*');
       loadData();
     },
     [toast, t, loadData]
   );
 
-  // Transactions filtered by export filters
-  const exportFilteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      if (ui.exportFilters.type && tx.type !== ui.exportFilters.type) return false;
-      if (ui.exportFilters.category_id && tx.category_id !== parseInt(ui.exportFilters.category_id)) return false;
-      if (ui.exportFilters.startDate && tx.date < ui.exportFilters.startDate) return false;
-      if (ui.exportFilters.endDate && tx.date > ui.exportFilters.endDate) return false;
-      return true;
-    });
-  }, [transactions, ui.exportFilters]);
+  const exportFilteredTransactions = useMemo(
+    () => transactions.filter((tx) => matchesPrintFilters(tx, ui.exportFilters)),
+    [transactions, ui.exportFilters]
+  );
 
-  const exportPreviewData = useMemo(() => {
-    const columns = getTransactionColumns(t);
-    return formatRecordsForExport(exportFilteredTransactions, columns);
-  }, [exportFilteredTransactions, t]);
+  const printTransactions = useMemo(
+    () => transactions.filter((tx) => matchesPrintFilters(tx, ui.printFilters)),
+    [transactions, ui.printFilters]
+  );
 
-  const handleExport = useCallback(async () => {
-    try {
-      const columns = getTransactionColumns(t);
-      const formatted = formatRecordsForExport(exportFilteredTransactions, columns);
-      const { rows: summaryRows, metadata } = buildTransactionSummary(exportFilteredTransactions, t, formatted.length);
-      formatted.push(...summaryRows);
-      const filename = `${exportPrefix}_${new Date().toISOString().split('T')[0]}`;
-      await exportToCSV(exportPrefix, formatted, filename, metadata);
-    } catch (error) {
-      console.error('Export error:', error);
-      toast.error(t('common.exportError'));
-    }
-  }, [exportFilteredTransactions, exportPrefix, toast, t]);
+  const exportPreviewData = useMemo(
+    () => previewRows(exportFilteredTransactions),
+    [previewRows, exportFilteredTransactions]
+  );
 
-  const handleShare = useCallback(async () => {
-    try {
-      const columns = getTransactionColumns(t);
-      const formatted = formatRecordsForExport(exportFilteredTransactions, columns);
-      const { rows: summaryRows, metadata } = buildTransactionSummary(exportFilteredTransactions, t, formatted.length);
-      formatted.push(...summaryRows);
-      const filename = `${exportPrefix}_${new Date().toISOString().split('T')[0]}`;
-      await shareExcel(exportPrefix, formatted, filename, metadata);
-    } catch (error) {
-      console.error('Share error:', error);
-      toast.error(t('export.share.error'));
-    }
-  }, [exportFilteredTransactions, exportPrefix, toast, t]);
+  const handleExport = useCallback(
+    () => exportTransactions(exportPrefix, exportFilteredTransactions),
+    [exportTransactions, exportPrefix, exportFilteredTransactions]
+  );
+  const handleShare = useCallback(
+    () => shareTransactions(exportPrefix, filteredTransactions),
+    [shareTransactions, exportPrefix, filteredTransactions]
+  );
 
   const handlePrint = useCallback(() => {
     dispatch({ type: 'OPEN_PRINT_PREVIEW' });
   }, []);
 
   return {
-    // State
     ui,
     dispatch,
     printRef,
     viewingAllocations,
-    // Filtered & paginated
     filteredTransactions,
     paginatedTransactions,
+    printTransactions,
     pagination,
-    // Export preview data
     exportPreviewData,
-    // Handlers
-    handleDeleteTransaction,
-    handleSelectAll,
-    handleSelectOne,
-    handleBulkDelete,
+    deletion,
     handleSaveTransaction,
     handleExport,
     handleShare,
     handlePrint,
   };
 }
+
+export type TransactionList = ReturnType<typeof useTransactionList>;

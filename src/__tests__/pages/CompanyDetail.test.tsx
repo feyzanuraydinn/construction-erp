@@ -4,8 +4,6 @@ import '../../i18n';
 import CompanyDetail from '../../pages/CompanyDetail';
 import type { Company, TransactionWithDetails, Project, Category } from '../../types';
 
-// ==================== MOCKS ====================
-
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
@@ -19,8 +17,6 @@ const mockToast = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi
 vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
-
-// ==================== TEST DATA ====================
 
 const mockCompany: Company = {
   id: 1,
@@ -103,17 +99,33 @@ const mockProjects: Project[] = [
 ];
 
 const mockCategories: Category[] = [
-  { id: 1, name: 'Daire/Konut Satışı', type: 'invoice_out', color: '#3b82f6', is_default: 1, created_at: '2024-01-01' },
-  { id: 2, name: 'Beton', type: 'invoice_in', color: '#ef4444', is_default: 1, created_at: '2024-01-01' },
+  {
+    id: 1,
+    name: 'Daire/Konut Satışı',
+    type: 'invoice_out',
+    color: '#3b82f6',
+    is_default: 1,
+    created_at: '2024-01-01',
+  },
+  {
+    id: 2,
+    name: 'Beton',
+    type: 'invoice_in',
+    color: '#ef4444',
+    is_default: 1,
+    created_at: '2024-01-01',
+  },
 ];
-
-// ==================== HELPERS ====================
 
 function setupMocksWithData() {
   (window.electronAPI.company.getById as ReturnType<typeof vi.fn>).mockResolvedValue(mockCompany);
-  (window.electronAPI.transaction.getByCompany as ReturnType<typeof vi.fn>).mockResolvedValue(mockTransactions);
+  (window.electronAPI.transaction.getByCompany as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockTransactions
+  );
   (window.electronAPI.project.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
-  (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockCategories);
+  (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockCategories
+  );
 }
 
 function setupMocksEmpty() {
@@ -130,21 +142,25 @@ function setupMocksNotFound() {
   (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 }
 
-// ==================== TESTS ====================
-
 describe('CompanyDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupMocksWithData();
   });
 
-  // ---------- Loading state ----------
-
   it('should show loading spinner while data is loading', async () => {
-    (window.electronAPI.company.getById as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.transaction.getByCompany as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.project.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (window.electronAPI.company.getById as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.transaction.getByCompany as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.project.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
 
     await act(async () => {
       render(<CompanyDetail />);
@@ -152,8 +168,6 @@ describe('CompanyDetail', () => {
 
     expect(screen.getByRole('status', { name: 'Yükleniyor...' })).toBeInTheDocument();
   });
-
-  // ---------- Not found state ----------
 
   it('should show not found state when company does not exist', async () => {
     setupMocksNotFound();
@@ -186,18 +200,14 @@ describe('CompanyDetail', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/companies');
   });
 
-  // ---------- Initial render after data loads ----------
-
   it('should render company name in page title', async () => {
     await act(async () => {
       render(<CompanyDetail />);
     });
 
     await waitFor(() => {
-      // Company name may appear in both page header and print view
       const nameElements = screen.getAllByText('ABC İnşaat A.Ş.');
       expect(nameElements.length).toBeGreaterThanOrEqual(1);
-      // The first h1 with class page-title should be the main title
       const pageTitle = nameElements.find((el) => el.classList.contains('page-title'));
       expect(pageTitle).toBeDefined();
     });
@@ -209,7 +219,6 @@ describe('CompanyDetail', () => {
     });
 
     await waitFor(() => {
-      // These may appear in both main view and print view, use getAllByText
       const phoneElements = screen.getAllByText('05551234567');
       expect(phoneElements.length).toBeGreaterThanOrEqual(1);
       const emailElements = screen.getAllByText('info@abc.com');
@@ -225,7 +234,6 @@ describe('CompanyDetail', () => {
     });
 
     await waitFor(() => {
-      // "Firma Bilgileri" appears in main view, may also be in print view
       const firmaElements = screen.getAllByText('Firma Bilgileri');
       expect(firmaElements.length).toBeGreaterThanOrEqual(1);
       const taxOfficeElements = screen.getAllByText('Kadıköy VD');
@@ -234,8 +242,6 @@ describe('CompanyDetail', () => {
       expect(taxNumberElements.length).toBeGreaterThanOrEqual(1);
     });
   });
-
-  // ---------- Stats cards ----------
 
   it('should display financial stat cards', async () => {
     await act(async () => {
@@ -253,7 +259,37 @@ describe('CompanyDetail', () => {
     });
   });
 
-  // ---------- Transaction history ----------
+  it('shows an overpaid supplier as a receivable instead of a negative debt', async () => {
+    const supplierTransactions: TransactionWithDetails[] = [
+      {
+        ...mockTransactions[0],
+        id: 20,
+        type: 'invoice_in',
+        amount: 198500,
+        amount_try: 198500,
+        description: 'Alış',
+      },
+      {
+        ...mockTransactions[1],
+        id: 21,
+        type: 'payment_out',
+        amount: 208500,
+        amount_try: 208500,
+        description: 'Ödeme',
+      },
+    ];
+    vi.mocked(window.electronAPI.transaction.getByCompany).mockResolvedValue(supplierTransactions);
+
+    await act(async () => {
+      render(<CompanyDetail />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Fazla ödeme yaptık')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Biz borçluyuz')).toBeInTheDocument();
+    expect(screen.queryByText(/^-.*10\.000/)).not.toBeInTheDocument();
+  });
 
   it('should render transaction history section with transactions', async () => {
     await act(async () => {
@@ -262,7 +298,6 @@ describe('CompanyDetail', () => {
 
     await waitFor(() => {
       expect(screen.getByText('İşlem Geçmişi')).toBeInTheDocument();
-      // Transaction descriptions appear in both table and print view
       const invoiceElements = screen.getAllByText('Daire satış faturası');
       expect(invoiceElements.length).toBeGreaterThanOrEqual(1);
       const paymentElements = screen.getAllByText('Müşteriden tahsilat');
@@ -283,8 +318,6 @@ describe('CompanyDetail', () => {
     });
   });
 
-  // ---------- Header buttons ----------
-
   it('should render action buttons in header', async () => {
     await act(async () => {
       render(<CompanyDetail />);
@@ -296,8 +329,6 @@ describe('CompanyDetail', () => {
       expect(screen.getByText('Yeni İşlem')).toBeInTheDocument();
     });
   });
-
-  // ---------- Back navigation ----------
 
   it('should navigate back to companies when back button is clicked', async () => {
     await act(async () => {
@@ -317,21 +348,19 @@ describe('CompanyDetail', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/companies');
   });
 
-  // ---------- Error handling ----------
-
   it('should show error toast when API call fails', async () => {
-    (window.electronAPI.company.getById as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('DB Error'));
+    (window.electronAPI.company.getById as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('DB Error')
+    );
 
     await act(async () => {
       render(<CompanyDetail />);
     });
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith('Veriler yüklenirken hata oluştu');
+      expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('Veriler yüklenemedi:'));
     });
   });
-
-  // ---------- Table column headers ----------
 
   it('should render transaction table column headers', async () => {
     await act(async () => {
@@ -339,7 +368,6 @@ describe('CompanyDetail', () => {
     });
 
     await waitFor(() => {
-      // Column headers in transaction table
       const dateHeaders = screen.getAllByText('Tarih');
       expect(dateHeaders.length).toBeGreaterThanOrEqual(1);
       const typeHeaders = screen.getAllByText('Tür');

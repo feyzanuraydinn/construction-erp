@@ -1,56 +1,51 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  FiPlus,
-  FiSearch,
-  FiEdit2,
-  FiTrash2,
-  FiPackage,
-  FiArrowDownCircle,
-  FiArrowUpCircle,
-  FiAlertTriangle,
-} from 'react-icons/fi';
-import {
-  Card,
-  CardBody,
-  Button,
-  Input,
-  Select,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-  Badge,
-  EmptyState,
-  ConfirmDialog,
-  Pagination,
-  LoadingSpinner,
-  Divider,
-  TabGroup,
-  SelectAllCheckbox,
-  RowCheckbox,
-} from '../components/ui';
-import { MaterialModal, MovementModal } from '../components/modals';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { TabGroup } from '../components/ui/TabGroup';
+import { MaterialModal } from '../components/modals/MaterialModal';
+import { MovementModal } from '../components/modals/MovementModal';
 import { MaterialDetailView } from '../components/shared/MaterialDetailView';
 import { useToast } from '../contexts/ToastContext';
-import { useDebounce, useKeyboardShortcuts, usePagination, paginateArray, useSelection, useBulkDelete, getPaginationProps } from '../hooks';
-import { formatCurrency, formatDate, formatNumber } from '../utils/formatters';
-import { MATERIAL_CATEGORIES, MOVEMENT_TYPES } from '../utils/constants';
-import type { Material, StockMovementWithDetails, Project, Company } from '../types';
+import { useDebounce } from '../hooks/useDebounce';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { usePaginatedItems } from '../hooks/usePagination';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import type { Material } from '../types';
+import { useLoadedData } from '../hooks/useLoadedData';
+import { NO_ITEMS } from '../utils/emptyList';
+import { PageHeader } from '../components/shared/PageHeader';
+import type { StockTab } from './stock-components/stockBulkDelete';
+import { StockHeaderActions } from './stock-components/StockHeaderActions';
+import { StockBulkDeleteDialog } from './stock-components/StockBulkDeleteDialog';
+import { MaterialsCard } from './stock-components/MaterialsCard';
+import { MovementsCard } from './stock-components/MovementsCard';
+import { MaterialFilterBar } from './stock-components/MaterialFilterBar';
+import { filterMaterials } from './stock-components/materialFilters';
+
+const loadStockPage = () =>
+  Promise.all([
+    window.electronAPI.material.getAll(),
+    window.electronAPI.stock.getAll({}),
+    window.electronAPI.project.getAll(),
+    window.electronAPI.company.getAll(),
+  ]).then(([materials, movements, projects, companies]) => ({
+    materials,
+    movements,
+    projects,
+    companies,
+  }));
 
 function Stock() {
   const { t } = useTranslation();
   const toast = useToast();
-  const [materials, setMaterials] = useState<Material[]>([]);
-  const [movements, setMovements] = useState<StockMovementWithDetails[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'materials' | 'movements'>('materials');
+  const { data, loading, reload: loadData } = useLoadedData(loadStockPage, 'Stock load error:');
+  const materials = data?.materials ?? NO_ITEMS;
+  const movements = data?.movements ?? NO_ITEMS;
+  const projects = data?.projects ?? NO_ITEMS;
+  const companies = data?.companies ?? NO_ITEMS;
+  const [activeTab, setActiveTab] = useState<StockTab>('materials');
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebounce(search, 300);
+  const debouncedSearch = useDebounce(search);
   const [filterCategory, setFilterCategory] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [materialModalOpen, setMaterialModalOpen] = useState(false);
@@ -59,23 +54,6 @@ function Stock() {
   const [deleteConfirm, setDeleteConfirm] = useState<Material | null>(null);
   const [detailMaterial, setDetailMaterial] = useState<Material | null>(null);
 
-  // Bulk selection & delete hooks for materials
-  const { selectedIds: selectedMaterialIds, handleSelectAll: handleSelectAllMaterials, handleSelectOne: handleSelectOneMaterial, clearSelection: clearMaterialSelection } = useSelection();
-  const { bulkDeleteConfirm: bulkDeleteMaterialConfirm, setBulkDeleteConfirm: setBulkDeleteMaterialConfirm, handleBulkDelete: handleBulkDeleteMaterials } = useBulkDelete({
-    deleteFn: async (id) => { await window.electronAPI.material.delete(id); },
-    entityKey: 'stock',
-    onSuccess: () => { clearMaterialSelection(); loadData(); },
-  });
-
-  // Bulk selection & delete hooks for movements
-  const { selectedIds: selectedMovementIds, handleSelectAll: handleSelectAllMovements, handleSelectOne: handleSelectOneMovement, clearSelection: clearMovementSelection } = useSelection();
-  const { bulkDeleteConfirm: bulkDeleteMovementConfirm, setBulkDeleteConfirm: setBulkDeleteMovementConfirm, handleBulkDelete: handleBulkDeleteMovements } = useBulkDelete({
-    deleteFn: async (id) => { await window.electronAPI.stock.delete(id); },
-    entityKey: 'stock',
-    onSuccess: () => { clearMovementSelection(); loadData(); },
-  });
-
-  // Keyboard shortcuts - Ctrl+N opens appropriate modal based on active tab
   useKeyboardShortcuts({
     onNew: () => {
       if (activeTab === 'materials') {
@@ -86,29 +64,14 @@ function Stock() {
     },
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const openMaterialEditor = (material: Material) => {
+    setEditingMaterial(material);
+    setMaterialModalOpen(true);
+  };
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [materialsData, movementsData, projectsData, companiesData] = await Promise.all([
-        window.electronAPI.material.getAll(),
-        window.electronAPI.stock.getAll({}),
-        window.electronAPI.project.getAll(),
-        window.electronAPI.company.getAll(),
-      ]);
-      setMaterials(materialsData);
-      setMovements(movementsData);
-      setProjects(projectsData);
-      setCompanies(companiesData);
-    } catch (error) {
-      console.error('Load error:', error);
-      toast.error(t('common.loadError'));
-    } finally {
-      setLoading(false);
-    }
+  const closeMaterialModal = () => {
+    setMaterialModalOpen(false);
+    setEditingMaterial(null);
   };
 
   const handleDeleteMaterial = async () => {
@@ -125,377 +88,111 @@ function Stock() {
   };
 
   const handleMaterialSave = (isNew: boolean) => {
-    setMaterialModalOpen(false);
-    setEditingMaterial(null);
+    closeMaterialModal();
     toast.success(isNew ? t('stock.materialCreateSuccess') : t('stock.materialUpdateSuccess'));
     loadData();
   };
 
-  const handleMovementSave = (_isNew: boolean) => {
+  const handleMovementSave = () => {
     setMovementModalOpen(false);
     toast.success(t('stock.movementSaveSuccess'));
     loadData();
   };
 
-  const filteredMaterials = useMemo(() => {
-    return materials.filter((m) => {
-      const matchesSearch =
-        m.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        m.code.toLowerCase().includes(debouncedSearch.toLowerCase());
-      const matchesCategory = !filterCategory || m.category === filterCategory;
-      const matchesStatus =
-        !filterStatus ||
-        (filterStatus === 'low' && m.current_stock < m.min_stock) ||
-        (filterStatus === 'ok' && m.current_stock >= m.min_stock);
-      return matchesSearch && matchesCategory && matchesStatus;
-    });
-  }, [materials, debouncedSearch, filterCategory, filterStatus]);
+  const filteredMaterials = useMemo(
+    () => filterMaterials(materials, debouncedSearch, filterCategory, filterStatus),
+    [materials, debouncedSearch, filterCategory, filterStatus]
+  );
 
-  // Pagination for materials
-  const materialsPagination = usePagination({
-    totalItems: filteredMaterials.length,
-    initialPageSize: 25,
+  const materialSelection = useBulkSelection({
+    visibleItems: filteredMaterials,
+    deleteFn: (id) => window.electronAPI.material.delete(id),
+    entityKey: 'stock',
+    successKey: 'stock.bulkDeleteMaterialSuccess',
+    onDeleted: loadData,
   });
 
-  // Pagination for movements
-  const movementsPagination = usePagination({
-    totalItems: movements.length,
-    initialPageSize: 25,
+  const movementSelection = useBulkSelection({
+    visibleItems: movements,
+    deleteFn: (id) => window.electronAPI.stock.delete(id),
+    entityKey: 'stock',
+    successKey: 'stock.bulkDeleteMovementSuccess',
+    onDeleted: loadData,
   });
 
-  // Reset to first page when filters change
-  useEffect(() => {
-    materialsPagination.goToPage(1);
-  }, [debouncedSearch, filterCategory, filterStatus]);
-
-  const paginatedMaterials = useMemo(() => {
-    return paginateArray(
-      filteredMaterials,
-      materialsPagination.currentPage,
-      materialsPagination.pageSize
-    );
-  }, [filteredMaterials, materialsPagination.currentPage, materialsPagination.pageSize]);
-
-  const paginatedMovements = useMemo(() => {
-    return paginateArray(movements, movementsPagination.currentPage, movementsPagination.pageSize);
-  }, [movements, movementsPagination.currentPage, movementsPagination.pageSize]);
+  const { pagination: materialsPagination, pageItems: paginatedMaterials } = usePaginatedItems(
+    filteredMaterials,
+    JSON.stringify([debouncedSearch, filterCategory, filterStatus])
+  );
+  const { pagination: movementsPagination, pageItems: paginatedMovements } = usePaginatedItems(
+    movements,
+    ''
+  );
 
   return (
     <div className="page-container">
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">{t('stock.title')}</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t('stock.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {activeTab === 'materials' && selectedMaterialIds.size > 0 && (
-            <>
-              <Button variant="ghost-danger" size="sm" icon={FiTrash2} onClick={() => setBulkDeleteMaterialConfirm(true)}>
-                {t('stock.bulkDeleteMaterials', { count: selectedMaterialIds.size })}
-              </Button>
-              <Divider />
-            </>
-          )}
-          {activeTab === 'movements' && selectedMovementIds.size > 0 && (
-            <>
-              <Button variant="ghost-danger" size="sm" icon={FiTrash2} onClick={() => setBulkDeleteMovementConfirm(true)}>
-                {t('stock.bulkDeleteMovements', { count: selectedMovementIds.size })}
-              </Button>
-              <Divider />
-            </>
-          )}
-          <Button
-            variant="secondary"
-            icon={FiArrowDownCircle}
-            onClick={() => setMovementModalOpen(true)}
-          >
-            {t('stock.stockMovement')}
-          </Button>
-          <Button icon={FiPlus} onClick={() => setMaterialModalOpen(true)}>
-            {t('stock.newMaterial')}
-          </Button>
-        </div>
-      </div>
+      <PageHeader title={t('stock.title')} subtitle={t('stock.subtitle')}>
+        <StockHeaderActions
+          activeTab={activeTab}
+          selection={activeTab === 'materials' ? materialSelection : movementSelection}
+          onNewMovement={() => setMovementModalOpen(true)}
+          onNewMaterial={() => setMaterialModalOpen(true)}
+        />
+      </PageHeader>
 
-      {/* Tabs */}
       <TabGroup
         tabs={[
           { key: 'materials', label: t('stock.materialsTab') },
           { key: 'movements', label: t('stock.movementsTab') },
         ]}
         activeTab={activeTab}
-        onChange={(key) => setActiveTab(key as 'materials' | 'movements')}
+        onChange={setActiveTab}
         className="mb-6"
       />
 
       {activeTab === 'materials' && (
         <>
-          {/* Filters */}
-          <Card className="mb-6">
-            <CardBody>
-              <div className="flex flex-wrap gap-4">
-                <div className="flex-1 min-w-[200px]">
-                  <Input
-                    placeholder={t('stock.searchPlaceholder')}
-                    icon={FiSearch}
-                    value={search}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
-                  />
-                </div>
-                <div className="w-40">
-                  <Select
-                    options={MATERIAL_CATEGORIES}
-                    value={filterCategory}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                      setFilterCategory(e.target.value)
-                    }
-                    placeholder={t('stock.filterCategory')}
-                  />
-                </div>
-                <div className="w-40">
-                  <Select
-                    options={[
-                      { value: 'low', label: t('stock.criticalStock') },
-                      { value: 'ok', label: t('stock.normalStock') },
-                    ]}
-                    value={filterStatus}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                      setFilterStatus(e.target.value)
-                    }
-                    placeholder={t('stock.filterStatus')}
-                  />
-                </div>
-              </div>
-            </CardBody>
-          </Card>
+          <MaterialFilterBar
+            search={search}
+            onSearch={setSearch}
+            category={filterCategory}
+            onCategoryChange={setFilterCategory}
+            status={filterStatus}
+            onStatusChange={setFilterStatus}
+          />
 
-          {/* Materials Table */}
-          <Card>
-            <CardBody className="p-0">
-              {loading ? (
-                <LoadingSpinner />
-              ) : filteredMaterials.length === 0 ? (
-                <EmptyState
-                  icon={FiPackage}
-                  title={t('stock.noMaterials')}
-                  description={t('stock.noMaterialsDesc')}
-                  action={() => setMaterialModalOpen(true)}
-                  actionLabel={t('stock.newMaterial')}
-                  actionIcon={FiPlus}
-                />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow hover={false}>
-                      <TableHead className="w-10">
-                        <SelectAllCheckbox
-                          itemIds={paginatedMaterials.map(m => m.id)}
-                          selectedIds={selectedMaterialIds}
-                          onSelectAll={handleSelectAllMaterials}
-                        />
-                      </TableHead>
-                      <TableHead>{t('stock.table.code')}</TableHead>
-                      <TableHead>{t('stock.table.materialName')}</TableHead>
-                      <TableHead>{t('stock.table.category')}</TableHead>
-                      <TableHead>{t('stock.table.unit')}</TableHead>
-                      <TableHead className="text-right">{t('stock.table.currentStock')}</TableHead>
-                      <TableHead className="text-right">{t('stock.table.minStock')}</TableHead>
-                      <TableHead className="text-center">{t('stock.table.status')}</TableHead>
-                      <TableHead className="text-center">{t('stock.table.actions')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedMaterials.map((material) => {
-                      const isLowStock = material.current_stock < material.min_stock;
-                      return (
-                        <TableRow
-                          key={material.id}
-                          selected={selectedMaterialIds.has(material.id)}
-                          onClick={() => setDetailMaterial(material)}
-                        >
-                          <TableCell onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                            <RowCheckbox
-                              id={material.id}
-                              selectedIds={selectedMaterialIds}
-                              onSelectOne={handleSelectOneMaterial}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-mono text-sm text-gray-500 dark:text-gray-400">{material.code}</span>
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-medium text-gray-900 dark:text-gray-100">{material.name}</span>
-                          </TableCell>
-                          <TableCell>
-                            {t(MATERIAL_CATEGORIES.find((c) => c.value === material.category)?.label ?? '', material.category || '-')}
-                          </TableCell>
-                          <TableCell>{material.unit}</TableCell>
-                          <TableCell
-                            className={`text-right font-medium ${isLowStock ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}
-                          >
-                            {formatNumber(material.current_stock, 2)}
-                          </TableCell>
-                          <TableCell className="text-right text-gray-500 dark:text-gray-400">
-                            {formatNumber(material.min_stock, 2)}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {isLowStock ? (
-                              <Badge variant="danger">
-                                <FiAlertTriangle size={12} className="mr-1" /> {t('stock.table.critical')}
-                              </Badge>
-                            ) : (
-                              <Badge variant="success">{t('stock.table.normal')}</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div
-                              className="flex items-center justify-center gap-1"
-                              onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                            >
-                              <Button
-                                variant="ghost-warning"
-                                size="icon"
-                                icon={FiEdit2}
-                                onClick={() => {
-                                  setEditingMaterial(material);
-                                  setMaterialModalOpen(true);
-                                }}
-                                title={t('common.edit')}
-                              />
-                              <Button
-                                variant="ghost-danger"
-                                size="icon"
-                                icon={FiTrash2}
-                                onClick={() => setDeleteConfirm(material)}
-                                title={t('common.delete')}
-                              />
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              )}
-              {filteredMaterials.length > 0 && (
-                <Pagination {...getPaginationProps(materialsPagination)} />
-              )}
-            </CardBody>
-          </Card>
+          <MaterialsCard
+            loading={loading}
+            materials={paginatedMaterials}
+            totalCount={filteredMaterials.length}
+            pagination={materialsPagination}
+            selection={materialSelection}
+            onNew={() => setMaterialModalOpen(true)}
+            onOpen={setDetailMaterial}
+            onEdit={openMaterialEditor}
+            onDelete={setDeleteConfirm}
+          />
         </>
       )}
 
       {activeTab === 'movements' && (
-        <Card>
-          <CardBody className="p-0">
-            {loading ? (
-              <LoadingSpinner className="py-12" />
-            ) : movements.length === 0 ? (
-              <EmptyState
-                icon={FiPackage}
-                title={t('stock.noMovements')}
-                action={() => setMovementModalOpen(true)}
-                actionLabel={t('stock.newMovement')}
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow hover={false}>
-                    <TableHead className="w-10">
-                      <SelectAllCheckbox
-                        itemIds={paginatedMovements.map(m => m.id)}
-                        selectedIds={selectedMovementIds}
-                        onSelectAll={handleSelectAllMovements}
-                      />
-                    </TableHead>
-                    <TableHead>{t('stock.table.date')}</TableHead>
-                    <TableHead>{t('stock.table.type')}</TableHead>
-                    <TableHead>{t('stock.table.material')}</TableHead>
-                    <TableHead className="text-right">{t('stock.table.quantity')}</TableHead>
-                    <TableHead>{t('stock.table.project')}</TableHead>
-                    <TableHead>{t('stock.table.supplier')}</TableHead>
-                    <TableHead className="text-right">{t('stock.table.amount')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedMovements.map((movement) => (
-                    <TableRow
-                      key={movement.id}
-                      selected={selectedMovementIds.has(movement.id)}
-                    >
-                      <TableCell>
-                        <RowCheckbox
-                          id={movement.id}
-                          selectedIds={selectedMovementIds}
-                          onSelectOne={handleSelectOneMovement}
-                        />
-                      </TableCell>
-                      <TableCell>{formatDate(movement.date)}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            movement.movement_type === 'in'
-                              ? 'success'
-                              : movement.movement_type === 'out'
-                                ? 'danger'
-                                : 'warning'
-                          }
-                        >
-                          {movement.movement_type === 'in' && (
-                            <FiArrowDownCircle size={12} className="mr-1" />
-                          )}
-                          {movement.movement_type === 'out' && (
-                            <FiArrowUpCircle size={12} className="mr-1" />
-                          )}
-                          {t(MOVEMENT_TYPES.find((mt) => mt.value === movement.movement_type)?.label ?? '', movement.movement_type)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-medium">{movement.material_name}</span>
-                        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{movement.material_code}</span>
-                      </TableCell>
-                      <TableCell
-                        className={`text-right font-medium ${
-                          movement.movement_type === 'in'
-                            ? 'text-green-600 dark:text-green-400'
-                            : movement.movement_type === 'adjustment'
-                              ? 'text-gray-700 dark:text-gray-300'
-                              : 'text-red-600 dark:text-red-400'
-                        }`}
-                      >
-                        {movement.movement_type === 'in' ? '+' : movement.movement_type === 'adjustment' ? '= ' : '-'}
-                        {formatNumber(movement.quantity, 2)} {movement.material_unit}
-                      </TableCell>
-                      <TableCell>{movement.project_name || '-'}</TableCell>
-                      <TableCell>{movement.company_name || '-'}</TableCell>
-                      <TableCell className="text-right">
-                        {movement.total_price ? formatCurrency(movement.total_price) : '-'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-            {movements.length > 0 && (
-              <Pagination {...getPaginationProps(movementsPagination)} />
-            )}
-          </CardBody>
-        </Card>
+        <MovementsCard
+          loading={loading}
+          movements={paginatedMovements}
+          totalCount={movements.length}
+          pagination={movementsPagination}
+          selection={movementSelection}
+          onNew={() => setMovementModalOpen(true)}
+        />
       )}
 
-      {/* Material Modal */}
       <MaterialModal
         isOpen={materialModalOpen}
-        onClose={() => {
-          setMaterialModalOpen(false);
-          setEditingMaterial(null);
-        }}
+        onClose={closeMaterialModal}
         material={editingMaterial}
         onSave={handleMaterialSave}
       />
 
-      {/* Movement Modal */}
       <MovementModal
         isOpen={movementModalOpen}
         onClose={() => setMovementModalOpen(false)}
@@ -505,7 +202,6 @@ function Stock() {
         onSave={handleMovementSave}
       />
 
-      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
@@ -516,36 +212,14 @@ function Stock() {
         confirmText={t('common.delete')}
       />
 
-      {/* Bulk Delete Materials Confirmation */}
-      <ConfirmDialog
-        isOpen={bulkDeleteMaterialConfirm}
-        onClose={() => setBulkDeleteMaterialConfirm(false)}
-        onConfirm={() => handleBulkDeleteMaterials(selectedMaterialIds)}
-        title={t('stock.bulkDeleteTitle')}
-        message={t('stock.bulkDeleteMaterialMessage', { count: selectedMaterialIds.size })}
-        type="danger"
-        confirmText={t('stock.bulkDeleteMaterialConfirm', { count: selectedMaterialIds.size })}
-      />
+      <StockBulkDeleteDialog tab="materials" selection={materialSelection} />
 
-      {/* Bulk Delete Movements Confirmation */}
-      <ConfirmDialog
-        isOpen={bulkDeleteMovementConfirm}
-        onClose={() => setBulkDeleteMovementConfirm(false)}
-        onConfirm={() => handleBulkDeleteMovements(selectedMovementIds)}
-        title={t('stock.bulkDeleteTitle')}
-        message={t('stock.bulkDeleteMovementMessage', { count: selectedMovementIds.size })}
-        type="danger"
-        confirmText={t('stock.bulkDeleteMovementConfirm', { count: selectedMovementIds.size })}
-      />
+      <StockBulkDeleteDialog tab="movements" selection={movementSelection} />
 
-      {/* Material Detail Modal */}
       <MaterialDetailView
         material={detailMaterial}
         onClose={() => setDetailMaterial(null)}
-        onEdit={(material) => {
-          setEditingMaterial(material);
-          setMaterialModalOpen(true);
-        }}
+        onEdit={openMaterialEditor}
       />
     </div>
   );

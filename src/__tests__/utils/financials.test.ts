@@ -4,10 +4,11 @@ import {
   calculateCompanyFinancials,
   calculateTransactionTotals,
   calculateDashboardFinancials,
+  splitNetBalance,
+  sumNetPositions,
 } from '../../utils/financials';
 import type { TransactionWithDetails } from '../../types';
 
-// Minimal transaction factory — includes all required Transaction fields
 function makeTx(overrides: Partial<TransactionWithDetails> = {}): TransactionWithDetails {
   return {
     id: 1,
@@ -57,11 +58,10 @@ describe('financials', () => {
       expect(result.totalPaymentIn).toBe(400);
       expect(result.totalInvoiceIn).toBe(200);
       expect(result.totalPaymentOut).toBe(100);
-      expect(result.totalIncome).toBe(800); // only invoices out
-      expect(result.totalExpense).toBe(200); // only invoices in
-      expect(result.netProfit).toBe(600); // 800 - 200
-      expect(result.netCashFlow).toBe(300); // 400 - 100
-      // netBalance = receivable - payable = (800 - 400) - (200 - 100) = 400 - 100 = 300
+      expect(result.totalIncome).toBe(800);
+      expect(result.totalExpense).toBe(200);
+      expect(result.netProfit).toBe(600);
+      expect(result.netCashFlow).toBe(300);
       expect(result.netBalance).toBe(300);
     });
 
@@ -88,18 +88,14 @@ describe('financials', () => {
     });
 
     it('should calculate income from invoice_out', () => {
-      const transactions = [
-        makeTx({ type: 'invoice_out', amount_try: 1000 }),
-      ];
+      const transactions = [makeTx({ type: 'invoice_out', amount_try: 1000 })];
 
       const result = calculateProjectFinancials(transactions);
       expect(result.totalIncome).toBe(1000);
     });
 
     it('does not count a collection without an invoice as income: it is an advance received', () => {
-      const transactions = [
-        makeTx({ type: 'payment_in', amount_try: 500, company_id: 3 }),
-      ];
+      const transactions = [makeTx({ type: 'payment_in', amount_try: 500, company_id: 3 })];
 
       const result = calculateProjectFinancials(transactions);
       expect(result.totalIncome).toBe(0);
@@ -156,7 +152,6 @@ describe('financials', () => {
       ];
 
       const result = calculateProjectFinancials(transactions);
-      // Invoice out = 1000, linked payment = not counted as independent
       expect(result.totalIncome).toBe(1000);
     });
 
@@ -177,19 +172,14 @@ describe('financials', () => {
     });
 
     it('should handle budget usage', () => {
-      const transactions = [
-        makeTx({ type: 'invoice_in', amount_try: 500 }),
-      ];
+      const transactions = [makeTx({ type: 'invoice_in', amount_try: 500 })];
 
       const result = calculateProjectFinancials(transactions, 'own', 1000);
-      // budgetUsed = totalExpense / estimatedBudget
       expect(result.budgetUsed).toBeGreaterThan(0);
     });
 
     it('should handle null budget', () => {
-      const transactions = [
-        makeTx({ type: 'invoice_in', amount_try: 500 }),
-      ];
+      const transactions = [makeTx({ type: 'invoice_in', amount_try: 500 })];
 
       const result = calculateProjectFinancials(transactions, 'own', null);
       expect(result.estimatedProfit).toBeNull();
@@ -279,7 +269,7 @@ describe('financials', () => {
 
     it('should maintain precision for company financials', () => {
       const transactions = [
-        makeTx({ type: 'invoice_out', amount_try: 1000.50 }),
+        makeTx({ type: 'invoice_out', amount_try: 1000.5 }),
         makeTx({ type: 'payment_in', amount_try: 999.99 }),
       ];
       const result = calculateCompanyFinancials(transactions);
@@ -314,7 +304,7 @@ describe('financials', () => {
       ];
 
       const result = calculateCompanyFinancials(transactions);
-      expect(result.receivable).toBe(400); // 1000 - 600
+      expect(result.receivable).toBe(400);
     });
 
     it('should calculate payable correctly', () => {
@@ -324,7 +314,7 @@ describe('financials', () => {
       ];
 
       const result = calculateCompanyFinancials(transactions);
-      expect(result.payable).toBe(500); // 800 - 300
+      expect(result.payable).toBe(500);
     });
 
     it('should calculate balance', () => {
@@ -336,10 +326,65 @@ describe('financials', () => {
       ];
 
       const result = calculateCompanyFinancials(transactions);
-      // receivable = 1000-600 = 400
-      // payable = 500-200 = 300
-      // balance = 400 - 300 = 100
       expect(result.balance).toBe(100);
+      expect(result.receivable).toBe(100);
+      expect(result.payable).toBe(0);
+    });
+
+    it('shows an overpaid supplier as a receivable, never as a negative debt', () => {
+      const transactions = [
+        makeTx({ type: 'invoice_in', amount_try: 198500 }),
+        makeTx({ type: 'payment_out', amount_try: 208500 }),
+      ];
+
+      const result = calculateCompanyFinancials(transactions);
+      expect(result.balance).toBe(10000);
+      expect(result.receivable).toBe(10000);
+      expect(result.payable).toBe(0);
+      expect(result.receivableFromOverpayment).toBe(true);
+      expect(result.payableFromOverpayment).toBe(false);
+    });
+
+    it('shows a customer who paid too much as a debt we owe', () => {
+      const transactions = [
+        makeTx({ type: 'invoice_out', amount_try: 50000 }),
+        makeTx({ type: 'payment_in', amount_try: 80000 }),
+      ];
+
+      const result = calculateCompanyFinancials(transactions);
+      expect(result.receivable).toBe(0);
+      expect(result.payable).toBe(30000);
+      expect(result.payableFromOverpayment).toBe(true);
+    });
+
+    it('does not call an ordinary receivable an overpayment', () => {
+      const result = calculateCompanyFinancials([
+        makeTx({ type: 'invoice_out', amount_try: 500000 }),
+        makeTx({ type: 'payment_in', amount_try: 353500 }),
+      ]);
+      expect(result.receivable).toBe(146500);
+      expect(result.receivableFromOverpayment).toBe(false);
+    });
+  });
+
+  describe('splitNetBalance', () => {
+    it('puts the net on exactly one side', () => {
+      expect(splitNetBalance(250)).toEqual({ receivable: 250, payable: 0 });
+      expect(splitNetBalance(-75)).toEqual({ receivable: 0, payable: 75 });
+      expect(splitNetBalance(0.001)).toEqual({ receivable: 0, payable: 0 });
+    });
+  });
+
+  describe('sumNetPositions', () => {
+    it('nets each account on its own before adding them up', () => {
+      const result = sumNetPositions([
+        makeTx({ company_id: 1, type: 'invoice_out', amount_try: 500000 }),
+        makeTx({ company_id: 1, type: 'payment_in', amount_try: 353500 }),
+        makeTx({ company_id: 2, type: 'invoice_in', amount_try: 198500 }),
+        makeTx({ company_id: 2, type: 'payment_out', amount_try: 208500 }),
+        makeTx({ company_id: 3, type: 'invoice_in', amount_try: 40000 }),
+      ]);
+      expect(result).toEqual({ receivable: 156500, payable: 40000 });
     });
   });
 });

@@ -4,8 +4,6 @@ import '../../i18n';
 import Projects from '../../pages/Projects';
 import type { ProjectWithSummary } from '../../types';
 
-// ==================== MOCKS ====================
-
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
@@ -19,8 +17,6 @@ vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
 
-// ==================== HELPERS ====================
-
 const mockProjects: ProjectWithSummary[] = [
   {
     id: 1,
@@ -31,8 +27,6 @@ const mockProjects: ProjectWithSummary[] = [
     project_type: 'residential',
     estimated_budget: 5000000,
     is_active: 1,
-    total_invoice_out: 3000000,
-    total_invoice_in: 2000000,
     total_income: 3000000,
     total_expense: 2000000,
     total_collected: 2500000,
@@ -52,8 +46,6 @@ const mockProjects: ProjectWithSummary[] = [
     project_type: 'villa',
     estimated_budget: 10000000,
     is_active: 1,
-    total_invoice_out: 4000000,
-    total_invoice_in: 3000000,
     total_income: 4000000,
     total_expense: 3000000,
     total_collected: 3500000,
@@ -73,8 +65,6 @@ const mockProjects: ProjectWithSummary[] = [
     project_type: 'commercial',
     estimated_budget: 15000000,
     is_active: 1,
-    total_invoice_out: 12000000,
-    total_invoice_in: 10000000,
     total_income: 12000000,
     total_expense: 10000000,
     total_collected: 11000000,
@@ -87,16 +77,12 @@ const mockProjects: ProjectWithSummary[] = [
   },
 ];
 
-// ==================== TESTS ====================
-
 describe('Projects', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   });
-
-  // ---------- Initial render ----------
 
   it('should render page title and subtitle', async () => {
     await act(async () => {
@@ -110,14 +96,15 @@ describe('Projects', () => {
   });
 
   it('should render the new project button in header', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockProjects
+    );
 
     await act(async () => {
       render(<Projects />);
     });
 
     await waitFor(() => {
-      // When data is loaded, there is only the header button (no empty state action)
       const buttons = screen.getAllByText('Yeni Proje');
       expect(buttons.length).toBeGreaterThanOrEqual(1);
     });
@@ -133,21 +120,20 @@ describe('Projects', () => {
     });
   });
 
-  // ---------- Loading state ----------
-
   it('should show loading spinner while data is loading', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
 
     await act(async () => {
       render(<Projects />);
     });
 
-    // Title should be visible since it's outside the loading conditional
     expect(screen.getByText('Projeler')).toBeInTheDocument();
   });
-
-  // ---------- Empty state ----------
 
   it('should show empty state when no projects exist', async () => {
     await act(async () => {
@@ -160,10 +146,10 @@ describe('Projects', () => {
     });
   });
 
-  // ---------- Data rendering ----------
-
   it('should render projects in the table', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockProjects
+    );
 
     await act(async () => {
       render(<Projects />);
@@ -177,7 +163,9 @@ describe('Projects', () => {
   });
 
   it('tells what a delete affects: own transactions go, tagged account transactions stay', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockProjects
+    );
     (window.electronAPI.project.getRelatedCounts as ReturnType<typeof vi.fn>).mockResolvedValue({
       transactionCount: 3,
       linkedTransactionCount: 2,
@@ -204,7 +192,9 @@ describe('Projects', () => {
   });
 
   it('should render project codes', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockProjects
+    );
 
     await act(async () => {
       render(<Projects />);
@@ -218,7 +208,9 @@ describe('Projects', () => {
   });
 
   it('should render table column headers', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockProjects
+    );
 
     await act(async () => {
       render(<Projects />);
@@ -227,7 +219,6 @@ describe('Projects', () => {
     await waitFor(() => {
       expect(screen.getByText('Kod')).toBeInTheDocument();
       expect(screen.getByText('Proje Adı')).toBeInTheDocument();
-      // "Sahiplik" appears in both filter and table header — check at least one
       expect(screen.getAllByText('Sahiplik').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Bütçe')).toBeInTheDocument();
       expect(screen.getByText('Gider')).toBeInTheDocument();
@@ -236,7 +227,9 @@ describe('Projects', () => {
   });
 
   it('should show client name under project name for client projects', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockProjects
+    );
 
     await act(async () => {
       render(<Projects />);
@@ -246,8 +239,6 @@ describe('Projects', () => {
       expect(screen.getByText('ABC İnşaat')).toBeInTheDocument();
     });
   });
-
-  // ---------- Search interaction ----------
 
   it('should have a search input with correct placeholder', async () => {
     await act(async () => {
@@ -260,7 +251,9 @@ describe('Projects', () => {
   });
 
   it('should filter projects when searching', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockProjects
+    );
 
     await act(async () => {
       render(<Projects />);
@@ -280,10 +273,10 @@ describe('Projects', () => {
     });
   });
 
-  // ---------- Navigation ----------
-
   it('should navigate to project detail when a row is clicked', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockProjects
+    );
 
     await act(async () => {
       render(<Projects />);
@@ -300,21 +293,19 @@ describe('Projects', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/projects/1');
   });
 
-  // ---------- Error handling ----------
-
   it('should show error toast when loading fails', async () => {
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('DB Error'));
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('DB Error')
+    );
 
     await act(async () => {
       render(<Projects />);
     });
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith('Veriler yüklenirken hata oluştu');
+      expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('Veriler yüklenemedi:'));
     });
   });
-
-  // ---------- Empty state action ----------
 
   it('should show new project button in empty state', async () => {
     await act(async () => {
@@ -322,7 +313,6 @@ describe('Projects', () => {
     });
 
     await waitFor(() => {
-      // The empty state has the "Yeni Proje" action button
       const buttons = screen.getAllByText('Yeni Proje');
       expect(buttons.length).toBeGreaterThanOrEqual(1);
     });

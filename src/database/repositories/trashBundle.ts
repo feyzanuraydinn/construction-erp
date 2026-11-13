@@ -1,4 +1,7 @@
 import type { Database as SqlJsDatabase } from 'sql.js';
+import { queryRows } from '../sqlQuery';
+import { z } from 'zod';
+import { createColumnLookup, inList, toSqlValue } from './trash/bundleSql';
 
 export const BUNDLE_TABLES = [
   'companies',
@@ -31,20 +34,17 @@ export const BUNDLE_KEY = '__bundle';
 
 export const RESTORE_PARENT_MISSING = 'parent_missing';
 
-function selectRows(db: SqlJsDatabase, sql: string, params: unknown[] = []): Row[] {
-  const stmt = db.prepare(sql);
-  try {
-    if (params.length > 0) stmt.bind(params);
-    const rows: Row[] = [];
-    while (stmt.step()) rows.push(stmt.getAsObject());
-    return rows;
-  } finally {
-    stmt.free();
-  }
-}
+export type RestoreProblem =
+  | typeof RESTORE_PARENT_MISSING
+  | 'not_found'
+  | 'invalid_data'
+  | 'unknown_type'
+  | 'failed';
 
-function inList(ids: number[]): string {
-  return ids.length > 0 ? `(${ids.map(() => '?').join(', ')})` : '(NULL)';
+export interface RestoreResult {
+  success: boolean;
+  error?: RestoreProblem;
+  detail?: string;
 }
 
 class BundleBuilder {
@@ -54,7 +54,7 @@ class BundleBuilder {
   constructor(private readonly db: SqlJsDatabase) {}
 
   addRows(table: BundleTable, where: string, params: unknown[]): void {
-    const found = selectRows(this.db, `SELECT * FROM ${table} WHERE (${where})`, params);
+    const found = queryRows<Row>(this.db, `SELECT * FROM ${table} WHERE (${where})`, params);
     let byId = this.rows.get(table);
     if (!byId) {
       byId = new Map();
@@ -64,7 +64,7 @@ class BundleBuilder {
   }
 
   addLinks(table: BundleTable, column: string, where: string, params: unknown[]): void {
-    const found = selectRows(
+    const found = queryRows<Row>(
       this.db,
       `SELECT id, ${column} AS value FROM ${table} WHERE (${where}) AND ${column} IS NOT NULL`,
       params
@@ -82,7 +82,9 @@ class BundleBuilder {
   build(): TrashBundle {
     const rows: Partial<Record<BundleTable, Row[]>> = {};
     for (const [table, byId] of this.rows) rows[table] = [...byId.values()];
-    const links = [...this.links.values()].filter((link) => !this.rows.get(link.table)?.has(link.id));
+    const links = [...this.links.values()].filter(
+      (link) => !this.rows.get(link.table)?.has(link.id)
+    );
     return { version: 1, rows, links };
   }
 }
@@ -92,7 +94,12 @@ function addProjects(builder: BundleBuilder, projectIds: number[]): void {
   const inProjects = inList(projectIds);
   builder.addRows('projects', `id IN ${inProjects}`, projectIds);
   builder.addRows('transactions', `project_id IN ${inProjects} AND scope = 'project'`, projectIds);
-  builder.addLinks('transactions', 'project_id', `project_id IN ${inProjects} AND scope != 'project'`, projectIds);
+  builder.addLinks(
+    'transactions',
+    'project_id',
+    `project_id IN ${inProjects} AND scope != 'project'`,
+    projectIds
+  );
   builder.addRows('project_parties', `project_id IN ${inProjects}`, projectIds);
   builder.addLinks('stock_movements', 'project_id', `project_id IN ${inProjects}`, projectIds);
 }
@@ -106,15 +113,22 @@ function addTransactionDependents(builder: BundleBuilder): void {
     `payment_id IN ${inTransactions} OR invoice_id IN ${inTransactions}`,
     [...transactionIds, ...transactionIds]
   );
-  builder.addLinks('transactions', 'linked_invoice_id', `linked_invoice_id IN ${inTransactions}`, transactionIds);
+  builder.addLinks(
+    'transactions',
+    'linked_invoice_id',
+    `linked_invoice_id IN ${inTransactions}`,
+    transactionIds
+  );
 }
 
 export function collectCompanyBundle(db: SqlJsDatabase, companyId: number): TrashBundle {
   const builder = new BundleBuilder(db);
   builder.addRows('companies', 'id = ?', [companyId]);
-  const clientProjectIds = selectRows(db, 'SELECT id FROM projects WHERE client_company_id = ?', [companyId]).map(
-    (row) => Number(row.id)
-  );
+  const clientProjectIds = queryRows<Row>(
+    db,
+    'SELECT id FROM projects WHERE client_company_id = ?',
+    [companyId]
+  ).map((row) => Number(row.id));
   addProjects(builder, clientProjectIds);
   builder.addRows('transactions', 'company_id = ?', [companyId]);
   builder.addRows('project_parties', 'company_id = ?', [companyId]);
@@ -164,67 +178,47 @@ export function moveToTrash(
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+const rowListSchema = z.array(z.record(z.string(), z.unknown())).optional();
 
-function isBundleTable(value: unknown): value is BundleTable {
-  return BUNDLE_TABLES.some((table) => table === value);
-}
+const bundleSchema = z.object({
+  [BUNDLE_KEY]: z.object({
+    version: z.literal(1),
+    rows: z.object({
+      companies: rowListSchema,
+      projects: rowListSchema,
+      materials: rowListSchema,
+      transactions: rowListSchema,
+      project_parties: rowListSchema,
+      payment_allocations: rowListSchema,
+      stock_movements: rowListSchema,
+    }),
+    links: z.array(
+      z.object({
+        table: z.enum(BUNDLE_TABLES),
+        id: z.number(),
+        column: z.string(),
+        value: z.number(),
+      })
+    ),
+  }),
+});
 
 export function readBundle(data: unknown): TrashBundle | null {
-  if (!isRecord(data)) return null;
-  const raw = data[BUNDLE_KEY];
-  if (!isRecord(raw) || raw.version !== 1 || !isRecord(raw.rows) || !Array.isArray(raw.links)) return null;
-
-  const rows: Partial<Record<BundleTable, Row[]>> = {};
+  const parsed = bundleSchema.safeParse(data);
+  if (!parsed.success) return null;
+  const { rows, links } = parsed.data[BUNDLE_KEY];
+  const present: Partial<Record<BundleTable, Row[]>> = {};
   for (const table of BUNDLE_TABLES) {
-    const list = raw.rows[table];
-    if (list === undefined) continue;
-    if (!Array.isArray(list) || !list.every(isRecord)) return null;
-    rows[table] = list;
+    const list = rows[table];
+    if (list) present[table] = list;
   }
-
-  const links: BundleLink[] = [];
-  for (const link of raw.links) {
-    if (
-      !isRecord(link) ||
-      !isBundleTable(link.table) ||
-      typeof link.id !== 'number' ||
-      typeof link.column !== 'string' ||
-      typeof link.value !== 'number'
-    ) {
-      return null;
-    }
-    links.push({ table: link.table, id: link.id, column: link.column, value: link.value });
-  }
-
-  return { version: 1, rows, links };
-}
-
-function toSqlValue(value: unknown): string | number | null {
-  if (typeof value === 'number' || typeof value === 'string') return value;
-  if (typeof value === 'boolean') return value ? 1 : 0;
-  if (value === null || value === undefined) return null;
-  return JSON.stringify(value);
-}
-
-function tableColumns(db: SqlJsDatabase, table: BundleTable): Set<string> {
-  return new Set(selectRows(db, `PRAGMA table_info(${table})`).map((row) => String(row.name)));
+  return { version: 1, rows: present, links };
 }
 
 export function restoreBundle(db: SqlJsDatabase, bundle: TrashBundle): void {
   db.run('PRAGMA defer_foreign_keys = ON');
 
-  const columnsByTable = new Map<BundleTable, Set<string>>();
-  const columnsOf = (table: BundleTable): Set<string> => {
-    let columns = columnsByTable.get(table);
-    if (!columns) {
-      columns = tableColumns(db, table);
-      columnsByTable.set(table, columns);
-    }
-    return columns;
-  };
+  const columnsOf = createColumnLookup(db);
 
   for (const table of BUNDLE_TABLES) {
     const rows = bundle.rows[table] ?? [];

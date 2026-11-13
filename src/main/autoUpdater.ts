@@ -1,5 +1,5 @@
 import { autoUpdater } from 'electron-updater';
-import { BrowserWindow, ipcMain, dialog } from 'electron';
+import { BrowserWindow, dialog } from 'electron';
 import { mainLogger } from './logger';
 import { t } from './i18n';
 
@@ -30,12 +30,10 @@ export function initAutoUpdater(window: BrowserWindow, beforeInstall: () => Prom
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
-    sendStatusToWindow('update-checking');
     mainLogger.info('Checking for updates...', 'AutoUpdater');
   });
 
   autoUpdater.on('update-available', (info) => {
-    sendStatusToWindow('update-available', info);
     mainLogger.info(`Update available: ${info.version}`, 'AutoUpdater');
     if (!mainWindow || mainWindow.isDestroyed()) return;
 
@@ -58,32 +56,23 @@ export function initAutoUpdater(window: BrowserWindow, beforeInstall: () => Prom
       });
   });
 
-  autoUpdater.on('update-not-available', (info) => {
-    sendStatusToWindow('update-not-available', info);
+  autoUpdater.on('update-not-available', () => {
     mainLogger.info('No update available, current version is up to date', 'AutoUpdater');
   });
 
   autoUpdater.on('error', (err) => {
     setTaskbarProgress(-1);
-    sendStatusToWindow('update-error', err.message);
     mainLogger.error('Auto-updater error', 'AutoUpdater', err);
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
     const percent = Math.round(progressObj.percent);
     setTaskbarProgress(progressObj.percent / 100);
-    sendStatusToWindow('update-download-progress', {
-      percent,
-      bytesPerSecond: progressObj.bytesPerSecond,
-      transferred: progressObj.transferred,
-      total: progressObj.total,
-    });
     mainLogger.debug(`Downloading update: ${percent}%`, 'AutoUpdater');
   });
 
   autoUpdater.on('update-downloaded', (info) => {
     setTaskbarProgress(-1);
-    sendStatusToWindow('update-downloaded', info);
     mainLogger.info(`Update downloaded: ${info.version}`, 'AutoUpdater');
     if (!mainWindow || mainWindow.isDestroyed()) return;
 
@@ -100,31 +89,6 @@ export function initAutoUpdater(window: BrowserWindow, beforeInstall: () => Prom
         if (response === 0) void installNow();
       });
   });
-
-  ipcMain.handle('updater:check', async () => {
-    try {
-      return await autoUpdater.checkForUpdates();
-    } catch (error) {
-      mainLogger.error('Update check error', 'AutoUpdater', error);
-      return null;
-    }
-  });
-
-  ipcMain.handle('updater:download', async () => {
-    try {
-      await autoUpdater.downloadUpdate();
-      return { success: true };
-    } catch (error) {
-      mainLogger.error('Update download error', 'AutoUpdater', error);
-      return { success: false, error: String(error) };
-    }
-  });
-
-  ipcMain.handle('updater:install', () => installNow());
-
-  ipcMain.handle('updater:getVersion', () => {
-    return autoUpdater.currentVersion.version;
-  });
 }
 
 export function checkForUpdates(): void {
@@ -132,10 +96,4 @@ export function checkForUpdates(): void {
   autoUpdater.checkForUpdates().catch((err) => {
     mainLogger.error('Update check error', 'AutoUpdater', err);
   });
-}
-
-function sendStatusToWindow(status: string, data?: unknown): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-status', { status, data });
-  }
 }

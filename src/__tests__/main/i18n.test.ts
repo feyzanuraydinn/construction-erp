@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { t, setLocale, getLocale } from '../../main/i18n';
-import { projectSchema, validateInput } from '../../utils/schemas';
+import { projectSchema, parseInput } from '../../utils/schemas';
 
 describe('Main process i18n', () => {
   beforeEach(() => {
@@ -20,19 +20,21 @@ describe('Main process i18n', () => {
     it('also switches the language of validation messages returned over IPC', async () => {
       setLocale('en');
       await new Promise((resolve) => setTimeout(resolve, 0));
-      const english = validateInput(projectSchema, { code: '', name: 'P', ownership_type: 'own' });
-      expect(english.error).toContain('Project code is required');
+      expect(() =>
+        parseInput(projectSchema, { code: '', name: 'P', ownership_type: 'own' })
+      ).toThrow('Project code is required');
 
       setLocale('tr');
       await new Promise((resolve) => setTimeout(resolve, 0));
-      const turkish = validateInput(projectSchema, { code: '', name: 'P', ownership_type: 'own' });
-      expect(turkish.error).toContain('Proje kodu zorunludur');
+      expect(() =>
+        parseInput(projectSchema, { code: '', name: 'P', ownership_type: 'own' })
+      ).toThrow('Proje kodu zorunludur');
     });
 
     it('should handle nested keys', () => {
-      expect(t('main.closeDialog.title')).toBe('Yedeklenmemiş Değişiklikler');
+      expect(t('main.export.excelSaveTitle')).toBe('Excel Olarak Kaydet');
       setLocale('en');
-      expect(t('main.closeDialog.title')).toBe('Unsaved Changes');
+      expect(t('main.export.excelSaveTitle')).toBe('Save as Excel');
     });
 
     it('should interpolate parameters', () => {
@@ -51,8 +53,7 @@ describe('Main process i18n', () => {
     });
 
     it('should return the key if path resolves to non-string', () => {
-      // 'main.closeDialog' is an object, not a string
-      expect(t('main.closeDialog')).toBe('main.closeDialog');
+      expect(t('main.export')).toBe('main.export');
     });
 
     it('should translate gdrive messages', () => {
@@ -73,7 +74,7 @@ describe('Main process i18n', () => {
     });
 
     it('should translate transaction validation messages', () => {
-      expect(t('main.transaction.invalidEntityType')).toBe('Geçersiz entity tipi');
+      expect(t('main.transaction.allocationNotFound')).toBe('Eşleştirilecek işlem bulunamadı.');
     });
   });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import i18n from '../../i18n';
+import { i18n } from '../../i18n';
 import { categoryLabel } from '../../utils/categories';
 import { formatPercent } from '../../utils/formatters';
 
@@ -41,6 +41,8 @@ describe('English plurals', () => {
 
   it('keeps Turkish unchanged (no plural nouns after numbers)', async () => {
     await i18n.changeLanguage('tr');
-    expect(i18n.t('shared.bulkDelete.buttonLabel', { count: 1 })).toBe(i18n.t('shared.bulkDelete.buttonLabel', { count: 5 }).replace('5', '1'));
+    expect(i18n.t('shared.bulkDelete.buttonLabel', { count: 1 })).toBe(
+      i18n.t('shared.bulkDelete.buttonLabel', { count: 5 }).replace('5', '1')
+    );
   });
 });

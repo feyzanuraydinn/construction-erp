@@ -4,14 +4,10 @@ import '../../i18n';
 import Stock from '../../pages/Stock';
 import type { Material, StockMovementWithDetails } from '../../types';
 
-// ==================== MOCKS ====================
-
 const mockToast = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() };
 vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
-
-// ==================== HELPERS ====================
 
 const mockMaterials: Material[] = [
   {
@@ -97,15 +93,11 @@ function setupMocksWithData() {
   (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 }
 
-// ==================== TESTS ====================
-
 describe('Stock', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupMocksEmpty();
   });
-
-  // ---------- Initial render ----------
 
   it('should render page title and subtitle', async () => {
     await act(async () => {
@@ -124,14 +116,11 @@ describe('Stock', () => {
     });
 
     await waitFor(() => {
-      // "Yeni Malzeme" appears in both header and empty state action
       const newMaterialButtons = screen.getAllByText('Yeni Malzeme');
       expect(newMaterialButtons.length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Stok Hareketi')).toBeInTheDocument();
     });
   });
-
-  // ---------- Tab rendering ----------
 
   it('should render materials and movements tabs', async () => {
     await act(async () => {
@@ -144,25 +133,27 @@ describe('Stock', () => {
     });
   });
 
-  // ---------- Loading state ----------
-
   it('should show loading state while data is loading', async () => {
-    (window.electronAPI.material.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.stock.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.project.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (window.electronAPI.material.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.stock.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.project.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
 
     await act(async () => {
       render(<Stock />);
     });
 
-    // Title should be visible since it is outside loading conditional
     expect(screen.getByText('Stok Yönetimi')).toBeInTheDocument();
-    // The table should not be rendered yet
     expect(screen.queryByText('Malzeme bulunamadı')).not.toBeInTheDocument();
   });
-
-  // ---------- Empty state ----------
 
   it('should show empty state when no materials exist', async () => {
     await act(async () => {
@@ -193,8 +184,6 @@ describe('Stock', () => {
     });
   });
 
-  // ---------- Data rendering ----------
-
   it('should render materials in the table', async () => {
     setupMocksWithData();
 
@@ -221,9 +210,6 @@ describe('Stock', () => {
       expect(screen.getByText('Çimento')).toBeInTheDocument();
     });
 
-    // Demir Çubuk has current_stock=5 < min_stock=20, so it should be "Kritik"
-    // Çimento has current_stock=500 > min_stock=100, so it should be "Normal"
-    // Use queryAllByText since Badge renders text content
     const kritikElements = screen.queryAllByText(/Kritik/);
     expect(kritikElements.length).toBeGreaterThanOrEqual(1);
     const normalElements = screen.queryAllByText(/Normal/);
@@ -246,8 +232,6 @@ describe('Stock', () => {
     });
   });
 
-  // ---------- Tab switching ----------
-
   it('should switch to movements tab and show movement data', async () => {
     setupMocksWithData();
 
@@ -259,22 +243,17 @@ describe('Stock', () => {
       expect(screen.getByText('Çimento')).toBeInTheDocument();
     });
 
-    // Click on the tab with role="tab" to switch
     const movementsTab = screen.getByRole('tab', { name: 'Stok Hareketleri' });
     await act(async () => {
       fireEvent.click(movementsTab);
     });
 
     await waitFor(() => {
-      // Movement table should show project and company names
-      // Both movements are from "Konut Projesi" so there are multiple
       const projects = screen.getAllByText('Konut Projesi');
       expect(projects.length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('ABC Tedarik')).toBeInTheDocument();
     });
   });
-
-  // ---------- Search ----------
 
   it('should have a search input with correct placeholder', async () => {
     await act(async () => {
@@ -286,17 +265,17 @@ describe('Stock', () => {
     });
   });
 
-  // ---------- Error handling ----------
-
   it('should show error toast when loading fails', async () => {
-    (window.electronAPI.material.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('DB Error'));
+    (window.electronAPI.material.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('DB Error')
+    );
 
     await act(async () => {
       render(<Stock />);
     });
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith('Veriler yüklenirken hata oluştu');
+      expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('Veriler yüklenemedi:'));
     });
   });
 });

@@ -1,21 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useToast } from '../../contexts/ToastContext';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import {
-  Modal,
-  ModalBody,
-  ModalFooter,
-  Button,
-  Input,
-  Select,
-} from '../ui';
+import { Modal, ModalBody, ModalFooter } from '../ui/Modal';
+import { Button } from '../ui/Button';
+import { Input, Select } from '../ui/Input';
+import { AmountField } from '../ui/AmountField';
 import { formatDateForInput } from '../../utils/formatters';
 import { MOVEMENT_TYPES } from '../../utils/constants';
-import { stockMovementSchema } from '../../utils/schemas';
-import type { StockMovementFormInput } from '../../utils/schemas';
+import { stockMovementSchema, type StockMovementFormInput } from '../../utils/schemas';
 import type { Material, Project, Company } from '../../types';
+import { MOVEMENT_STYLES, materialUnitLabel } from '../../utils/stock';
+import { RadioCard } from '../ui/RadioCard';
+import { useSaveAction } from '../../hooks/useSaveAction';
 
 export interface MovementModalProps {
   isOpen: boolean;
@@ -23,22 +20,12 @@ export interface MovementModalProps {
   materials: Material[];
   projects: Project[];
   companies: Company[];
-  onSave: (isNew: boolean) => void;
+  onSave: () => void;
+  className?: string;
 }
 
-export function MovementModal({
-  isOpen,
-  onClose,
-  materials,
-  projects,
-  companies,
-  onSave,
-}: MovementModalProps) {
-  const { t } = useTranslation();
-  const toast = useToast();
-  const [loading, setLoading] = useState(false);
-
-  const movementDefaults: StockMovementFormInput = {
+function movementDefaults(): StockMovementFormInput {
+  return {
     material_id: '',
     movement_type: 'in',
     quantity: '',
@@ -49,9 +36,23 @@ export function MovementModal({
     description: '',
     document_no: '',
   };
+}
+
+export function MovementModal({
+  isOpen,
+  onClose,
+  materials,
+  projects,
+  companies,
+  onSave,
+  className,
+}: MovementModalProps) {
+  const { t } = useTranslation();
+  const { saving: loading, runSave } = useSaveAction();
 
   const {
     register,
+    control,
     handleSubmit: rhfHandleSubmit,
     setValue,
     watch,
@@ -59,7 +60,7 @@ export function MovementModal({
     formState: { errors },
   } = useForm<StockMovementFormInput>({
     resolver: zodResolver(stockMovementSchema),
-    defaultValues: movementDefaults,
+    defaultValues: movementDefaults(),
     mode: 'onBlur',
   });
 
@@ -70,16 +71,12 @@ export function MovementModal({
 
   useEffect(() => {
     if (isOpen) {
-      reset({
-        ...movementDefaults,
-        date: formatDateForInput(new Date().toISOString()),
-      });
+      reset(movementDefaults());
     }
   }, [isOpen, reset]);
 
-  const onSubmit = async (formValues: StockMovementFormInput) => {
-    setLoading(true);
-    try {
+  const onSubmit = (formValues: StockMovementFormInput) =>
+    runSave(async () => {
       const parsed = stockMovementSchema.parse(formValues);
 
       await window.electronAPI.stock.create({
@@ -90,49 +87,37 @@ export function MovementModal({
         description: parsed.description ?? undefined,
         document_no: parsed.document_no ?? undefined,
       });
-      onSave(true);
-    } catch (error) {
-      console.error('Save error:', error);
-      toast.error(t('common.saveError'));
-    } finally {
-      setLoading(false);
-    }
-  };
+      onSave();
+    });
 
   const selectedMaterial = materials.find((m) => m.id === parseInt(String(materialId)));
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('stock.stockMovement')} size="md">
-      <form onSubmit={rhfHandleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+    <Modal
+      className={className}
+      isOpen={isOpen}
+      onClose={onClose}
+      title={t('stock.stockMovement')}
+      size="md"
+    >
+      <form
+        onSubmit={rhfHandleSubmit(onSubmit)}
+        className="flex flex-col flex-1 min-h-0 overflow-hidden"
+      >
         <ModalBody className="space-y-4">
-          {/* Movement Type */}
           <div className="grid grid-cols-4 gap-2">
             {MOVEMENT_TYPES.map((type) => (
-              <label key={type.value}>
-                <input
-                  type="radio"
-                  name="movement_type_radio"
-                  value={type.value}
-                  checked={movementType === type.value}
-                  onChange={() =>
-                    setValue('movement_type', type.value as 'in' | 'out' | 'adjustment' | 'waste', { shouldValidate: true })
-                  }
-                  className="sr-only peer"
-                />
-                <div
-                  className={`peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-800 p-2 border-2 rounded-lg cursor-pointer text-center text-sm transition-all ${
-                    movementType === type.value
-                      ? type.value === 'in'
-                        ? 'border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-                        : type.value === 'out'
-                          ? 'border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
-                          : 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                  }`}
-                >
-                  {t(type.label).split(' ')[0]}
-                </div>
-              </label>
+              <RadioCard
+                key={type.value}
+                name="movement_type_radio"
+                value={type.value}
+                checked={movementType === type.value}
+                onSelect={() => setValue('movement_type', type.value, { shouldValidate: true })}
+                selectedClassName={MOVEMENT_STYLES[type.value].selectedClass}
+                cardClassName="p-2 text-center text-sm"
+              >
+                {t(`enums.movementTypeShort.${type.value}`)}
+              </RadioCard>
             ))}
           </div>
           {errors.movement_type && (
@@ -143,7 +128,12 @@ export function MovementModal({
             label={t('stock.form.material')}
             options={materials.map((m) => ({
               value: m.id,
-              label: `${m.code} - ${m.name} (Stok: ${m.current_stock} ${m.unit})`,
+              label: t('stock.form.materialOption', {
+                code: m.code,
+                name: m.name,
+                stock: m.current_stock,
+                unit: materialUnitLabel(t, m.unit),
+              }),
             }))}
             value={String(materialId ?? '')}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
@@ -154,22 +144,18 @@ export function MovementModal({
           />
 
           <div className="grid grid-cols-2 gap-4">
-            <Input
-              label={`${t('stock.form.quantity')} * ${selectedMaterial ? `(${selectedMaterial.unit})` : ''}`}
-              type="number"
-              step="0.01"
-              min="0"
-              {...register('quantity')}
+            <AmountField
+              control={control}
+              name="quantity"
+              label={`${t('stock.form.quantity')} * ${selectedMaterial ? `(${materialUnitLabel(t, selectedMaterial.unit)})` : ''}`}
               error={errors.quantity?.message}
               required
             />
             {movementType === 'in' && (
-              <Input
+              <AmountField
+                control={control}
+                name="unit_price"
                 label={t('stock.form.unitPrice')}
-                type="number"
-                step="0.01"
-                min="0"
-                {...register('unit_price')}
                 error={errors.unit_price?.message}
               />
             )}

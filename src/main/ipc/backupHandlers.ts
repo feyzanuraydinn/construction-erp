@@ -1,47 +1,41 @@
-import { ipcMain, IpcMainInvokeEvent, dialog, shell, BrowserWindow } from 'electron';
-import { app } from 'electron';
+import { ipcMain, IpcMainInvokeEvent, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { DatabaseService, InvalidDatabaseError } from '../../database/DatabaseService';
 import { syncService } from '../SyncService';
-import { validateBackupPath, sanitizeError } from '../../utils/security';
+import { validateBackupPath } from '../../utils/security';
+import { backupPathSchema } from '../../utils/schemas';
 import { mainLogger } from '../logger';
 import { t } from '../i18n';
+import { safeHandle, toUserMessage } from './safeHandle';
+import { backupDirectory, ensureBackupDirectory } from '../appPaths';
 
-export function registerBackupHandlers(
-  getDbService: () => DatabaseService,
-  getMainWindow: () => BrowserWindow | null
-): void {
-  ipcMain.handle('backup:create', async () => {
-    const backupDir = path.join(app.getPath('userData'), 'backups');
-    mainLogger.info(`Creating backup in: ${backupDir}`, 'Backup');
-
-    try {
+export function registerBackupHandlers(getDbService: () => DatabaseService): void {
+  safeHandle(
+    'backup:create',
+    async () => {
+      const backupDir = backupDirectory();
+      mainLogger.info(`Creating backup in: ${backupDir}`, 'Backup');
       const backupPath = getDbService().createBackup(backupDir);
       mainLogger.info(`Local backup created: ${backupPath}`, 'Backup');
 
-      // Bring the cloud copy up to date through the normal sync cycle. It
-      // detects conflicts with other devices instead of overwriting, and never
-      // touches the weekly snapshots. Runs in the background; progress is
-      // reported through sync status events.
       void syncService.checkAndSync().catch((error) => {
         mainLogger.error('Sync after manual backup failed', 'Backup', error);
       });
 
       return backupPath;
-    } catch (error) {
-      mainLogger.error('Backup creation failed', 'Backup', error);
-      throw new Error(sanitizeError(error));
-    }
-  });
+    },
+    { message: 'Backup creation failed', scope: 'Backup' }
+  );
 
-  ipcMain.handle('backup:list', () => {
-    try {
-      const backupDir = path.join(app.getPath('userData'), 'backups');
+  safeHandle(
+    'backup:list',
+    () => {
+      const backupDir = backupDirectory();
       if (!fs.existsSync(backupDir)) {
         return [];
       }
-      const files = fs
+      return fs
         .readdirSync(backupDir)
         .filter((f) => f.endsWith('.db'))
         .map((name) => {
@@ -55,29 +49,25 @@ export function registerBackupHandlers(
           };
         })
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      return files;
-    } catch (error) {
-      mainLogger.error('Backup list error', 'Backup', error);
-      throw new Error(sanitizeError(error));
-    }
-  });
+    },
+    { message: 'Backup list error', scope: 'Backup' }
+  );
 
-  ipcMain.handle('backup:restore', async (_: IpcMainInvokeEvent, backupPath: unknown) => {
+  ipcMain.handle('backup:restore', async (_: IpcMainInvokeEvent, rawBackupPath: unknown) => {
     try {
-      const backupDir = path.join(app.getPath('userData'), 'backups');
-      if (typeof backupPath !== 'string' || !validateBackupPath(backupDir, backupPath)) {
+      const backupDir = backupDirectory();
+      const parsedPath = backupPathSchema.safeParse(rawBackupPath);
+      if (!parsedPath.success || !validateBackupPath(backupDir, parsedPath.data)) {
         return { success: false, error: t('error.backup.invalidPath') };
       }
+      const backupPath = parsedPath.data;
 
       if (!fs.existsSync(backupPath)) {
         return { success: false, error: t('error.backup.fileNotFound') };
       }
 
       const dbService = getDbService();
-      // Keep the current state so a wrong restore can be undone.
       dbService.createSafetyCopy(backupDir, 'pre-restore');
-      // Validates the backup and migrates it before swapping it in; on failure
-      // the current database is left untouched and stays open.
       await dbService.loadFromBuffer(fs.readFileSync(backupPath));
 
       mainLogger.info(`Backup restored from: ${backupPath}`, 'Backup');
@@ -87,35 +77,15 @@ export function registerBackupHandlers(
       if (error instanceof InvalidDatabaseError) {
         return { success: false, error: t('error.db.databaseCorrupted') };
       }
-      return { success: false, error: sanitizeError(error) };
+      return { success: false, error: toUserMessage(error) };
     }
   });
 
-  ipcMain.handle('backup:selectFolder', async () => {
-    try {
-      const mainWindow = getMainWindow();
-      if (!mainWindow) return null;
-      const result = await dialog.showOpenDialog(mainWindow, {
-        properties: ['openDirectory'],
-        title: t('main.backup.selectFolderTitle'),
-      });
-      return result.canceled ? null : result.filePaths[0];
-    } catch (error) {
-      mainLogger.error('Backup select folder error', 'Backup', error);
-      throw new Error(sanitizeError(error));
-    }
-  });
-
-  ipcMain.handle('backup:openFolder', async () => {
-    try {
-      const backupDir = path.join(app.getPath('userData'), 'backups');
-      if (!fs.existsSync(backupDir)) {
-        fs.mkdirSync(backupDir, { recursive: true });
-      }
-      shell.openPath(backupDir);
-    } catch (error) {
-      mainLogger.error('Backup open folder error', 'Backup', error);
-      throw new Error(sanitizeError(error));
-    }
-  });
+  safeHandle(
+    'backup:openFolder',
+    () => {
+      void shell.openPath(ensureBackupDirectory());
+    },
+    { message: 'Backup open folder error', scope: 'Backup' }
+  );
 }

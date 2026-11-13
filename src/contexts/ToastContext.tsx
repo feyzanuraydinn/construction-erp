@@ -1,5 +1,15 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, useRef, useEffect, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useEffect,
+  ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
+import { cn } from '../utils/cn';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -29,16 +39,15 @@ export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timerMapRef = useRef<Map<string, number>>(new Map());
 
-  // Clean up all timers on unmount
   useEffect(() => {
+    const timers = timerMapRef.current;
     return () => {
-      timerMapRef.current.forEach((timerId) => window.clearTimeout(timerId));
-      timerMapRef.current.clear();
+      timers.forEach((timerId) => window.clearTimeout(timerId));
+      timers.clear();
     };
   }, []);
 
   const removeToast = useCallback((id: string) => {
-    // Clear timer if exists
     const timerId = timerMapRef.current.get(id);
     if (timerId) {
       window.clearTimeout(timerId);
@@ -47,23 +56,20 @@ export function ToastProvider({ children }: ToastProviderProps) {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
-  const addToast = useCallback(
-    (type: ToastType, message: string, duration = 4000) => {
-      const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const toast: Toast = { id, type, message, duration };
+  const addToast = useCallback((type: ToastType, message: string, duration = 4000) => {
+    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const toast: Toast = { id, type, message, duration };
 
-      setToasts((prev) => [...prev, toast]);
+    setToasts((prev) => [...prev, toast]);
 
-      if (duration > 0) {
-        const timerId = window.setTimeout(() => {
-          timerMapRef.current.delete(id);
-          setToasts((prev) => prev.filter((t) => t.id !== id));
-        }, duration);
-        timerMapRef.current.set(id, timerId);
-      }
-    },
-    []
-  );
+    if (duration > 0) {
+      const timerId = window.setTimeout(() => {
+        timerMapRef.current.delete(id);
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, duration);
+      timerMapRef.current.set(id, timerId);
+    }
+  }, []);
 
   const success = useCallback((message: string) => addToast('success', message), [addToast]);
   const error = useCallback((message: string) => addToast('error', message, 6000), [addToast]);
@@ -91,15 +97,18 @@ export function useToast() {
   return context;
 }
 
-// Toast Container Component
 interface ToastContainerProps {
   toasts: Toast[];
   onRemove: (id: string) => void;
+  className?: string;
 }
 
-function ToastContainer({ toasts, onRemove }: ToastContainerProps) {
+function ToastContainer({ toasts, onRemove, className }: ToastContainerProps) {
   return (
-    <div aria-live="polite" className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+    <div
+      aria-live="polite"
+      className={cn('fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm', className)}
+    >
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onRemove={onRemove} />
       ))}
@@ -107,34 +116,40 @@ function ToastContainer({ toasts, onRemove }: ToastContainerProps) {
   );
 }
 
-// Toast Item Component
 interface ToastItemProps {
   toast: Toast;
   onRemove: (id: string) => void;
+  className?: string;
 }
 
-function ToastItem({ toast, onRemove }: ToastItemProps) {
+const TOAST_STYLES: Record<ToastType, string> = {
+  success: 'bg-green-600',
+  error: 'bg-red-600',
+  warning: 'bg-yellow-600',
+  info: 'bg-blue-600',
+};
+
+const TOAST_ICONS: Record<ToastType, string> = {
+  success: '✓',
+  error: '✕',
+  warning: '⚠',
+  info: 'ℹ',
+};
+
+function ToastItem({ toast, onRemove, className }: ToastItemProps) {
   const { t } = useTranslation();
-  const baseStyles =
-    'flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white animate-slide-in';
-
-  const typeStyles: Record<ToastType, string> = {
-    success: 'bg-green-600',
-    error: 'bg-red-600',
-    warning: 'bg-yellow-600',
-    info: 'bg-blue-600',
-  };
-
-  const icons: Record<ToastType, string> = {
-    success: '✓',
-    error: '✕',
-    warning: '⚠',
-    info: 'ℹ',
-  };
-
   return (
-    <div role={toast.type === 'error' ? 'alert' : 'status'} className={`${baseStyles} ${typeStyles[toast.type]}`}>
-      <span className="text-lg font-bold" aria-hidden="true">{icons[toast.type]}</span>
+    <div
+      role={toast.type === 'error' ? 'alert' : 'status'}
+      className={cn(
+        'flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white animate-slide-in',
+        TOAST_STYLES[toast.type],
+        className
+      )}
+    >
+      <span className="text-lg font-bold" aria-hidden="true">
+        {TOAST_ICONS[toast.type]}
+      </span>
       <span className="flex-1 text-sm">{toast.message}</span>
       <button
         onClick={() => onRemove(toast.id)}
@@ -146,5 +161,3 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
     </div>
   );
 }
-
-export default ToastContext;

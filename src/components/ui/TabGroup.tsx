@@ -1,19 +1,25 @@
-import React, { memo, ReactNode, useRef } from 'react';
+import React, { ReactNode, useRef } from 'react';
+import { cn } from '../../utils/cn';
 
-export interface TabItem {
-  key: string;
+export interface TabItem<K extends string = string> {
+  key: K;
   label: ReactNode;
   icon?: React.ComponentType<{ size?: number }>;
 }
 
-interface TabGroupProps {
-  tabs: TabItem[];
-  activeTab: string;
-  onChange: (key: string) => void;
+interface TabGroupProps<K extends string> {
+  tabs: TabItem<K>[];
+  activeTab: K;
+  onChange: (key: K) => void;
   className?: string;
 }
 
-export const TabGroup = memo(function TabGroup({ tabs, activeTab, onChange, className = '' }: TabGroupProps) {
+export function TabGroup<K extends string>({
+  tabs,
+  activeTab,
+  onChange,
+  className = '',
+}: TabGroupProps<K>) {
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -41,7 +47,7 @@ export const TabGroup = memo(function TabGroup({ tabs, activeTab, onChange, clas
   };
 
   return (
-    <div role="tablist" className={`flex gap-2 ${className}`} onKeyDown={handleKeyDown}>
+    <div role="tablist" className={cn('flex gap-2', className)} onKeyDown={handleKeyDown}>
       {tabs.map((tab, index) => (
         <button
           key={tab.key}
@@ -64,4 +70,4 @@ export const TabGroup = memo(function TabGroup({ tabs, activeTab, onChange, clas
       ))}
     </div>
   );
-});
+}

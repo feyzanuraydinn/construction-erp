@@ -22,8 +22,6 @@ describe('MaterialModal', () => {
     window.electronAPI.material.generateCode = vi.fn().mockResolvedValue('M-001');
   });
 
-  // ==================== RENDERING ====================
-
   it('should render when isOpen is true', () => {
     render(<MaterialModal {...defaultProps} />);
     expect(screen.getByText('Malzeme Adı *')).toBeInTheDocument();
@@ -41,14 +39,17 @@ describe('MaterialModal', () => {
 
   it('should show edit material title when material is provided', () => {
     const material = {
-      id: 1, code: 'M-001', name: 'Demir', category: 'metal', unit: 'kg',
-      min_stock: 100, current_stock: 500,
+      id: 1,
+      code: 'M-001',
+      name: 'Demir',
+      category: 'metal',
+      unit: 'kg',
+      min_stock: 100,
+      current_stock: 500,
     } as Material;
     render(<MaterialModal {...defaultProps} material={material} />);
     expect(screen.getByText('Malzeme Düzenle')).toBeInTheDocument();
   });
-
-  // ==================== FORM FIELDS ====================
 
   it('should show material code and category fields', () => {
     render(<MaterialModal {...defaultProps} />);
@@ -69,7 +70,12 @@ describe('MaterialModal', () => {
 
   it('should hide current stock field when editing', () => {
     const material = {
-      id: 1, code: 'M-001', name: 'Demir', unit: 'kg', min_stock: 100, current_stock: 500,
+      id: 1,
+      code: 'M-001',
+      name: 'Demir',
+      unit: 'kg',
+      min_stock: 100,
+      current_stock: 500,
     } as Material;
     render(<MaterialModal {...defaultProps} material={material} />);
     expect(screen.queryByText('Mevcut Stok')).not.toBeInTheDocument();
@@ -89,7 +95,12 @@ describe('MaterialModal', () => {
 
   it('should disable code field when editing', () => {
     const material = {
-      id: 1, code: 'M-001', name: 'Demir', unit: 'kg', min_stock: 0, current_stock: 0,
+      id: 1,
+      code: 'M-001',
+      name: 'Demir',
+      unit: 'kg',
+      min_stock: 0,
+      current_stock: 0,
     } as Material;
     render(<MaterialModal {...defaultProps} material={material} />);
 
@@ -97,8 +108,6 @@ describe('MaterialModal', () => {
     const codeInput = codeLabel.closest('div')?.querySelector('input');
     expect(codeInput).toBeDisabled();
   });
-
-  // ==================== FORM SUBMISSION ====================
 
   it('should call material.create on submit for new material', async () => {
     const onSave = vi.fn();
@@ -119,11 +128,14 @@ describe('MaterialModal', () => {
 
     fireEvent.click(screen.getByText('Kaydet'));
 
-    await waitFor(() => {
-      if (mockCreate.mock.calls.length > 0) {
-        expect(onSave).toHaveBeenCalledWith(true);
-      }
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        if (mockCreate.mock.calls.length > 0) {
+          expect(onSave).toHaveBeenCalledWith(true);
+        }
+      },
+      { timeout: 3000 }
+    );
   });
 
   it('should call material.update on submit for existing material', async () => {
@@ -132,18 +144,26 @@ describe('MaterialModal', () => {
     window.electronAPI.material.update = mockUpdate;
 
     const material = {
-      id: 1, code: 'M-001', name: 'Old Name', unit: 'kg', min_stock: 0, current_stock: 100,
+      id: 1,
+      code: 'M-001',
+      name: 'Old Name',
+      unit: 'kg',
+      min_stock: 0,
+      current_stock: 100,
     } as Material;
 
     render(<MaterialModal {...defaultProps} material={material} onSave={onSave} />);
     fireEvent.click(screen.getByText('Kaydet'));
 
-    await waitFor(() => {
-      if (mockUpdate.mock.calls.length > 0) {
-        expect(mockUpdate).toHaveBeenCalledWith(1, expect.any(Object));
-        expect(onSave).toHaveBeenCalledWith(false);
-      }
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        if (mockUpdate.mock.calls.length > 0) {
+          expect(mockUpdate).toHaveBeenCalledWith(1, expect.any(Object));
+          expect(onSave).toHaveBeenCalledWith(false);
+        }
+      },
+      { timeout: 3000 }
+    );
   });
 
   it('should show error toast on save failure', async () => {
@@ -158,14 +178,15 @@ describe('MaterialModal', () => {
 
     fireEvent.click(screen.getByText('Kaydet'));
 
-    await waitFor(() => {
-      if (mockToast.error.mock.calls.length > 0) {
-        expect(mockToast.error).toHaveBeenCalled();
-      }
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        if (mockToast.error.mock.calls.length > 0) {
+          expect(mockToast.error).toHaveBeenCalled();
+        }
+      },
+      { timeout: 3000 }
+    );
   });
-
-  // ==================== CLOSE ====================
 
   it('should call onClose when cancel is clicked', () => {
     const onClose = vi.fn();

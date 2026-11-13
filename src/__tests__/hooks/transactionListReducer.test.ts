@@ -17,12 +17,9 @@ const initialState: TransactionListUIState = {
   modalOpen: false,
   editingTransaction: null,
   viewingTransaction: null,
-  deleteConfirm: null,
   printModalOpen: false,
   printPreviewOpen: false,
   printFilters: { type: '', category_id: '', startDate: '', endDate: '' },
-  selectedIds: new Set(),
-  bulkDeleteConfirm: false,
   exportPreviewOpen: false,
   exportFilters: { type: '', category_id: '', startDate: '', endDate: '' },
 };
@@ -63,7 +60,6 @@ describe('transactionListReducer', () => {
       const result = transactionListReducer(initialState, action);
       expect(result.filterType).toBe('invoice_out');
       expect(result.filterMinAmount).toBe('100');
-      // Other filters should remain unchanged
       expect(result.filterCategory).toBe('');
       expect(result.filterMaxAmount).toBe('');
     });
@@ -144,22 +140,6 @@ describe('transactionListReducer', () => {
     });
   });
 
-  describe('Delete actions', () => {
-    it('CONFIRM_DELETE should set deleteConfirm', () => {
-      const result = transactionListReducer(initialState, {
-        type: 'CONFIRM_DELETE',
-        transaction: mockTransaction,
-      });
-      expect(result.deleteConfirm).toBe(mockTransaction);
-    });
-
-    it('CANCEL_DELETE should clear deleteConfirm', () => {
-      const confirmState = { ...initialState, deleteConfirm: mockTransaction };
-      const result = transactionListReducer(confirmState, { type: 'CANCEL_DELETE' });
-      expect(result.deleteConfirm).toBeNull();
-    });
-  });
-
   describe('Print actions', () => {
     it('OPEN_PRINT_MODAL should open print modal', () => {
       const result = transactionListReducer(initialState, { type: 'OPEN_PRINT_MODAL' });
@@ -199,49 +179,6 @@ describe('transactionListReducer', () => {
       expect(result.printFilters.type).toBe('invoice_out');
       expect(result.printFilters.startDate).toBe('2024-01-01');
       expect(result.printFilters.category_id).toBe('');
-    });
-  });
-
-  describe('Selection actions', () => {
-    it('TOGGLE_SELECT should add id to selection', () => {
-      const result = transactionListReducer(initialState, { type: 'TOGGLE_SELECT', id: 1 });
-      expect(result.selectedIds.has(1)).toBe(true);
-    });
-
-    it('TOGGLE_SELECT should remove id from selection', () => {
-      const state = { ...initialState, selectedIds: new Set([1, 2, 3]) };
-      const result = transactionListReducer(state, { type: 'TOGGLE_SELECT', id: 2 });
-      expect(result.selectedIds.has(2)).toBe(false);
-      expect(result.selectedIds.has(1)).toBe(true);
-      expect(result.selectedIds.has(3)).toBe(true);
-    });
-
-    it('SELECT_ALL should replace selection with provided ids', () => {
-      const result = transactionListReducer(initialState, {
-        type: 'SELECT_ALL',
-        ids: [1, 2, 3, 4],
-      });
-      expect(result.selectedIds.size).toBe(4);
-      expect(result.selectedIds.has(3)).toBe(true);
-    });
-
-    it('CLEAR_SELECTION should empty selection', () => {
-      const state = { ...initialState, selectedIds: new Set([1, 2, 3]) };
-      const result = transactionListReducer(state, { type: 'CLEAR_SELECTION' });
-      expect(result.selectedIds.size).toBe(0);
-    });
-  });
-
-  describe('Bulk delete actions', () => {
-    it('OPEN_BULK_DELETE should set bulkDeleteConfirm', () => {
-      const result = transactionListReducer(initialState, { type: 'OPEN_BULK_DELETE' });
-      expect(result.bulkDeleteConfirm).toBe(true);
-    });
-
-    it('CANCEL_BULK_DELETE should clear bulkDeleteConfirm', () => {
-      const state = { ...initialState, bulkDeleteConfirm: true };
-      const result = transactionListReducer(state, { type: 'CANCEL_BULK_DELETE' });
-      expect(result.bulkDeleteConfirm).toBe(false);
     });
   });
 

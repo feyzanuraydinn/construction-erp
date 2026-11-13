@@ -2,9 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '../../i18n';
 import ProjectDetail from '../../pages/ProjectDetail';
-import type { ProjectWithSummary, TransactionWithDetails, Company, Category, CategoryBreakdown } from '../../types';
-
-// ==================== MOCKS ====================
+import type {
+  ProjectWithSummary,
+  TransactionWithDetails,
+  Company,
+  Category,
+  CategoryBreakdown,
+} from '../../types';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', () => ({
@@ -20,7 +24,6 @@ vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
 
-// Mock recharts to avoid ResizeObserver issues in tests
 vi.mock('recharts', () => ({
   PieChart: ({ children }: any) => <div data-testid="pie-chart">{children}</div>,
   Pie: ({ children }: any) => <div>{children}</div>,
@@ -28,8 +31,6 @@ vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div>{children}</div>,
   Tooltip: () => <div />,
 }));
-
-// ==================== TEST DATA ====================
 
 const mockProject: ProjectWithSummary = {
   id: 1,
@@ -52,14 +53,10 @@ const mockProject: ProjectWithSummary = {
   is_active: 1,
   created_at: '2024-12-01',
   updated_at: '2025-06-01',
-  total_invoice_out: 200000,
-  total_invoice_in: 120000,
   total_collected: 180000,
   total_paid: 100000,
   total_income: 230000,
   total_expense: 140000,
-  transaction_count: 5,
-  party_count: 2,
 };
 
 const mockTransactions: TransactionWithDetails[] = [
@@ -135,22 +132,40 @@ const mockCompanies: Company[] = [
 ];
 
 const mockCategories: Category[] = [
-  { id: 1, name: 'Daire/Konut Satışı', type: 'invoice_out', color: '#22c55e', is_default: 1, created_at: '2024-01-01' },
-  { id: 9, name: 'Beton', type: 'invoice_in', color: '#ef4444', is_default: 1, created_at: '2024-01-01' },
+  {
+    id: 1,
+    name: 'Daire/Konut Satışı',
+    type: 'invoice_out',
+    color: '#22c55e',
+    is_default: 1,
+    created_at: '2024-01-01',
+  },
+  {
+    id: 9,
+    name: 'Beton',
+    type: 'invoice_in',
+    color: '#ef4444',
+    is_default: 1,
+    created_at: '2024-01-01',
+  },
 ];
 
 const mockCategoryBreakdown: CategoryBreakdown[] = [
   { category: 'Beton', color: '#ef4444', total: 120000 },
 ];
 
-// ==================== HELPERS ====================
-
 function setupMocksWithData() {
   (window.electronAPI.project.getById as ReturnType<typeof vi.fn>).mockResolvedValue(mockProject);
-  (window.electronAPI.transaction.getByProject as ReturnType<typeof vi.fn>).mockResolvedValue(mockTransactions);
+  (window.electronAPI.transaction.getByProject as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockTransactions
+  );
   (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockCompanies);
-  (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockCategories);
-  (window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>).mockResolvedValue(mockCategoryBreakdown);
+  (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockCategories
+  );
+  (
+    window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>
+  ).mockResolvedValue(mockCategoryBreakdown);
 }
 
 function setupMocksEmpty() {
@@ -158,7 +173,9 @@ function setupMocksEmpty() {
   (window.electronAPI.transaction.getByProject as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-  (window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  (
+    window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>
+  ).mockResolvedValue([]);
 }
 
 function setupMocksNotFound() {
@@ -166,10 +183,10 @@ function setupMocksNotFound() {
   (window.electronAPI.transaction.getByProject as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-  (window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  (
+    window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>
+  ).mockResolvedValue([]);
 }
-
-// ==================== TESTS ====================
 
 describe('ProjectDetail', () => {
   beforeEach(() => {
@@ -177,14 +194,22 @@ describe('ProjectDetail', () => {
     setupMocksWithData();
   });
 
-  // ---------- Loading state ----------
-
   it('should show loading spinner while data is loading', async () => {
-    (window.electronAPI.project.getById as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.transaction.getByProject as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (window.electronAPI.project.getById as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.transaction.getByProject as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (
+      window.electronAPI.analytics.getProjectCategoryBreakdown as ReturnType<typeof vi.fn>
+    ).mockReturnValue(new Promise(() => {}));
 
     await act(async () => {
       render(<ProjectDetail />);
@@ -192,8 +217,6 @@ describe('ProjectDetail', () => {
 
     expect(screen.getByRole('status', { name: 'Yükleniyor...' })).toBeInTheDocument();
   });
-
-  // ---------- Not found state ----------
 
   it('should show not found state when project does not exist', async () => {
     setupMocksNotFound();
@@ -226,15 +249,12 @@ describe('ProjectDetail', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/projects');
   });
 
-  // ---------- Initial render after data loads ----------
-
   it('should render project name in page title', async () => {
     await act(async () => {
       render(<ProjectDetail />);
     });
 
     await waitFor(() => {
-      // Project name appears in header and possibly in print view
       const nameElements = screen.getAllByText('Merkez Konut Projesi');
       expect(nameElements.length).toBeGreaterThanOrEqual(1);
       const pageTitle = nameElements.find((el) => el.classList.contains('page-title'));
@@ -248,10 +268,8 @@ describe('ProjectDetail', () => {
     });
 
     await waitFor(() => {
-      // Project code P-001 should be visible
       const codeElements = screen.getAllByText((content) => content.includes('P-001'));
       expect(codeElements.length).toBeGreaterThanOrEqual(1);
-      // Ownership badge: "Kendi Projemiz"
       const ownershipElements = screen.getAllByText('Kendi Projemiz');
       expect(ownershipElements.length).toBeGreaterThanOrEqual(1);
     });
@@ -263,16 +281,12 @@ describe('ProjectDetail', () => {
     });
 
     await waitFor(() => {
-      // "Proje Bilgileri" appears in the info card (may also appear in print view)
       const infoElements = screen.getAllByText('Proje Bilgileri');
       expect(infoElements.length).toBeGreaterThanOrEqual(1);
-      // Location
       const locationElements = screen.getAllByText('İstanbul, Kartal');
       expect(locationElements.length).toBeGreaterThanOrEqual(1);
     });
   });
-
-  // ---------- Stats cards ----------
 
   it('should display financial stat cards for own project', async () => {
     await act(async () => {
@@ -280,7 +294,6 @@ describe('ProjectDetail', () => {
     });
 
     await waitFor(() => {
-      // Stats titles for own project
       const incomeElements = screen.getAllByText('Toplam Gelir');
       expect(incomeElements.length).toBeGreaterThanOrEqual(1);
       const expenseElements = screen.getAllByText('Toplam Gider');
@@ -290,15 +303,12 @@ describe('ProjectDetail', () => {
     });
   });
 
-  // ---------- Transaction list ----------
-
   it('should render transactions in the table', async () => {
     await act(async () => {
       render(<ProjectDetail />);
     });
 
     await waitFor(() => {
-      // Transaction descriptions appear in both table and print view
       const invoiceElements = screen.getAllByText('Daire satış faturası A-1');
       expect(invoiceElements.length).toBeGreaterThanOrEqual(1);
       const betonElements = screen.getAllByText('Beton alım faturası');
@@ -318,8 +328,6 @@ describe('ProjectDetail', () => {
     });
   });
 
-  // ---------- Header buttons ----------
-
   it('should render action buttons in header', async () => {
     await act(async () => {
       render(<ProjectDetail />);
@@ -331,8 +339,6 @@ describe('ProjectDetail', () => {
       expect(screen.getByText('Yeni İşlem')).toBeInTheDocument();
     });
   });
-
-  // ---------- Back navigation ----------
 
   it('should navigate back to projects when back button is clicked', async () => {
     await act(async () => {
@@ -352,28 +358,25 @@ describe('ProjectDetail', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/projects');
   });
 
-  // ---------- Error handling ----------
-
   it('should show error toast when API call fails', async () => {
-    (window.electronAPI.project.getById as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('DB Error'));
+    (window.electronAPI.project.getById as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('DB Error')
+    );
 
     await act(async () => {
       render(<ProjectDetail />);
     });
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith('Veriler yüklenirken hata oluştu');
+      expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('Veriler yüklenemedi:'));
     });
   });
-
-  // ---------- Stakeholders tab ----------
 
   it('should show stakeholders when parties tab is clicked', async () => {
     await act(async () => {
       render(<ProjectDetail />);
     });
 
-    // Wait for data to load
     await waitFor(() => {
       const nameElements = screen.getAllByText('Merkez Konut Projesi');
       expect(nameElements.length).toBeGreaterThanOrEqual(1);
@@ -384,7 +387,6 @@ describe('ProjectDetail', () => {
       fireEvent.click(partiesTab);
     });
 
-    // After switching to parties tab, stakeholder company names should be visible
     await waitFor(() => {
       const musteriElements = screen.getAllByText('Müşteri A.Ş.');
       expect(musteriElements.length).toBeGreaterThanOrEqual(1);

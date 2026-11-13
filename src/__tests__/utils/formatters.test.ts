@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { formatCompactCurrency, formatNumber, formatDate, formatDateForInput, parseAppDate, toLocalDateString, foldForSearch } from '../../utils/formatters';
+import {
+  formatCompactCurrency,
+  formatNumber,
+  formatDate,
+  formatDateForInput,
+  parseAppDate,
+  foldForSearch,
+} from '../../utils/formatters';
+import { toLocalDateString } from '../../utils/dates';
 
 describe('formatters', () => {
   describe('formatCompactCurrency', () => {
@@ -59,7 +67,6 @@ describe('formatters', () => {
 
     it('should format a valid date string', () => {
       const result = formatDate('2025-01-15');
-      // Should contain day, month, year in some format
       expect(result).toMatch(/15/);
       expect(result).toMatch(/01/);
       expect(result).toMatch(/2025/);

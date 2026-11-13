@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useExport } from '../../hooks/useExport';
 
-// Mock react-i18next
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -10,7 +9,6 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock toast context
 const mockToast = {
   success: vi.fn(),
   error: vi.fn(),
@@ -25,11 +23,9 @@ vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
 
-// Mock export utils
 vi.mock('../../utils/exportUtils', () => ({
   formatRecordsForExport: vi.fn().mockReturnValue([{ col1: 'val1' }]),
   exportToExcel: vi.fn().mockResolvedValue('/path/to/file.xlsx'),
-  exportToCSV: vi.fn().mockResolvedValue('/path/to/file.xlsx'),
   shareExcel: vi.fn().mockResolvedValue('/path/to/file.xlsx'),
 }));
 
@@ -56,7 +52,7 @@ describe('useExport', () => {
     });
 
     expect(formatRecordsForExport).toHaveBeenCalledWith(testData, testColumns);
-    expect(exportToExcel).toHaveBeenCalledWith('test-export', [{ col1: 'val1' }], 'test-export', undefined);
+    expect(exportToExcel).toHaveBeenCalledWith('test-export', [{ col1: 'val1' }], undefined);
   });
 
   it('should show success toast on successful export', async () => {

@@ -4,8 +4,6 @@ import '../../i18n';
 import Settings from '../../pages/Settings';
 import type { Category } from '../../types';
 
-// ==================== MOCKS ====================
-
 const mockToast = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() };
 vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
@@ -18,15 +16,39 @@ vi.mock('react-router-dom', () => ({
 
 const mockSetTheme = vi.fn();
 vi.mock('../../contexts/ThemeContext', () => ({
-  useTheme: () => ({ theme: 'light', resolvedTheme: 'light', setTheme: mockSetTheme, toggleTheme: vi.fn() }),
+  useTheme: () => ({
+    theme: 'light',
+    resolvedTheme: 'light',
+    setTheme: mockSetTheme,
+    toggleTheme: vi.fn(),
+  }),
 }));
 
-// ==================== HELPERS ====================
-
 const mockCategories: Category[] = [
-  { id: 1, name: 'Beton', type: 'invoice_in', color: '#ef4444', is_default: 1, created_at: '2025-01-01' },
-  { id: 2, name: 'Daire/Konut Satışı', type: 'invoice_out', color: '#3b82f6', is_default: 1, created_at: '2025-01-01' },
-  { id: 3, name: 'Özel Kategori', type: 'payment', color: '#22c55e', is_default: 0, created_at: '2025-01-01' },
+  {
+    id: 1,
+    name: 'Beton',
+    type: 'invoice_in',
+    color: '#ef4444',
+    is_default: 1,
+    created_at: '2025-01-01',
+  },
+  {
+    id: 2,
+    name: 'Daire/Konut Satışı',
+    type: 'invoice_out',
+    color: '#3b82f6',
+    is_default: 1,
+    created_at: '2025-01-01',
+  },
+  {
+    id: 3,
+    name: 'Özel Kategori',
+    type: 'payment',
+    color: '#22c55e',
+    is_default: 0,
+    created_at: '2025-01-01',
+  },
 ];
 
 function setupMocksEmpty() {
@@ -37,7 +59,9 @@ function setupMocksEmpty() {
 }
 
 function setupMocksWithData() {
-  (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockCategories);
+  (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockCategories
+  );
   (window.electronAPI.backup.list as ReturnType<typeof vi.fn>).mockResolvedValue([
     { path: '/backups/backup-2025.db', size: 1048576, date: '2025-06-15T10:30:00Z' },
   ]);
@@ -45,15 +69,11 @@ function setupMocksWithData() {
   (window.electronAPI.app.getVersion as ReturnType<typeof vi.fn>).mockResolvedValue('1.2.3');
 }
 
-// ==================== TESTS ====================
-
 describe('Settings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupMocksEmpty();
   });
-
-  // ---------- Initial render ----------
 
   it('should render page title and subtitle', async () => {
     await act(async () => {
@@ -113,8 +133,6 @@ describe('Settings', () => {
     });
   });
 
-  // ---------- No backup state ----------
-
   it('should show no backup message when no backups exist', async () => {
     await act(async () => {
       render(<Settings />);
@@ -125,8 +143,6 @@ describe('Settings', () => {
       expect(screen.getByText('İlk yedeğinizi oluşturun')).toBeInTheDocument();
     });
   });
-
-  // ---------- Backup data ----------
 
   it('should show last backup info when a backup exists', async () => {
     setupMocksWithData();
@@ -139,8 +155,6 @@ describe('Settings', () => {
       expect(screen.getByText('Son Yedek')).toBeInTheDocument();
     });
   });
-
-  // ---------- Categories ----------
 
   it('should render new category form', async () => {
     await act(async () => {
@@ -164,7 +178,6 @@ describe('Settings', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Mevcut Kategoriler')).toBeInTheDocument();
-      // Category type headers appear both in the select and in category list headers
       const invoiceOutLabels = screen.getAllByText('Satış Faturası (Gelir)');
       expect(invoiceOutLabels.length).toBeGreaterThanOrEqual(2);
       const invoiceInLabels = screen.getAllByText('Alış Faturası (Gider)');
@@ -182,17 +195,12 @@ describe('Settings', () => {
     });
 
     await waitFor(() => {
-      // The component renders ({t('settings.defaultLabel')}) which becomes ((varsayılan))
-      // because the translation value already includes parentheses
       const defaultLabels = screen.getAllByText(/varsayılan/);
-      expect(defaultLabels.length).toBeGreaterThanOrEqual(2); // Beton and Daire/Konut Satışı are default
+      expect(defaultLabels.length).toBeGreaterThanOrEqual(2);
 
-      // Custom category "Özel Kategori" is not default, so it should be visible
       expect(screen.getByText('Özel Kategori')).toBeInTheDocument();
     });
   });
-
-  // ---------- Backup interaction ----------
 
   it('should create a backup when the backup button is clicked', async () => {
     await act(async () => {
@@ -209,11 +217,9 @@ describe('Settings', () => {
 
     await waitFor(() => {
       expect(window.electronAPI.backup.create).toHaveBeenCalled();
-      expect(mockToast.success).toHaveBeenCalledWith('Yedek başarıyla oluşturuldu');
+      expect(mockToast.success).toHaveBeenCalledWith('Veritabanı yedeği başarıyla oluşturuldu');
     });
   });
-
-  // ---------- Google Drive not configured ----------
 
   it('should show Google Drive not configured message and configure button', async () => {
     await act(async () => {
@@ -225,8 +231,6 @@ describe('Settings', () => {
       expect(screen.getByText('Yapılandır')).toBeInTheDocument();
     });
   });
-
-  // ---------- App version ----------
 
   it('should display the app version', async () => {
     setupMocksWithData();
@@ -240,10 +244,10 @@ describe('Settings', () => {
     });
   });
 
-  // ---------- Error handling ----------
-
   it('should show error toast when backup fails', async () => {
-    (window.electronAPI.backup.create as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Backup failed'));
+    (window.electronAPI.backup.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Backup failed')
+    );
 
     await act(async () => {
       render(<Settings />);

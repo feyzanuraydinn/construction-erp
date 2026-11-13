@@ -1,4 +1,3 @@
-
 export interface AuthPageOptions {
   variant: 'success' | 'error';
   lang: string;

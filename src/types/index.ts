@@ -1,22 +1,39 @@
-// ==================== BASE TYPES ====================
+export const COMPANY_TYPE_VALUES = ['person', 'company'] as const;
+export const ACCOUNT_TYPE_VALUES = ['customer', 'supplier', 'subcontractor', 'investor'] as const;
+export const PROJECT_STATUS_VALUES = ['planned', 'active', 'completed', 'cancelled'] as const;
+export const PROJECT_TYPE_VALUES = [
+  'residential',
+  'villa',
+  'commercial',
+  'mixed',
+  'infrastructure',
+  'renovation',
+] as const;
+export const OWNERSHIP_TYPE_VALUES = ['own', 'client'] as const;
+export const TRANSACTION_TYPE_VALUES = [
+  'invoice_out',
+  'payment_in',
+  'invoice_in',
+  'payment_out',
+] as const;
+export const TRANSACTION_SCOPE_VALUES = ['cari', 'project', 'company'] as const;
+export const CURRENCY_VALUES = ['TRY', 'USD', 'EUR'] as const;
+export const MOVEMENT_TYPE_VALUES = ['in', 'out', 'adjustment', 'waste'] as const;
+export const CATEGORY_TYPE_VALUES = ['invoice_out', 'invoice_in', 'payment'] as const;
+export const LANGUAGE_VALUES = ['tr', 'en'] as const;
 
-export type CompanyType = 'person' | 'company';
-export type AccountType = 'customer' | 'supplier' | 'subcontractor' | 'investor';
-export type ProjectStatus = 'planned' | 'active' | 'completed' | 'cancelled';
-export type ProjectType =
-  | 'residential'
-  | 'villa'
-  | 'commercial'
-  | 'mixed'
-  | 'infrastructure'
-  | 'renovation';
-export type OwnershipType = 'own' | 'client';
-export type TransactionType = 'invoice_out' | 'payment_in' | 'invoice_in' | 'payment_out';
-export type TransactionScope = 'cari' | 'project' | 'company';
-export type Currency = 'TRY' | 'USD' | 'EUR';
-export type MovementType = 'in' | 'out' | 'adjustment' | 'waste';
-
-// ==================== DATABASE MODELS ====================
+export type CompanyType = (typeof COMPANY_TYPE_VALUES)[number];
+export type AccountType = (typeof ACCOUNT_TYPE_VALUES)[number];
+export type ProjectStatus = (typeof PROJECT_STATUS_VALUES)[number];
+export type ProjectType = (typeof PROJECT_TYPE_VALUES)[number];
+export type OwnershipType = (typeof OWNERSHIP_TYPE_VALUES)[number];
+export type TransactionType = (typeof TRANSACTION_TYPE_VALUES)[number];
+export type PaymentType = 'payment_in' | 'payment_out';
+export type TransactionScope = (typeof TRANSACTION_SCOPE_VALUES)[number];
+export type Currency = (typeof CURRENCY_VALUES)[number];
+export type MovementType = (typeof MOVEMENT_TYPE_VALUES)[number];
+export type CategoryType = (typeof CATEGORY_TYPE_VALUES)[number];
+export type Language = (typeof LANGUAGE_VALUES)[number];
 
 export interface Company {
   id: number;
@@ -42,10 +59,6 @@ export interface Company {
 }
 
 export interface CompanyWithBalance extends Company {
-  total_invoice_out: number;
-  total_payment_in: number;
-  total_invoice_in: number;
-  total_payment_out: number;
   receivable: number;
   payable: number;
   balance: number;
@@ -73,16 +86,15 @@ export interface Project {
   updated_at: string;
 }
 
-export interface ProjectWithSummary extends Project {
+export interface ProjectWithClient extends Project {
   client_name?: string | null;
-  total_invoice_out: number;
-  total_invoice_in: number;
+}
+
+export interface ProjectWithSummary extends ProjectWithClient {
   total_collected: number;
   total_paid: number;
   total_income: number;
   total_expense: number;
-  transaction_count?: number;
-  party_count?: number;
 }
 
 export interface Category {
@@ -184,20 +196,9 @@ export interface TrashItem {
   deleted_at: string;
 }
 
-// ==================== DASHBOARD TYPES ====================
-
 export interface DashboardStats {
-  totalIncome: number;
-  totalExpense: number;
-  netProfit: number;
-  totalCollected: number;
-  totalPaid: number;
-  netCash: number;
-  activeProjects: number;
-  totalCompanies: number;
   totalReceivables: number;
   totalPayables: number;
-  lowStockCount: number;
 }
 
 export interface DebtorCreditor {
@@ -208,14 +209,15 @@ export interface DebtorCreditor {
   balance: number;
 }
 
-// ==================== ANALYTICS TYPES ====================
-
-export interface MonthlyStats {
-  month: string;
+export interface FlowTotals {
   income: number;
   expense: number;
   collected: number;
   paid: number;
+}
+
+export interface MonthlyStats extends FlowTotals {
+  month: string;
 }
 
 export interface CategoryBreakdown {
@@ -242,57 +244,30 @@ export interface AgingReceivable {
   total: number;
 }
 
-// ==================== FILTER TYPES ====================
-// Single source of truth — derived from Zod schemas in utils/schemas.ts.
-// Partial<> is used because callers only provide a subset of filter fields.
-
 import type {
   TransactionFiltersInput,
   StockMovementFiltersInput,
-  CompanyFormInput,
-  ProjectFormInput,
   TransactionFormInput,
-  MaterialFormInput,
-  StockMovementFormInput,
 } from '../utils/schemas';
 
 export type TransactionFilters = Partial<TransactionFiltersInput>;
 export type StockMovementFilters = Partial<StockMovementFiltersInput>;
-
-// ==================== FORM DATA TYPES ====================
-// Derived from Zod schemas (z.input = pre-transform input types).
-// These match what the frontend sends to IPC before Zod validation.
-
-export type CompanyFormData = CompanyFormInput;
-export type ProjectFormData = ProjectFormInput;
-export type TransactionFormData = TransactionFormInput;
-export type MaterialFormData = MaterialFormInput;
-export type StockMovementFormData = StockMovementFormInput;
-
-// ==================== UI TYPES ====================
 
 export interface SelectOption {
   value: string | number;
   label: string;
 }
 
-export type BadgeVariant =
-  | 'gray'
-  | 'success'
-  | 'danger'
-  | 'warning'
-  | 'info'
-  | 'purple'
-  | 'default';
+export interface TypedSelectOption<T extends string> extends SelectOption {
+  value: T;
+}
 
-// ==================== EXCHANGE RATES ====================
+export type BadgeVariant = 'gray' | 'success' | 'danger' | 'warning' | 'info' | 'purple';
 
 export interface ExchangeRates {
   USD: number;
   EUR: number;
 }
-
-// ==================== GOOGLE DRIVE TYPES ====================
 
 export interface DriveBackupFile {
   id: string;
@@ -308,8 +283,6 @@ export interface DriveOperationResult {
   error?: string;
 }
 
-// ==================== PAYMENT ALLOCATION TYPES ====================
-
 export interface PaymentAllocation {
   id: number;
   payment_id: number;
@@ -320,14 +293,9 @@ export interface PaymentAllocation {
 
 export interface PaymentAllocationWithDetails extends PaymentAllocation {
   invoice_description?: string;
-  invoice_amount?: number;
-  invoice_amount_try?: number;
   invoice_date?: string;
   invoice_document_no?: string | null;
-  invoice_type?: TransactionType;
   payment_description?: string;
-  payment_amount?: number;
-  payment_amount_try?: number;
   payment_date?: string;
   payment_document_no?: string | null;
 }
@@ -349,11 +317,21 @@ export interface MatchCandidate {
   allocated_here: number;
 }
 
+export interface AllocationInput {
+  invoiceId: number;
+  amount: number;
+}
+
+export interface InvoiceAllocationInput {
+  paymentId: number;
+  amount: number;
+}
+
 export interface SaveTransactionRequest {
   id?: number;
-  data: TransactionFormData;
-  paymentAllocations?: { invoiceId: number; amount: number }[];
-  invoiceAllocations?: { paymentId: number; amount: number }[];
+  data: TransactionFormInput;
+  paymentAllocations?: AllocationInput[];
+  invoiceAllocations?: InvoiceAllocationInput[];
   remainderDocument?: { categoryId: number };
 }
 

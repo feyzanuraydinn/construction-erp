@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import '../../i18n';
 import Transactions from '../../pages/Transactions';
 import type { TransactionWithDetails } from '../../types';
-
-// ==================== MOCKS ====================
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', () => ({
@@ -18,8 +16,6 @@ const mockToast = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi
 vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
-
-// ==================== HELPERS ====================
 
 const mockTransactions: TransactionWithDetails[] = [
   {
@@ -98,7 +94,9 @@ function setupMocksEmpty() {
 }
 
 function setupMocksWithData() {
-  (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockTransactions);
+  (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockTransactions
+  );
   (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
     { id: 1, name: 'ABC İnşaat', company_type: 'company', account_type: 'customer' },
   ]);
@@ -108,15 +106,11 @@ function setupMocksWithData() {
   (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 }
 
-// ==================== TESTS ====================
-
 describe('Transactions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupMocksEmpty();
   });
-
-  // ---------- Initial render ----------
 
   it('should render page title and subtitle', async () => {
     await act(async () => {
@@ -139,25 +133,27 @@ describe('Transactions', () => {
     });
   });
 
-  // ---------- Loading state ----------
-
   it('should show loading state while data is loading', async () => {
-    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.project.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.company.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.project.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.category.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
 
     await act(async () => {
       render(<Transactions />);
     });
 
-    // Title should be visible since it is outside the loading conditional
     expect(screen.getByText('Tüm İşlemler')).toBeInTheDocument();
-    // Table should not have rendered yet
     expect(screen.queryByText('İşlem bulunamadı')).not.toBeInTheDocument();
   });
-
-  // ---------- Empty state ----------
 
   it('should show empty state when no transactions exist', async () => {
     await act(async () => {
@@ -169,8 +165,6 @@ describe('Transactions', () => {
       expect(screen.getByText('Filtrelere uygun işlem kaydı yok')).toBeInTheDocument();
     });
   });
-
-  // ---------- Data rendering ----------
 
   it('should render transactions in the table', async () => {
     setupMocksWithData();
@@ -208,7 +202,6 @@ describe('Transactions', () => {
     });
 
     await waitFor(() => {
-      // ABC İnşaat appears in both the filter dropdown and the table row
       const elements = screen.getAllByText('ABC İnşaat');
       expect(elements.length).toBeGreaterThanOrEqual(2);
     });
@@ -239,8 +232,6 @@ describe('Transactions', () => {
     });
   });
 
-  // ---------- Navigation ----------
-
   it('should navigate to company detail when company name is clicked', async () => {
     setupMocksWithData();
 
@@ -253,19 +244,14 @@ describe('Transactions', () => {
       expect(elements.length).toBeGreaterThanOrEqual(2);
     });
 
-    // Click on the span in the table (not the option in the select)
-    const companySpan = screen.getAllByText('ABC İnşaat').find(
-      (el) => el.tagName === 'SPAN'
-    );
-    expect(companySpan).toBeDefined();
+    const companyLink = screen.getAllByText('ABC İnşaat').find((el) => el.tagName === 'BUTTON');
+    expect(companyLink).toBeDefined();
     await act(async () => {
-      fireEvent.click(companySpan!);
+      fireEvent.click(companyLink!);
     });
 
     expect(mockNavigate).toHaveBeenCalledWith('/companies/1');
   });
-
-  // ---------- Search ----------
 
   it('should have a search input with correct placeholder', async () => {
     await act(async () => {
@@ -277,21 +263,19 @@ describe('Transactions', () => {
     });
   });
 
-  // ---------- Error handling ----------
-
   it('should show error toast when loading fails', async () => {
-    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('DB Error'));
+    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('DB Error')
+    );
 
     await act(async () => {
       render(<Transactions />);
     });
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith('Veriler yüklenirken hata oluştu');
+      expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('Veriler yüklenemedi:'));
     });
   });
-
-  // ---------- Firma Genel label ----------
 
   it('should show Firma Genel for transactions without company or project', async () => {
     setupMocksWithData();
@@ -301,9 +285,137 @@ describe('Transactions', () => {
     });
 
     await waitFor(() => {
-      // "Firma Genel" may appear in both scope filter and table - use getAllByText
       const elements = screen.getAllByText('Firma Genel');
       expect(elements.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('editing and deleting', () => {
+    const rowOf = (text: string) => {
+      const row = screen.getByText(text).closest('tr');
+      if (!row) throw new Error(`row ${text} not found`);
+      return row;
+    };
+    const buttonIn = (row: HTMLElement, title: string) => {
+      const button = row.querySelector(`button[title="${title}"]`);
+      if (!button) throw new Error(`${title} button not found`);
+      return button;
+    };
+
+    beforeEach(() => {
+      window.electronAPI.exchange.getRates = vi.fn().mockResolvedValue({ USD: 30, EUR: 32 });
+      window.electronAPI.transaction.getMatchCandidates = vi.fn().mockResolvedValue([]);
+      window.electronAPI.transaction.getAllocationsForInvoice = vi.fn().mockResolvedValue([]);
+      window.electronAPI.transaction.getAllocationsForPayment = vi.fn().mockResolvedValue([]);
+    });
+
+    it('edits an account transaction in the same detailed form as the account page', async () => {
+      setupMocksWithData();
+      await act(async () => {
+        render(<Transactions />);
+      });
+      await waitFor(() => expect(screen.getByText('Daire satış faturası')).toBeInTheDocument());
+
+      await act(async () => {
+        fireEvent.click(buttonIn(rowOf('Daire satış faturası'), 'Düzenle'));
+      });
+
+      expect(await screen.findByText('İşlem Düzenle')).toBeInTheDocument();
+      const form = screen.getByRole('dialog');
+      expect(within(form).getByText('Para Birimi')).toBeInTheDocument();
+      expect(within(form).getByText('Tahsilat')).toBeInTheDocument();
+      await waitFor(() =>
+        expect(window.electronAPI.transaction.getMatchCandidates).toHaveBeenCalledWith({
+          type: 'invoice_out',
+          companyId: 1,
+          projectId: null,
+          selfId: 1,
+        })
+      );
+    });
+
+    it('edits a firm record in the firm income/expense form', async () => {
+      setupMocksWithData();
+      await act(async () => {
+        render(<Transactions />);
+      });
+      await waitFor(() => expect(screen.getByText('Genel tahsilat')).toBeInTheDocument());
+
+      await act(async () => {
+        fireEvent.click(buttonIn(rowOf('Genel tahsilat'), 'Düzenle'));
+      });
+
+      expect(await screen.findByText('İşlem Düzenle')).toBeInTheDocument();
+      const form = screen.getByRole('dialog');
+      expect(within(form).queryByText('Para Birimi')).not.toBeInTheDocument();
+      expect(within(form).getByText('Gelir')).toBeInTheDocument();
+    });
+
+    it('opens the shared detail view from a row and goes on to the form', async () => {
+      setupMocksWithData();
+      await act(async () => {
+        render(<Transactions />);
+      });
+      await waitFor(() => expect(screen.getByText('Beton alım faturası')).toBeInTheDocument());
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Beton alım faturası'));
+      });
+      await waitFor(() =>
+        expect(window.electronAPI.transaction.getAllocationsForInvoice).toHaveBeenCalledWith(2)
+      );
+      const dialog = await screen.findByRole('dialog');
+      await act(async () => {
+        fireEvent.click(within(dialog).getByText('Düzenle'));
+      });
+      expect(await screen.findByText('İşlem Düzenle')).toBeInTheDocument();
+      await waitFor(() =>
+        expect(window.electronAPI.transaction.getMatchCandidates).toHaveBeenCalledWith(
+          expect.objectContaining({ projectId: 1, selfId: 2 })
+        )
+      );
+    });
+
+    it('deletes from the row after confirmation', async () => {
+      setupMocksWithData();
+      window.electronAPI.transaction.delete = vi.fn().mockResolvedValue({ success: true });
+      await act(async () => {
+        render(<Transactions />);
+      });
+      await waitFor(() => expect(screen.getByText('Daire satış faturası')).toBeInTheDocument());
+
+      await act(async () => {
+        fireEvent.click(buttonIn(rowOf('Daire satış faturası'), 'Sil'));
+      });
+      const dialog = await screen.findByRole('alertdialog');
+      await act(async () => {
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Sil' }));
+      });
+      await waitFor(() => expect(window.electronAPI.transaction.delete).toHaveBeenCalledWith(1));
+    });
+
+    it('forgets a selected row once the search hides it, so bulk delete cannot reach it', async () => {
+      setupMocksWithData();
+      await act(async () => {
+        render(<Transactions />);
+      });
+      await waitFor(() => expect(screen.getByText('Daire satış faturası')).toBeInTheDocument());
+
+      const checkbox = within(rowOf('Daire satış faturası')).getByRole('checkbox');
+      await act(async () => {
+        fireEvent.click(checkbox);
+      });
+      expect(screen.getByRole('button', { name: '1 işlem sil' })).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.change(screen.getByPlaceholderText('İşlem ara...'), {
+          target: { value: 'Beton' },
+        });
+      });
+      await waitFor(() =>
+        expect(screen.queryByText('Daire satış faturası')).not.toBeInTheDocument()
+      );
+      expect(screen.queryByRole('button', { name: /işlem sil$/i })).not.toBeInTheDocument();
     });
   });
 });

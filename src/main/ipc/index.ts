@@ -13,16 +13,12 @@ import { registerGdriveHandlers } from './gdriveHandlers';
 import { registerAppHandlers } from './appHandlers';
 import { registerSyncHandlers } from './syncHandlers';
 import { registerReviewHandlers } from './reviewHandlers';
+import { registerWindowHandlers } from './windowHandlers';
 
-/**
- * Register all IPC handlers
- *
- * @param getDbService - getter function for the database service
- * @param getMainWindow - getter function for main window
- */
 export function registerAllHandlers(
   getDbService: () => DatabaseService,
-  getMainWindow: () => BrowserWindow | null
+  getMainWindow: () => BrowserWindow | null,
+  saveBeforeQuit: () => Promise<void>
 ): void {
   registerCompanyHandlers(getDbService);
   registerProjectHandlers(getDbService);
@@ -33,9 +29,10 @@ export function registerAllHandlers(
   registerDashboardHandlers(getDbService);
   registerReviewHandlers(getDbService);
 
-  registerBackupHandlers(getDbService, getMainWindow);
+  registerBackupHandlers(getDbService);
   registerExportHandlers(getMainWindow);
   registerGdriveHandlers();
-  registerAppHandlers(getDbService);
+  registerAppHandlers();
   registerSyncHandlers();
+  registerWindowHandlers(getMainWindow, saveBeforeQuit);
 }

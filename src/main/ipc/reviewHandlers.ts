@@ -1,5 +1,4 @@
-import { app, IpcMainInvokeEvent } from 'electron';
-import path from 'path';
+import { IpcMainInvokeEvent } from 'electron';
 import type { DatabaseService } from '../../database/DatabaseService';
 import {
   analyzeData,
@@ -10,37 +9,39 @@ import {
   applyUnmatched,
   completeReview,
   type ApplyResult,
-  type DataReviewReport,
+  type ReviewStepResult,
 } from '../../database/dataReview';
 import {
   reviewRepairsSchema,
   reviewRatesSchema,
   reviewAllocationFixesSchema,
   reviewUnmatchedSchema,
-  validateInput,
+  parseInput,
 } from '../../utils/schemas';
 import { safeHandle } from './safeHandle';
 import { t } from '../i18n';
 import { mainLogger } from '../logger';
+import { backupDirectory } from '../appPaths';
+import { writeAndSave } from './writeAndSave';
 
 export function registerReviewHandlers(getDbService: () => DatabaseService): void {
-  const backupDir = () => path.join(app.getPath('userData'), 'backups');
-
-  const runStep = (name: string, step: (db: DatabaseService) => ApplyResult): { result: ApplyResult; report: DataReviewReport } => {
-    const db = getDbService();
-    db.createSafetyCopy(backupDir(), 'before-data-review');
-    const result = step(db);
-    db.save();
-    mainLogger.info(`Data review step ${name}: ${result.changed} changed, ${result.skipped} skipped`, 'DataReview');
-    return { result, report: analyzeData(db.rawDb) };
+  const runStep = (name: string, step: (db: DatabaseService) => ApplyResult): ReviewStepResult => {
+    const result = writeAndSave(getDbService, (db) => {
+      db.createSafetyCopy(backupDirectory(), 'before-data-review');
+      return step(db);
+    });
+    mainLogger.info(
+      `Data review step ${name}: ${result.changed} changed, ${result.skipped} skipped`,
+      'DataReview'
+    );
+    return { result, report: analyzeData(getDbService().rawDb) };
   };
 
   safeHandle('review:getStatus', () => {
     const db = getDbService();
     const status = getReviewStatus(db.rawDb);
     if (!status.completed && status.pending === 0) {
-      completeReview(db.rawDb);
-      db.save();
+      writeAndSave(getDbService, (current) => completeReview(current.rawDb));
       return { completed: true, pending: 0 };
     }
     return status;
@@ -49,37 +50,30 @@ export function registerReviewHandlers(getDbService: () => DatabaseService): voi
   safeHandle('review:getReport', () => analyzeData(getDbService().rawDb));
 
   safeHandle('review:applyRepairs', (_: IpcMainInvokeEvent, request: unknown) => {
-    const validation = validateInput(reviewRepairsSchema, request);
-    if (!validation.success) throw new Error(validation.error);
-    return runStep('repairs', (db) => applyRepairs(db.rawDb, validation.data!.orphanIds));
+    const { orphanIds } = parseInput(reviewRepairsSchema, request);
+    return runStep('repairs', (db) => applyRepairs(db.rawDb, orphanIds));
   });
 
   safeHandle('review:applyRates', (_: IpcMainInvokeEvent, request: unknown) => {
-    const validation = validateInput(reviewRatesSchema, request);
-    if (!validation.success) throw new Error(validation.error);
-    return runStep('rates', (db) => applyRates(db.rawDb, validation.data!.rates));
+    const { rates } = parseInput(reviewRatesSchema, request);
+    return runStep('rates', (db) => applyRates(db.rawDb, rates));
   });
 
   safeHandle('review:applyAllocationFixes', (_: IpcMainInvokeEvent, request: unknown) => {
-    const validation = validateInput(reviewAllocationFixesSchema, request);
-    if (!validation.success) throw new Error(validation.error);
-    return runStep('allocations', (db) => applyAllocationFixes(db.rawDb, validation.data!.keys));
+    const { keys } = parseInput(reviewAllocationFixesSchema, request);
+    return runStep('allocations', (db) => applyAllocationFixes(db.rawDb, keys));
   });
 
   safeHandle('review:applyUnmatched', (_: IpcMainInvokeEvent, request: unknown) => {
-    const validation = validateInput(reviewUnmatchedSchema, request);
-    if (!validation.success) throw new Error(validation.error);
-    const { choices, firmChoices } = validation.data!;
+    const { choices, firmChoices } = parseInput(reviewUnmatchedSchema, request);
     return runStep('unmatched', (db) =>
       applyUnmatched(db.rawDb, choices, firmChoices, t('main.dataReview.generatedNote'))
     );
   });
 
   safeHandle('review:complete', () => {
-    const db = getDbService();
-    completeReview(db.rawDb);
-    db.save();
+    writeAndSave(getDbService, (db) => completeReview(db.rawDb));
     mainLogger.info('Data review completed', 'DataReview');
-    return analyzeData(db.rawDb);
+    return analyzeData(getDbService().rawDb);
   });
 }

@@ -84,7 +84,6 @@ describe('Button Component', () => {
     it('should render icon on the left by default', () => {
       render(<Button icon={FiPlus}>Add Item</Button>);
       const button = screen.getByRole('button');
-      // Icon should be rendered before text
       expect(button.querySelector('svg')).toBeInTheDocument();
     });
 
@@ -103,14 +102,12 @@ describe('Button Component', () => {
     it('should show loading spinner when loading', () => {
       render(<Button loading>Loading</Button>);
       const button = screen.getByRole('button');
-      // Loading spinner should be visible (has animate-spin class)
       expect(button.querySelector('.animate-spin')).toBeInTheDocument();
     });
 
     it('should hide children text when loading', () => {
       render(<Button loading>Submit</Button>);
       const button = screen.getByRole('button');
-      // Text should not be visible when loading
       expect(button).not.toHaveTextContent('Submit');
     });
 

@@ -11,13 +11,27 @@ vi.mock('../../contexts/ToastContext', () => ({
 
 describe('MovementModal', () => {
   const mockMaterials: Material[] = [
-    { id: 1, code: 'M-001', name: 'Demir', unit: 'kg', current_stock: 500, min_stock: 100, category: 'metal' } as Material,
-    { id: 2, code: 'M-002', name: 'Çimento', unit: 'ton', current_stock: 50, min_stock: 10, category: 'yapı' } as Material,
+    {
+      id: 1,
+      code: 'M-001',
+      name: 'Demir',
+      unit: 'kg',
+      current_stock: 500,
+      min_stock: 100,
+      category: 'metal',
+    } as Material,
+    {
+      id: 2,
+      code: 'M-002',
+      name: 'Çimento',
+      unit: 'ton',
+      current_stock: 50,
+      min_stock: 10,
+      category: 'yapı',
+    } as Material,
   ];
 
-  const mockProjects: Project[] = [
-    { id: 1, code: 'P-001', name: 'Konut A' } as Project,
-  ];
+  const mockProjects: Project[] = [{ id: 1, code: 'P-001', name: 'Konut A' } as Project];
 
   const mockCompanies: Company[] = [
     { id: 1, name: 'Tedarik Co', type: 'company', account_type: 'supplier' } as Company,
@@ -36,8 +50,6 @@ describe('MovementModal', () => {
     vi.clearAllMocks();
   });
 
-  // ==================== RENDERING ====================
-
   it('should render when isOpen is true', () => {
     render(<MovementModal {...defaultProps} />);
     expect(screen.getByText('Stok Hareketi')).toBeInTheDocument();
@@ -47,8 +59,6 @@ describe('MovementModal', () => {
     render(<MovementModal {...defaultProps} isOpen={false} />);
     expect(screen.queryByText('Stok Hareketi')).not.toBeInTheDocument();
   });
-
-  // ==================== MOVEMENT TYPE SELECTION ====================
 
   it('should render movement type radio options', () => {
     render(<MovementModal {...defaultProps} />);
@@ -64,8 +74,6 @@ describe('MovementModal', () => {
     ) as HTMLInputElement;
     expect(inRadio?.checked).toBe(true);
   });
-
-  // ==================== FORM FIELDS ====================
 
   it('should show material selector', () => {
     render(<MovementModal {...defaultProps} />);
@@ -90,9 +98,7 @@ describe('MovementModal', () => {
   it('should show project field for "out" type', async () => {
     render(<MovementModal {...defaultProps} />);
     const radioInputs = document.querySelectorAll('input[type="radio"]');
-    const outRadio = Array.from(radioInputs).find(
-      (r) => (r as HTMLInputElement).value === 'out'
-    );
+    const outRadio = Array.from(radioInputs).find((r) => (r as HTMLInputElement).value === 'out');
     if (outRadio) fireEvent.click(outRadio.closest('label')!);
 
     await waitFor(() => {
@@ -103,9 +109,7 @@ describe('MovementModal', () => {
   it('should hide unit price and supplier for "out" type', async () => {
     render(<MovementModal {...defaultProps} />);
     const radioInputs = document.querySelectorAll('input[type="radio"]');
-    const outRadio = Array.from(radioInputs).find(
-      (r) => (r as HTMLInputElement).value === 'out'
-    );
+    const outRadio = Array.from(radioInputs).find((r) => (r as HTMLInputElement).value === 'out');
     if (outRadio) fireEvent.click(outRadio.closest('label')!);
 
     await waitFor(() => {
@@ -122,11 +126,8 @@ describe('MovementModal', () => {
 
   it('should show description field', () => {
     render(<MovementModal {...defaultProps} />);
-    // "Açıklama" label from stock.form.description
     expect(screen.getByText('Açıklama')).toBeInTheDocument();
   });
-
-  // ==================== FORM SUBMISSION ====================
 
   it('should call stock.create on submit', async () => {
     const onSave = vi.fn();
@@ -135,14 +136,11 @@ describe('MovementModal', () => {
 
     render(<MovementModal {...defaultProps} onSave={onSave} />);
 
-    // Select a material
-    const materialSelect = screen.getByText('Malzeme *')
-      .closest('div')?.querySelector('select');
+    const materialSelect = screen.getByText('Malzeme *').closest('div')?.querySelector('select');
     if (materialSelect) {
       fireEvent.change(materialSelect, { target: { value: '1' } });
     }
 
-    // Fill quantity
     const quantityLabel = screen.getByText(/Miktar/);
     const quantityInput = quantityLabel.closest('div')?.querySelector('input');
     if (quantityInput) {
@@ -152,19 +150,21 @@ describe('MovementModal', () => {
 
     fireEvent.click(screen.getByText('Kaydet'));
 
-    await waitFor(() => {
-      if (mockCreate.mock.calls.length > 0) {
-        expect(onSave).toHaveBeenCalledWith(true);
-      }
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        if (mockCreate.mock.calls.length > 0) {
+          expect(onSave).toHaveBeenCalledOnce();
+        }
+      },
+      { timeout: 3000 }
+    );
   });
 
   it('should show error toast on save failure', async () => {
     window.electronAPI.stock.create = vi.fn().mockRejectedValue(new Error('DB error'));
     render(<MovementModal {...defaultProps} />);
 
-    const materialSelect = screen.getByText('Malzeme *')
-      .closest('div')?.querySelector('select');
+    const materialSelect = screen.getByText('Malzeme *').closest('div')?.querySelector('select');
     if (materialSelect) {
       fireEvent.change(materialSelect, { target: { value: '1' } });
     }
@@ -178,14 +178,15 @@ describe('MovementModal', () => {
 
     fireEvent.click(screen.getByText('Kaydet'));
 
-    await waitFor(() => {
-      if (mockToast.error.mock.calls.length > 0) {
-        expect(mockToast.error).toHaveBeenCalled();
-      }
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        if (mockToast.error.mock.calls.length > 0) {
+          expect(mockToast.error).toHaveBeenCalled();
+        }
+      },
+      { timeout: 3000 }
+    );
   });
-
-  // ==================== CLOSE ====================
 
   it('should call onClose when cancel is clicked', () => {
     const onClose = vi.fn();

@@ -3,9 +3,12 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import '../../i18n';
 import Dashboard from '../../pages/Dashboard';
 import { clearAllCache } from '../../hooks/useDataCache';
-import type { DashboardStats, TransactionWithDetails, DebtorCreditor, ProjectWithSummary } from '../../types';
-
-// ==================== MOCKS ====================
+import type {
+  DashboardStats,
+  TransactionWithDetails,
+  DebtorCreditor,
+  ProjectWithSummary,
+} from '../../types';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', () => ({
@@ -20,20 +23,9 @@ vi.mock('../../contexts/ToastContext', () => ({
   useToast: () => mockToast,
 }));
 
-// ==================== HELPERS ====================
-
 const mockStats: DashboardStats = {
-  totalCompanies: 10,
-  activeProjects: 5,
-  totalIncome: 500000,
-  totalExpense: 300000,
-  netProfit: 200000,
-  totalCollected: 400000,
-  totalPaid: 250000,
-  netCash: 150000,
   totalReceivables: 100000,
   totalPayables: 50000,
-  lowStockCount: 0,
 };
 
 const mockTransactions: TransactionWithDetails[] = [
@@ -126,26 +118,39 @@ const mockProjects: ProjectWithSummary[] = [
 
 function setupMocksWithData() {
   (window.electronAPI.dashboard.getStats as ReturnType<typeof vi.fn>).mockResolvedValue(mockStats);
-  (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockTransactions);
-  (window.electronAPI.dashboard.getTopDebtors as ReturnType<typeof vi.fn>).mockResolvedValue(mockDebtors);
-  (window.electronAPI.dashboard.getTopCreditors as ReturnType<typeof vi.fn>).mockResolvedValue(mockCreditors);
-  (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(mockProjects);
+  (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockTransactions
+  );
+  (window.electronAPI.dashboard.getTopDebtors as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockDebtors
+  );
+  (window.electronAPI.dashboard.getTopCreditors as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockCreditors
+  );
+  (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockProjects
+  );
 }
 
 function setupMocksEmpty() {
   (window.electronAPI.dashboard.getStats as ReturnType<typeof vi.fn>).mockResolvedValue({
-    totalCompanies: 0, activeProjects: 0,
-    totalIncome: 0, totalExpense: 0, netProfit: 0,
-    totalCollected: 0, totalPaid: 0, netCash: 0,
-    totalReceivables: 0, totalPayables: 0, lowStockCount: 0,
+    totalCompanies: 0,
+    activeProjects: 0,
+    totalIncome: 0,
+    totalExpense: 0,
+    netProfit: 0,
+    totalCollected: 0,
+    totalPaid: 0,
+    netCash: 0,
+    totalReceivables: 0,
+    totalPayables: 0,
+    lowStockCount: 0,
   });
   (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (window.electronAPI.dashboard.getTopDebtors as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (window.electronAPI.dashboard.getTopCreditors as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 }
-
-// ==================== TESTS ====================
 
 describe('Dashboard', () => {
   beforeEach(() => {
@@ -161,7 +166,9 @@ describe('Dashboard', () => {
     });
 
     const creditor = await screen.findByText('Alacaklı Firma X');
-    const creditorBadge = creditor.closest('button')?.querySelector('span[class*="bg-"]:last-child');
+    const creditorBadge = creditor
+      .closest('button')
+      ?.querySelector('span[class*="bg-"]:last-child');
     expect(creditorBadge?.className).toContain('bg-red-100');
 
     const debtor = screen.getByText('Borçlu Firma B');
@@ -169,22 +176,28 @@ describe('Dashboard', () => {
     expect(debtorBadge?.className).toContain('bg-green-100');
   });
 
-  it('keeps the page on screen when the date filter reloads the debtor lists', async () => {
+  it('shows current balances in the debtor lists whatever date filter is picked', async () => {
+    setupMocksWithData();
     await act(async () => {
       render(<Dashboard />);
     });
-    await waitFor(() => expect(screen.getByText('Gösterge Paneli')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Borçlu Firma B')).toBeInTheDocument());
 
-    (window.electronAPI.dashboard.getTopDebtors as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.dashboard.getTopCreditors as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
     await act(async () => {
       fireEvent.click(screen.getByText('Bu Hafta'));
     });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Bu Ay'));
+    });
 
-    expect(screen.getByText('Gösterge Paneli')).toBeInTheDocument();
+    expect(screen.getByText('Borçlu Firma B')).toBeInTheDocument();
+    expect(window.electronAPI.dashboard.getTopDebtors).toHaveBeenCalledTimes(1);
+    expect(window.electronAPI.dashboard.getTopDebtors).toHaveBeenCalledWith(5);
+    expect(window.electronAPI.dashboard.getTopCreditors).toHaveBeenCalledTimes(1);
+    expect(window.electronAPI.dashboard.getTopCreditors).toHaveBeenCalledWith(5);
+    expect(screen.getByText('Bize borçlu olanlar (güncel bakiye)')).toBeInTheDocument();
+    expect(screen.getByText('Biz borçluyuz (güncel bakiye)')).toBeInTheDocument();
   });
-
-  // ---------- Initial render ----------
 
   it('should render page title and subtitle', async () => {
     await act(async () => {
@@ -197,25 +210,29 @@ describe('Dashboard', () => {
     });
   });
 
-  // ---------- Loading state ----------
-
   it('should show loading spinner while data is loading', async () => {
-    // Make APIs hang to keep loading state
-    (window.electronAPI.dashboard.getStats as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.dashboard.getTopDebtors as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.dashboard.getTopCreditors as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
-    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (window.electronAPI.dashboard.getStats as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.transaction.getAll as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.dashboard.getTopDebtors as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.dashboard.getTopCreditors as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
+    (window.electronAPI.project.getWithSummary as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {})
+    );
 
     await act(async () => {
       render(<Dashboard />);
     });
 
-    // While loading, no page title is rendered (only LoadingSpinner)
     expect(screen.queryByText('Gösterge Paneli')).not.toBeInTheDocument();
   });
-
-  // ---------- Empty state ----------
 
   it('should show empty states when no data exists', async () => {
     await act(async () => {
@@ -229,8 +246,6 @@ describe('Dashboard', () => {
       expect(screen.getByText('Alacaklı cari bulunmuyor')).toBeInTheDocument();
     });
   });
-
-  // ---------- Data rendering ----------
 
   it('should render stat cards with data', async () => {
     setupMocksWithData();
@@ -297,8 +312,6 @@ describe('Dashboard', () => {
     });
   });
 
-  // ---------- Date filter interaction ----------
-
   it('should render date filter buttons', async () => {
     await act(async () => {
       render(<Dashboard />);
@@ -323,18 +336,15 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Bu Yıl')).toBeInTheDocument();
     });
+    const activeClass = screen.getByText('Bu Yıl').closest('button')?.className;
 
     await act(async () => {
       fireEvent.click(screen.getByText('Tüm Zamanlar'));
     });
 
-    // After clicking "Tüm Zamanlar", debtors/creditors should be re-fetched
-    await waitFor(() => {
-      expect(window.electronAPI.dashboard.getTopDebtors).toHaveBeenCalled();
-    });
+    expect(screen.getByText('Tüm Zamanlar').closest('button')?.className).toBe(activeClass);
+    expect(screen.getByText('Bu Yıl').closest('button')?.className).not.toBe(activeClass);
   });
-
-  // ---------- Navigation ----------
 
   it('should navigate to transactions when "Tümünü Gör" is clicked on transactions section', async () => {
     setupMocksWithData();
@@ -347,7 +357,6 @@ describe('Dashboard', () => {
       expect(screen.getByText('Son İşlemler')).toBeInTheDocument();
     });
 
-    // There are two "Tümünü Gör" buttons - transactions and projects
     const viewAllButtons = screen.getAllByText('Tümünü Gör');
     await act(async () => {
       fireEvent.click(viewAllButtons[0]);
@@ -393,22 +402,22 @@ describe('Dashboard', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/companies/1');
   });
 
-  // ---------- Error handling ----------
-
   it('should show error toast when debtors/creditors fail to load', async () => {
-    (window.electronAPI.dashboard.getTopDebtors as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API Error'));
-    (window.electronAPI.dashboard.getTopCreditors as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API Error'));
+    (window.electronAPI.dashboard.getTopDebtors as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('API Error')
+    );
+    (window.electronAPI.dashboard.getTopCreditors as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('API Error')
+    );
 
     await act(async () => {
       render(<Dashboard />);
     });
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith('Veriler yüklenirken hata oluştu');
+      expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('Veriler yüklenemedi:'));
     });
   });
-
-  // ---------- Transaction detail modal ----------
 
   it('should open transaction detail modal when a transaction is clicked', async () => {
     setupMocksWithData();

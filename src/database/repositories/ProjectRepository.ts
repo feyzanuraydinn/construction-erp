@@ -1,8 +1,33 @@
 import type { Database as SqlJsDatabase } from 'sql.js';
 import { BaseRepository } from './BaseRepository';
-import type { Project, ProjectWithSummary, ProjectParty, ProjectPartyWithDetails } from '../../types';
+import type {
+  Project,
+  ProjectWithClient,
+  ProjectWithSummary,
+  ProjectParty,
+  ProjectPartyWithDetails,
+} from '../../types';
 import type { ProjectInput, ProjectPartyInput } from '../../utils/schemas';
 import { collectProjectBundle, moveToTrash } from './trashBundle';
+import { sumOfTypeSql } from '../sqlFragments';
+import { runInSavepoint } from '../savepoint';
+
+const PROJECTS_UPDATABLE_FIELDS: ReadonlyArray<keyof ProjectInput> = [
+  'name',
+  'ownership_type',
+  'client_company_id',
+  'status',
+  'project_type',
+  'location',
+  'total_area',
+  'unit_count',
+  'estimated_budget',
+  'planned_start',
+  'planned_end',
+  'actual_start',
+  'actual_end',
+  'description',
+];
 
 export class ProjectRepository extends BaseRepository<Project> {
   constructor(db: SqlJsDatabase) {
@@ -13,14 +38,10 @@ export class ProjectRepository extends BaseRepository<Project> {
     return this.query(`
       SELECT p.*,
         c.name as client_name,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_invoice_out,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_invoice_in,
-        COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_collected,
-        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_paid,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_income,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_expense,
-        COUNT(DISTINCT t.id) as transaction_count,
-        (SELECT COUNT(DISTINCT pp.company_id) FROM project_parties pp WHERE pp.project_id = p.id) as party_count
+        ${sumOfTypeSql('payment_in', 't')} as total_collected,
+        ${sumOfTypeSql('payment_out', 't')} as total_paid,
+        ${sumOfTypeSql('invoice_out', 't')} as total_income,
+        ${sumOfTypeSql('invoice_in', 't')} as total_expense
       FROM projects p
       LEFT JOIN companies c ON c.id = p.client_company_id
       LEFT JOIN transactions t ON t.project_id = p.id
@@ -30,24 +51,20 @@ export class ProjectRepository extends BaseRepository<Project> {
     `);
   }
 
-  getById(id: number): Project | undefined {
-    return this.queryOne(`
+  getById(id: number): ProjectWithClient | undefined {
+    return this.queryOne<ProjectWithClient>(
+      `
       SELECT p.*, c.name as client_name
       FROM projects p
       LEFT JOIN companies c ON c.id = p.client_company_id
       WHERE p.id = ?
-    `, [id]);
+    `,
+      [id]
+    );
   }
 
   generateCode(): string {
-    const year = new Date().getFullYear();
-    const prefix = `PRJ-${year}-`;
-    const last = this.queryOne<{ code: string }>(`SELECT code FROM projects WHERE code LIKE ? ORDER BY code DESC LIMIT 1`, [`${prefix}%`]);
-    if (last) {
-      const num = parseInt(last.code.replace(prefix, ''), 10) + 1;
-      return `${prefix}${String(num).padStart(3, '0')}`;
-    }
-    return `${prefix}001`;
+    return this.nextCode(`PRJ-${new Date().getFullYear()}-`);
   }
 
   create(data: ProjectInput): Project {
@@ -55,40 +72,38 @@ export class ProjectRepository extends BaseRepository<Project> {
     const result = this.run(
       `INSERT INTO projects (code, name, ownership_type, client_company_id, status, project_type, location, total_area, unit_count, estimated_budget, planned_start, planned_end, actual_start, actual_end, description)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [code, data.name, data.ownership_type || 'own', data.client_company_id || null, data.status || 'planned', data.project_type || null, data.location || null, data.total_area || null, data.unit_count || null, data.estimated_budget || null, data.planned_start || null, data.planned_end || null, data.actual_start || null, data.actual_end || null, data.description || null]
+      [
+        code,
+        data.name,
+        data.ownership_type || 'own',
+        data.client_company_id || null,
+        data.status || 'planned',
+        data.project_type || null,
+        data.location || null,
+        data.total_area || null,
+        data.unit_count || null,
+        data.estimated_budget || null,
+        data.planned_start || null,
+        data.planned_end || null,
+        data.actual_start || null,
+        data.actual_end || null,
+        data.description || null,
+      ]
     );
-    return this.getById(result.lastInsertRowid)!;
+    return this.requireRow(this.getById(result.lastInsertRowid));
   }
 
   update(id: number, data: Partial<ProjectInput>): Project | undefined {
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    const updatable = ['name', 'ownership_type', 'client_company_id', 'status', 'project_type', 'location', 'total_area', 'unit_count', 'estimated_budget', 'planned_start', 'planned_end', 'actual_start', 'actual_end', 'description'] as const;
-    for (const field of updatable) {
-      if (field in data) {
-        fields.push(`${field} = ?`);
-        values.push(data[field] ?? null);
-      }
-    }
-    if (fields.length === 0) return this.getById(id);
-    fields.push("updated_at = CURRENT_TIMESTAMP");
-    values.push(id);
-    this.run(`UPDATE projects SET ${fields.join(', ')} WHERE id = ?`, values);
-    return this.getById(id);
+    return this.updateFields(id, data, PROJECTS_UPDATABLE_FIELDS);
   }
 
   delete(id: number): { success: boolean } {
     const project = this.queryOne(`SELECT * FROM projects WHERE id = ?`, [id]);
     if (!project) return { success: false };
-    this.db.run('BEGIN TRANSACTION');
-    try {
-      moveToTrash(this.db, 'project', project, collectProjectBundle(this.db, id));
-      this.db.run('COMMIT');
-      return { success: true };
-    } catch (error) {
-      this.db.run('ROLLBACK');
-      throw error;
-    }
+    runInSavepoint(this.db, () =>
+      moveToTrash(this.db, 'project', project, collectProjectBundle(this.db, id))
+    );
+    return { success: true };
   }
 
   getRelatedCounts(id: number): { transactionCount: number; linkedTransactionCount: number } {
@@ -103,13 +118,16 @@ export class ProjectRepository extends BaseRepository<Project> {
   }
 
   getParties(projectId: number): ProjectPartyWithDetails[] {
-    return this.query(`
+    return this.query(
+      `
       SELECT pp.*, c.name as company_name, c.phone, c.email, c.account_type
       FROM project_parties pp
       LEFT JOIN companies c ON c.id = pp.company_id
       WHERE pp.project_id = ?
       ORDER BY pp.role, c.name
-    `, [projectId]);
+    `,
+      [projectId]
+    );
   }
 
   addParty(data: ProjectPartyInput): ProjectParty {
@@ -118,7 +136,11 @@ export class ProjectRepository extends BaseRepository<Project> {
        VALUES (?, ?, ?, ?)`,
       [data.project_id, data.company_id, data.role, data.notes || null]
     );
-    return this.queryOne<ProjectParty>(`SELECT * FROM project_parties WHERE id = ?`, [result.lastInsertRowid])!;
+    return this.requireRow(
+      this.queryOne<ProjectParty>(`SELECT * FROM project_parties WHERE id = ?`, [
+        result.lastInsertRowid,
+      ])
+    );
   }
 
   removeParty(id: number): { success: boolean } {

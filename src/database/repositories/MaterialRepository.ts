@@ -3,6 +3,17 @@ import { BaseRepository } from './BaseRepository';
 import type { Material, StockMovementWithDetails, StockMovementFilters } from '../../types';
 import type { MaterialInput, StockMovementInput } from '../../utils/schemas';
 import { collectMaterialBundle, moveToTrash } from './trashBundle';
+import { runInSavepoint } from '../savepoint';
+import { changeStock, movementStockDelta, setStock } from '../stockLevels';
+
+const MATERIALS_UPDATABLE_FIELDS: ReadonlyArray<keyof MaterialInput> = [
+  'name',
+  'category',
+  'unit',
+  'min_stock',
+  'current_stock',
+  'notes',
+];
 
 export class MaterialRepository extends BaseRepository<Material> {
   constructor(db: SqlJsDatabase) {
@@ -10,12 +21,7 @@ export class MaterialRepository extends BaseRepository<Material> {
   }
 
   generateCode(): string {
-    const last = this.queryOne<{ code: string }>(`SELECT code FROM materials ORDER BY id DESC LIMIT 1`);
-    if (last) {
-      const num = parseInt(last.code.replace('MLZ-', ''), 10) + 1;
-      return `MLZ-${String(num).padStart(3, '0')}`;
-    }
-    return 'MLZ-001';
+    return this.nextCode('MLZ-');
   }
 
   create(data: MaterialInput): Material {
@@ -23,48 +29,30 @@ export class MaterialRepository extends BaseRepository<Material> {
     const result = this.run(
       `INSERT INTO materials (code, name, category, unit, min_stock, current_stock, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [code, data.name, data.category || null, data.unit, data.min_stock || 0, data.current_stock || 0, data.notes || null]
+      [
+        code,
+        data.name,
+        data.category || null,
+        data.unit,
+        data.min_stock || 0,
+        data.current_stock || 0,
+        data.notes || null,
+      ]
     );
-    return this.getById(result.lastInsertRowid)!;
+    return this.requireRow(this.getById(result.lastInsertRowid));
   }
 
   update(id: number, data: Partial<MaterialInput>): Material | undefined {
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    const updatable = ['name', 'category', 'unit', 'min_stock', 'current_stock', 'notes'] as const;
-    for (const field of updatable) {
-      if (field in data) {
-        fields.push(`${field} = ?`);
-        values.push(data[field] ?? null);
-      }
-    }
-    if (fields.length === 0) return this.getById(id);
-    fields.push("updated_at = CURRENT_TIMESTAMP");
-    values.push(id);
-    this.run(`UPDATE materials SET ${fields.join(', ')} WHERE id = ?`, values);
-    return this.getById(id);
+    return this.updateFields(id, data, MATERIALS_UPDATABLE_FIELDS);
   }
 
   delete(id: number): { success: boolean } {
     const material = this.getById(id);
     if (!material) return { success: false };
-    this.db.run('BEGIN TRANSACTION');
-    try {
-      moveToTrash(this.db, 'material', material, collectMaterialBundle(this.db, id));
-      this.db.run('COMMIT');
-      return { success: true };
-    } catch (error) {
-      this.db.run('ROLLBACK');
-      throw error;
-    }
-  }
-
-  getLowStock(): Material[] {
-    return this.query(`
-      SELECT * FROM materials
-      WHERE is_active = 1 AND current_stock <= min_stock AND min_stock > 0
-      ORDER BY (current_stock / NULLIF(min_stock, 0)) ASC
-    `);
+    runInSavepoint(this.db, () =>
+      moveToTrash(this.db, 'material', material, collectMaterialBundle(this.db, id))
+    );
+    return { success: true };
   }
 
   getMovements(filters?: StockMovementFilters): StockMovementWithDetails[] {
@@ -80,11 +68,26 @@ export class MaterialRepository extends BaseRepository<Material> {
       WHERE 1=1
     `;
     const params: unknown[] = [];
-    if (filters?.material_id) { query += ` AND sm.material_id = ?`; params.push(filters.material_id); }
-    if (filters?.movement_type) { query += ` AND sm.movement_type = ?`; params.push(filters.movement_type); }
-    if (filters?.project_id) { query += ` AND sm.project_id = ?`; params.push(filters.project_id); }
-    if (filters?.start_date) { query += ` AND sm.date >= ?`; params.push(filters.start_date); }
-    if (filters?.end_date) { query += ` AND sm.date <= ?`; params.push(filters.end_date); }
+    if (filters?.material_id) {
+      query += ` AND sm.material_id = ?`;
+      params.push(filters.material_id);
+    }
+    if (filters?.movement_type) {
+      query += ` AND sm.movement_type = ?`;
+      params.push(filters.movement_type);
+    }
+    if (filters?.project_id) {
+      query += ` AND sm.project_id = ?`;
+      params.push(filters.project_id);
+    }
+    if (filters?.start_date) {
+      query += ` AND sm.date >= ?`;
+      params.push(filters.start_date);
+    }
+    if (filters?.end_date) {
+      query += ` AND sm.date <= ?`;
+      params.push(filters.end_date);
+    }
     query += ` ORDER BY sm.date DESC, sm.created_at DESC`;
     return this.query(query, params);
   }
@@ -94,60 +97,66 @@ export class MaterialRepository extends BaseRepository<Material> {
     const unitPrice = data.unit_price || 0;
     const totalPrice = quantity * unitPrice;
 
-    this.db.run('BEGIN TRANSACTION');
-    try {
+    return runInSavepoint(this.db, () => {
       const result = this.run(
         `INSERT INTO stock_movements (material_id, movement_type, quantity, unit_price, total_price, project_id, company_id, date, description, document_no)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [data.material_id, data.movement_type, quantity, unitPrice, totalPrice, data.project_id || null, data.company_id || null, data.date, data.description || null, data.document_no || null]
+        [
+          data.material_id,
+          data.movement_type,
+          quantity,
+          unitPrice,
+          totalPrice,
+          data.project_id || null,
+          data.company_id || null,
+          data.date,
+          data.description || null,
+          data.document_no || null,
+        ]
       );
 
-      // Update material stock
-      const movementType = data.movement_type;
-      if (movementType === 'in') {
-        this.run(`UPDATE materials SET current_stock = current_stock + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [quantity, data.material_id]);
-      } else if (movementType === 'out' || movementType === 'waste') {
-        this.run(`UPDATE materials SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [quantity, data.material_id]);
-      } else if (movementType === 'adjustment') {
-        this.run(`UPDATE materials SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [quantity, data.material_id]);
+      if (data.movement_type === 'adjustment') {
+        setStock(this.db, data.material_id, quantity);
+      } else {
+        changeStock(this.db, data.material_id, movementStockDelta(data.movement_type, quantity));
       }
 
-      const movement = this.queryOne<StockMovementWithDetails>(`
+      const movement = this.requireRow(
+        this.queryOne<StockMovementWithDetails>(
+          `
         SELECT sm.*, m.name as material_name, m.unit as material_unit
         FROM stock_movements sm
         LEFT JOIN materials m ON m.id = sm.material_id
         WHERE sm.id = ?
-      `, [result.lastInsertRowid])!;
+      `,
+          [result.lastInsertRowid]
+        )
+      );
 
-      this.db.run('COMMIT');
       return movement;
-    } catch (error) {
-      this.db.run('ROLLBACK');
-      throw error;
-    }
+    });
   }
 
   deleteMovement(id: number): { success: boolean } {
-    const movement = this.queryOne<StockMovementWithDetails>(`SELECT * FROM stock_movements WHERE id = ?`, [id]);
+    const movement = this.queryOne<StockMovementWithDetails>(
+      `SELECT * FROM stock_movements WHERE id = ?`,
+      [id]
+    );
     if (!movement) return { success: false };
 
-    this.db.run('BEGIN TRANSACTION');
-    try {
-      this.run(`INSERT INTO trash (type, data) VALUES ('stock_movement', ?)`, [JSON.stringify(movement)]);
+    runInSavepoint(this.db, () => {
+      this.run(`INSERT INTO trash (type, data) VALUES ('stock_movement', ?)`, [
+        JSON.stringify(movement),
+      ]);
 
-      // Revert stock
-      if (movement.movement_type === 'in') {
-        this.run(`UPDATE materials SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [movement.quantity, movement.material_id]);
-      } else if (movement.movement_type === 'out' || movement.movement_type === 'waste') {
-        this.run(`UPDATE materials SET current_stock = current_stock + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [movement.quantity, movement.material_id]);
-      }
+      changeStock(
+        this.db,
+        movement.material_id,
+        -movementStockDelta(movement.movement_type, movement.quantity)
+      );
 
       this.run(`DELETE FROM stock_movements WHERE id = ?`, [id]);
-      this.db.run('COMMIT');
-      return { success: true };
-    } catch (error) {
-      this.db.run('ROLLBACK');
-      throw error;
-    }
+    });
+    return { success: true };
   }
 }

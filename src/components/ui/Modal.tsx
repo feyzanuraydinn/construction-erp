@@ -1,6 +1,8 @@
-import React, { useEffect, useId, useRef, ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useRef, ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiX } from 'react-icons/fi';
+import { cn } from '../../utils/cn';
+import { useLatest } from '../../hooks/useLatest';
 
 type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
 
@@ -10,17 +12,16 @@ interface ModalProps {
   title?: string;
   children: ReactNode;
   size?: ModalSize;
-  footer?: ReactNode;
-  /** Override the dialog role (e.g. "alertdialog" for confirm dialogs) */
   role?: 'dialog' | 'alertdialog';
   labelledBy?: string;
+  className?: string;
 }
 
 interface ModalHeaderProps {
   children: ReactNode;
   onClose?: () => void;
-  /** Optional id to connect with aria-labelledby on the parent dialog */
   id?: string;
+  className?: string;
 }
 
 interface ModalSectionProps {
@@ -46,15 +47,15 @@ export function useModalLayer(
   onEscape: () => void,
   containerRef: RefObject<HTMLElement | null>
 ): void {
-  const onEscapeRef = useRef(onEscape);
-  onEscapeRef.current = onEscape;
+  const onEscapeRef = useLatest(onEscape);
 
   useEffect(() => {
     if (!isOpen) return;
 
     const token = Symbol('modal');
     openModals.push(token);
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.body.style.overflow = 'hidden';
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -98,7 +99,7 @@ export function useModalLayer(
       if (openModals.length === 0) document.body.style.overflow = '';
       previousFocus?.focus();
     };
-  }, [isOpen, containerRef]);
+  }, [isOpen, containerRef, onEscapeRef]);
 }
 
 export function Modal({
@@ -108,10 +109,9 @@ export function Modal({
   labelledBy,
   children,
   size = 'md',
-  footer,
   role: dialogRole = 'dialog',
+  className,
 }: ModalProps) {
-  const { t } = useTranslation();
   const modalRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
@@ -121,51 +121,44 @@ export function Modal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
       <div
         ref={modalRef}
         role={dialogRole}
         aria-modal="true"
         aria-labelledby={title ? titleId : labelledBy}
-        className={`
-          relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full ${sizes[size]}
-          max-h-[90vh] flex flex-col fade-in overflow-hidden
-        `}
+        className={cn(
+          'relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full',
+          sizes[size],
+          'max-h-[90vh] flex flex-col fade-in overflow-hidden',
+          className
+        )}
       >
-        {/* Header - if title provided */}
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
-            <h2 id={titleId} className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-            <button
-              onClick={onClose}
-              aria-label={t('common.close')}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              <FiX size={20} />
-            </button>
-          </div>
+          <ModalHeader id={titleId} onClose={onClose} className="flex-shrink-0">
+            {title}
+          </ModalHeader>
         )}
 
-        {/* Children - compound components or plain content */}
         {children}
-
-        {/* Footer - if provided as prop */}
-        {footer && (
-          <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">{footer}</div>
-        )}
       </div>
     </div>
   );
 }
 
-export function ModalHeader({ children, onClose, id }: ModalHeaderProps) {
+function ModalHeader({ children, onClose, id, className }: ModalHeaderProps) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-      <h2 id={id} className="text-lg font-semibold text-gray-900 dark:text-gray-100">{children}</h2>
+    <div
+      className={cn(
+        'flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700',
+        className
+      )}
+    >
+      <h2 id={id} className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+        {children}
+      </h2>
       {onClose && (
         <button
           onClick={onClose}
@@ -180,13 +173,18 @@ export function ModalHeader({ children, onClose, id }: ModalHeaderProps) {
 }
 
 export function ModalBody({ children, className = '' }: ModalSectionProps) {
-  return <div className={`flex-1 min-h-0 overflow-y-auto px-6 py-5 ${className}`}>{children}</div>;
+  return (
+    <div className={cn('flex-1 min-h-0 overflow-y-auto px-6 py-5', className)}>{children}</div>
+  );
 }
 
 export function ModalFooter({ children, className = '' }: ModalSectionProps) {
   return (
     <div
-      className={`px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl flex justify-end gap-3 flex-shrink-0 ${className}`}
+      className={cn(
+        'px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl flex justify-end gap-3 flex-shrink-0',
+        className
+      )}
     >
       {children}
     </div>

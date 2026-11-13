@@ -1,4 +1,6 @@
+import { errorText } from './errorText';
+
 export function ipcErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorText(error);
   return message.replace(/^Error invoking remote method '[^']*':\s*(Error:\s*)?/, '');
 }

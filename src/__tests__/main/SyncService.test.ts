@@ -56,14 +56,19 @@ function insertCompany(service: DatabaseService, name: string): void {
 }
 
 function remoteFile(modifiedTime: string, size = remoteBytes.length) {
-  return { id: 'file-1', name: 'latest_backup.db', size: String(size), createdTime: T1, modifiedTime };
+  return {
+    id: 'file-1',
+    name: 'latest_backup.db',
+    size: String(size),
+    createdTime: T1,
+    modifiedTime,
+  };
 }
 
 function sentChannels(): string[] {
   return send.mock.calls.map((call) => String(call[0]));
 }
 
-/** First sync: cloud is empty, local DB gets uploaded at T1. */
 async function syncOnceToEmptyCloud(): Promise<void> {
   drive.getLatestFile.mockResolvedValueOnce(null);
   await sync.checkAndSync();
@@ -76,7 +81,6 @@ beforeEach(async () => {
   state.tempDir = path.join(root, 'temp');
   userDataPath = path.join(root, 'userData');
 
-  // A database "from another device" to serve as the cloud copy.
   const remoteDb = new DatabaseService();
   await remoteDb.init(path.join(root, 'remote'));
   insertCompany(remoteDb, 'Remote');
@@ -121,7 +125,6 @@ describe('SyncService upload', () => {
 
     expect(uploadedPath).not.toBe(db.getDbPath());
     expect(uploadedBytes.equals(fs.readFileSync(db.getDbPath() ?? ''))).toBe(true);
-    // The private copy is cleaned up afterwards.
     expect(fs.existsSync(uploadedPath)).toBe(false);
     expect(sync.getStatus().status).toBe('synced');
   });
@@ -131,12 +134,10 @@ describe('SyncService change detection', () => {
   it('does not report a conflict when the database was only re-saved', async () => {
     await syncOnceToEmptyCloud();
 
-    // App close re-saves the unchanged database later (dirty flag + newer mtime).
     db.save();
     const later = new Date(Date.now() + 60_000);
     fs.utimesSync(db.getDbPath() ?? '', later, later);
 
-    // Meanwhile another device updated the cloud copy.
     drive.getLatestFile.mockResolvedValueOnce(remoteFile(T2));
     await sync.checkAndSync();
 
@@ -220,7 +221,6 @@ describe('SyncService errors', () => {
     await syncOnceToEmptyCloud();
     sync.resetMeta();
 
-    // A different account whose file looks older than what we knew.
     drive.getLatestFile.mockResolvedValueOnce(remoteFile('2020-01-01T00:00:00.000Z'));
     await sync.checkAndSync();
 
@@ -230,7 +230,8 @@ describe('SyncService errors', () => {
 });
 
 describe('SyncService and the Drive connection', () => {
-  const metaFile = () => JSON.parse(fs.readFileSync(path.join(userDataPath, 'sync-meta.json'), 'utf-8'));
+  const metaFile = () =>
+    JSON.parse(fs.readFileSync(path.join(userDataPath, 'sync-meta.json'), 'utf-8'));
   const lastStatus = () => {
     const calls = send.mock.calls.filter((call) => call[0] === 'sync:status');
     return calls[calls.length - 1]?.[1];
@@ -257,12 +258,22 @@ describe('SyncService and the Drive connection', () => {
       throw new Error('Oturum süresi doldu. Lütfen tekrar bağlanın.');
     });
     await sync.checkAndSync();
-    expect(sync.getStatus()).toMatchObject({ status: 'disconnected', driveRequired: true, reason: 'expired' });
-    expect(lastStatus()).toMatchObject({ status: 'disconnected', driveRequired: true, reason: 'expired' });
+    expect(sync.getStatus()).toMatchObject({
+      status: 'disconnected',
+      driveRequired: true,
+      reason: 'expired',
+    });
+    expect(lastStatus()).toMatchObject({
+      status: 'disconnected',
+      driveRequired: true,
+      reason: 'expired',
+    });
   });
 
   it('keeps a network failure an error, not a disconnect', async () => {
-    drive.getLatestFile.mockRejectedValueOnce(new Error('getaddrinfo ENOTFOUND www.googleapis.com'));
+    drive.getLatestFile.mockRejectedValueOnce(
+      new Error('getaddrinfo ENOTFOUND www.googleapis.com')
+    );
     await sync.checkAndSync();
     expect(sync.getStatus().status).toBe('error');
   });

@@ -3,6 +3,27 @@ import { BaseRepository } from './BaseRepository';
 import type { Company, CompanyWithBalance } from '../../types';
 import type { CompanyInput } from '../../utils/schemas';
 import { collectCompanyBundle, moveToTrash } from './trashBundle';
+import { splitNetBalance } from '../../utils/financials';
+import { netBalanceSql } from '../sqlFragments';
+import { runInSavepoint } from '../savepoint';
+
+const COMPANIES_UPDATABLE_FIELDS: ReadonlyArray<keyof CompanyInput> = [
+  'type',
+  'account_type',
+  'name',
+  'tc_number',
+  'profession',
+  'tax_office',
+  'tax_number',
+  'trade_registry_no',
+  'contact_person',
+  'phone',
+  'email',
+  'address',
+  'bank_name',
+  'iban',
+  'notes',
+];
 
 export class CompanyRepository extends BaseRepository<Company> {
   constructor(db: SqlJsDatabase) {
@@ -10,40 +31,20 @@ export class CompanyRepository extends BaseRepository<Company> {
   }
 
   getWithBalance(): CompanyWithBalance[] {
-    return this.query(`
+    const rows = this.query<Omit<CompanyWithBalance, 'receivable' | 'payable'>>(`
       SELECT c.*,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_invoice_out,
-        COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_payment_in,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_invoice_in,
-        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as total_payment_out,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
-        COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as receivable,
-        COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
-        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) as payable,
-        (COALESCE(SUM(CASE WHEN t.type = 'invoice_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
-         COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0)) -
-        (COALESCE(SUM(CASE WHEN t.type = 'invoice_in' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0) -
-         COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN COALESCE(t.amount_try, t.amount) ELSE 0 END), 0)) as balance,
-        COUNT(DISTINCT t.id) as transaction_count
+        ${netBalanceSql('t')} as balance
       FROM companies c
       LEFT JOIN transactions t ON t.company_id = c.id
       WHERE c.is_active = 1
       GROUP BY c.id
       ORDER BY c.name ASC
     `);
+    return rows.map((row) => ({ ...row, ...splitNetBalance(row.balance) }));
   }
 
   generateCode(): string {
-    const prefix = 'CRH-';
-    const last = this.queryOne<{ code: string }>(
-      `SELECT code FROM companies WHERE code LIKE ? ORDER BY code DESC LIMIT 1`,
-      [`${prefix}%`]
-    );
-    if (last) {
-      const num = parseInt(last.code.replace(prefix, ''), 10) + 1;
-      return `${prefix}${String(num).padStart(3, '0')}`;
-    }
-    return `${prefix}001`;
+    return this.nextCode('CRH-');
   }
 
   create(data: CompanyInput): Company {
@@ -51,37 +52,40 @@ export class CompanyRepository extends BaseRepository<Company> {
     const result = this.run(
       `INSERT INTO companies (code, type, account_type, name, tc_number, profession, tax_office, tax_number, trade_registry_no, contact_person, phone, email, address, bank_name, iban, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [code, data.type, data.account_type, data.name, data.tc_number || null, data.profession || null, data.tax_office || null, data.tax_number || null, data.trade_registry_no || null, data.contact_person || null, data.phone || null, data.email || null, data.address || null, data.bank_name || null, data.iban || null, data.notes || null]
+      [
+        code,
+        data.type,
+        data.account_type,
+        data.name,
+        data.tc_number || null,
+        data.profession || null,
+        data.tax_office || null,
+        data.tax_number || null,
+        data.trade_registry_no || null,
+        data.contact_person || null,
+        data.phone || null,
+        data.email || null,
+        data.address || null,
+        data.bank_name || null,
+        data.iban || null,
+        data.notes || null,
+      ]
     );
-    return this.getById(result.lastInsertRowid)!;
+    return this.requireRow(this.getById(result.lastInsertRowid));
   }
 
   update(id: number, data: Partial<CompanyInput>): Company | undefined {
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    const updatable = ['type', 'account_type', 'name', 'tc_number', 'profession', 'tax_office', 'tax_number', 'trade_registry_no', 'contact_person', 'phone', 'email', 'address', 'bank_name', 'iban', 'notes'] as const;
-    for (const field of updatable) {
-      if (field in data) {
-        fields.push(`${field} = ?`);
-        values.push(data[field] ?? null);
-      }
-    }
-    if (fields.length === 0) return this.getById(id);
-    fields.push("updated_at = CURRENT_TIMESTAMP");
-    values.push(id);
-    this.run(`UPDATE companies SET ${fields.join(', ')} WHERE id = ?`, values);
-    return this.getById(id);
+    return this.updateFields(id, data, COMPANIES_UPDATABLE_FIELDS);
   }
 
-  /**
-   * Müşteriye ait işlem ve proje sayısını döndürür (silme uyarısı için)
-   */
   getRelatedCounts(id: number): { transactionCount: number; projectCount: number } {
     const txCount = this.queryOne<{ count: number }>(
-      `SELECT COUNT(*) as count FROM transactions WHERE company_id = ?`, [id]
+      `SELECT COUNT(*) as count FROM transactions WHERE company_id = ?`,
+      [id]
     );
     const projCount = this.queryOne<{ count: number }>(
-      `SELECT COUNT(*) as count FROM projects WHERE client_company_id = ? AND is_active = 1`, [id]
+      `SELECT COUNT(*) as count FROM projects WHERE client_company_id = ? AND is_active = 1`,
+      [id]
     );
     return {
       transactionCount: txCount?.count || 0,
@@ -92,14 +96,9 @@ export class CompanyRepository extends BaseRepository<Company> {
   delete(id: number): { success: boolean } {
     const company = this.getById(id);
     if (!company) return { success: false };
-    this.db.run('BEGIN TRANSACTION');
-    try {
-      moveToTrash(this.db, 'company', company, collectCompanyBundle(this.db, id));
-      this.db.run('COMMIT');
-      return { success: true };
-    } catch (error) {
-      this.db.run('ROLLBACK');
-      throw error;
-    }
+    runInSavepoint(this.db, () =>
+      moveToTrash(this.db, 'company', company, collectCompanyBundle(this.db, id))
+    );
+    return { success: true };
   }
 }

@@ -1,35 +1,21 @@
 import { drive_v3 } from '@googleapis/drive';
-import { OAuth2Client, CodeChallengeMethod } from 'google-auth-library';
-import { shell, safeStorage } from 'electron';
-import crypto from 'crypto';
-import http from 'http';
+import type { OAuth2Client } from 'google-auth-library';
 import fs from 'fs';
-import { pipeline } from 'stream/promises';
-import path from 'path';
-import { t, getLocale } from './i18n';
-import { renderAuthPage } from './authPage';
-
-// OAuth credentials - build sırasında veya config dosyasından yüklenir
-let CLIENT_ID = '';
-let CLIENT_SECRET = '';
-const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
-const REDIRECT_PORT = 8089;
-const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/oauth2callback`;
-const BACKUP_FOLDER_NAME = 'ConstructionERP_Backups';
-const LATEST_FILE_NAME = 'latest_backup.db';
-const SNAPSHOT_PREFIX = 'snapshot-';
-
-function errorPage(title: string, message: string): string {
-  return renderAuthPage({
-    variant: 'error',
-    lang: getLocale(),
-    brand: t('main.gdrive.brand'),
-    pageTitle: t('main.errorTitle'),
-    title,
-    message,
-    hint: t('main.gdrive.errorHint'),
-  });
-}
+import { t } from './i18n';
+import { mainLogger } from './logger';
+import { UserFacingError } from '../utils/userFacingError';
+import { errorText } from '../utils/errorText';
+import { DriveCredentialStore } from './drive/driveCredentialStore';
+import { signInWithBrowser, type SignInResult } from './drive/driveSignIn';
+import { formatDriveError } from './drive/driveErrors';
+import { listInBackupFolder, type DriveFile } from './drive/driveBackupFolder';
+import {
+  deleteOldSnapshots,
+  downloadToFile,
+  findLatestFile,
+  uploadLatestFile,
+  uploadSnapshotFile,
+} from './drive/driveFiles';
 
 const AUTH_ERROR_PATTERN =
   /invalid_grant|invalid_token|unauthorized_client|Invalid Credentials|Token has been expired or revoked|No refresh token is set/i;
@@ -37,29 +23,25 @@ const AUTH_ERROR_PATTERN =
 export function isAuthError(error: unknown): boolean {
   if (typeof error === 'object' && error !== null && 'response' in error) {
     const response = error.response;
-    if (typeof response === 'object' && response !== null && 'status' in response && response.status === 401) {
+    if (
+      typeof response === 'object' &&
+      response !== null &&
+      'status' in response &&
+      response.status === 401
+    ) {
       return true;
     }
     if (typeof response === 'object' && response !== null && 'data' in response) {
       if (AUTH_ERROR_PATTERN.test(JSON.stringify(response.data ?? ''))) return true;
     }
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorText(error);
   return AUTH_ERROR_PATTERN.test(message);
-}
-
-interface DriveFile {
-  id: string;
-  name: string;
-  size: string;
-  createdTime: string;
-  modifiedTime: string;
 }
 
 class GoogleDriveService {
   private oauth2Client: OAuth2Client | null = null;
-  private tokenPath: string = '';
-  private configPath: string = '';
+  private readonly store = new DriveCredentialStore();
   private authLostListeners: Array<() => void> = [];
 
   onAuthLost(listener: () => void): () => void {
@@ -73,144 +55,41 @@ class GoogleDriveService {
     if (isAuthError(error) && this.isConnected()) {
       this.oauth2Client?.setCredentials({});
       try {
-        if (fs.existsSync(this.tokenPath)) fs.unlinkSync(this.tokenPath);
+        this.store.removeToken();
       } catch (unlinkError) {
-        console.warn('Could not remove the expired Drive token:', unlinkError);
+        mainLogger.warn(
+          'Could not remove the expired Drive token',
+          'GoogleDrive',
+          errorText(unlinkError)
+        );
       }
       for (const listener of this.authLostListeners) listener();
     }
-    return this.formatError(error);
+    return formatDriveError(error);
   }
 
   init(userDataPath: string): void {
-    this.tokenPath = path.join(userDataPath, 'google-drive-token.json');
-    this.configPath = path.join(userDataPath, 'google-drive-credentials.json');
-    this.loadCredentials();
-    if (CLIENT_ID && CLIENT_SECRET) {
+    this.store.setLocation(userDataPath);
+    this.store.loadCredentials((clientId, clientSecret) =>
+      this.saveCredentials(clientId, clientSecret)
+    );
+    if (this.store.hasCredentials()) {
       this.initOAuth2Client();
     }
   }
 
-  private loadCredentials(): void {
-    // Önce uygulama dizinindeki credentials dosyasını kontrol et
-    try {
-      if (fs.existsSync(this.configPath)) {
-        const fileData = fs.readFileSync(this.configPath, 'utf-8');
-        const data = JSON.parse(fileData);
-
-        // Check if credentials are encrypted (v2 format)
-        if (data.encrypted && data.clientId && data.clientSecret) {
-          // Decrypt using Electron's safeStorage
-          if (safeStorage.isEncryptionAvailable()) {
-            try {
-              CLIENT_ID = safeStorage.decryptString(Buffer.from(data.clientId, 'base64'));
-              CLIENT_SECRET = safeStorage.decryptString(Buffer.from(data.clientSecret, 'base64'));
-            } catch {
-              console.error('Failed to decrypt credentials, they may be corrupted');
-              CLIENT_ID = '';
-              CLIENT_SECRET = '';
-            }
-          } else {
-            console.warn('safeStorage not available, cannot decrypt credentials');
-          }
-        } else {
-          // Legacy unencrypted format - migrate to encrypted
-          CLIENT_ID = data.clientId || '';
-          CLIENT_SECRET = data.clientSecret || '';
-          // Re-save with encryption if we have valid credentials
-          if (CLIENT_ID && CLIENT_SECRET) {
-            this.saveCredentials(CLIENT_ID, CLIENT_SECRET);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Credentials load error:', error);
-    }
-  }
-
   saveCredentials(clientId: string, clientSecret: string): void {
-    CLIENT_ID = clientId;
-    CLIENT_SECRET = clientSecret;
-
-    // Encrypt credentials using Electron's safeStorage (uses OS keychain/credential manager)
-    if (safeStorage.isEncryptionAvailable()) {
-      const encryptedClientId = safeStorage.encryptString(clientId).toString('base64');
-      const encryptedClientSecret = safeStorage.encryptString(clientSecret).toString('base64');
-      fs.writeFileSync(
-        this.configPath,
-        JSON.stringify(
-          {
-            encrypted: true,
-            clientId: encryptedClientId,
-            clientSecret: encryptedClientSecret,
-            version: 2,
-          },
-          null,
-          2
-        )
-      );
-    } else {
-      throw new Error(t('main.gdrive.encryptionUnavailable'));
-    }
-
+    this.store.saveCredentials(clientId, clientSecret);
     this.initOAuth2Client();
   }
 
   hasCredentials(): boolean {
-    return !!CLIENT_ID && !!CLIENT_SECRET;
+    return this.store.hasCredentials();
   }
 
   private initOAuth2Client(): void {
-    this.oauth2Client = new OAuth2Client(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
-
-    // Load saved token if exists
-    try {
-      if (fs.existsSync(this.tokenPath)) {
-        const tokenData = fs.readFileSync(this.tokenPath, 'utf-8');
-        const data = JSON.parse(tokenData);
-
-        // Check if token is encrypted
-        if (data.encrypted && data.token) {
-          if (safeStorage.isEncryptionAvailable()) {
-            try {
-              const decryptedToken = safeStorage.decryptString(Buffer.from(data.token, 'base64'));
-              const tokens = JSON.parse(decryptedToken);
-              this.oauth2Client.setCredentials(tokens);
-            } catch {
-              console.error('Failed to decrypt token');
-            }
-          }
-        } else {
-          // Legacy unencrypted format
-          this.oauth2Client.setCredentials(data);
-          // Migrate to encrypted format
-          this.saveToken(data);
-        }
-      }
-    } catch (error) {
-      console.error('Token load error:', error);
-    }
-  }
-
-  private saveToken(tokens: Record<string, unknown>): void {
-    if (safeStorage.isEncryptionAvailable()) {
-      const encryptedToken = safeStorage.encryptString(JSON.stringify(tokens)).toString('base64');
-      fs.writeFileSync(
-        this.tokenPath,
-        JSON.stringify(
-          {
-            encrypted: true,
-            token: encryptedToken,
-            version: 2,
-          },
-          null,
-          2
-        )
-      );
-    } else {
-      // Do not save tokens in plaintext — log warning and skip
-      console.warn('safeStorage not available, token will not be persisted. Re-authentication will be required on next launch.');
-    }
+    this.oauth2Client = this.store.createClient();
+    this.store.loadToken(this.oauth2Client);
   }
 
   isConnected(): boolean {
@@ -219,448 +98,112 @@ class GoogleDriveService {
     return !!credentials && !!credentials.access_token;
   }
 
-  async startAuth(): Promise<{ success: boolean; error?: string }> {
+  async startAuth(): Promise<SignInResult> {
     if (!this.oauth2Client) {
       return { success: false, error: t('main.gdrive.configMissing') };
     }
-    const client = this.oauth2Client;
-
-    const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
-    const state = crypto.randomBytes(16).toString('hex');
-
-    return new Promise((resolve) => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      let settled = false;
-      const finish = (result: { success: boolean; error?: string }) => {
-        if (settled) return;
-        settled = true;
-        if (timer) clearTimeout(timer);
-        server.close();
-        server.closeAllConnections();
-        resolve(result);
-      };
-
-      const authUrl = client.generateAuthUrl({
-        access_type: 'offline',
-        scope: SCOPES,
-        prompt: 'consent',
-        state,
-        code_challenge_method: CodeChallengeMethod.S256,
-        code_challenge: codeChallenge,
-      });
-
-      // Create temporary HTTP server to receive OAuth callback
-      const server = http.createServer(async (req, res) => {
-        if (req.url?.startsWith('/oauth2callback')) {
-          const url = new URL(req.url, `http://localhost:${REDIRECT_PORT}`);
-          const code = url.searchParams.get('code');
-          const error = url.searchParams.get('error');
-
-          if (url.searchParams.get('state') !== state) {
-            res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8', Connection: 'close' });
-            res.end(errorPage(t('main.gdrive.connectionError'), t('main.gdrive.invalidState')));
-            return;
-          }
-
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Connection: 'close' });
-
-          // Handle OAuth error (access_denied, etc.)
-          if (error) {
-            const errorMsg =
-              error === 'access_denied'
-                ? t('main.gdrive.accessDenied')
-                : t('main.gdrive.oauthError', { error });
-            res.end(errorPage(t('main.gdrive.connectionDenied'), errorMsg));
-            finish({ success: false, error: errorMsg });
-            return;
-          }
-
-          if (code) {
-            try {
-              const { tokens } = await client.getToken({ code, codeVerifier });
-              client.setCredentials(tokens);
-
-              // Save tokens (encrypted)
-              this.saveToken(tokens as Record<string, unknown>);
-
-              res.end(
-                renderAuthPage({
-                  variant: 'success',
-                  lang: getLocale(),
-                  brand: t('main.gdrive.brand'),
-                  pageTitle: t('main.gdrive.successTitle'),
-                  title: t('main.gdrive.connectionSuccess'),
-                  message: t('main.gdrive.successMessage'),
-                  hint: t('main.gdrive.closeWindow'),
-                })
-              );
-
-              finish({ success: true });
-            } catch (error) {
-              res.end(errorPage(t('main.gdrive.connectionError'), String(error)));
-              finish({ success: false, error: String(error) });
-            }
-          } else {
-            res.end(errorPage(t('main.gdrive.noAuthCode'), t('main.gdrive.noAuthCodeMessage')));
-            finish({ success: false, error: t('main.gdrive.noAuthCode') });
-          }
-        }
-      });
-
-      server.on('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'EADDRINUSE') {
-          finish({
-            success: false,
-            error: t('main.gdrive.portInUse', { port: REDIRECT_PORT }),
-          });
-        } else {
-          finish({ success: false, error: t('main.gdrive.serverError', { error: err.message }) });
-        }
-      });
-
-      server.listen(REDIRECT_PORT, '127.0.0.1', () => {
-        // Open browser for authentication
-        void shell.openExternal(authUrl);
-      });
-
-      timer = setTimeout(() => {
-        finish({ success: false, error: t('main.gdrive.authTimeout') });
-      }, 300000);
-    });
+    return signInWithBrowser(this.oauth2Client, (tokens) => this.store.saveToken(tokens));
   }
 
   async disconnect(): Promise<void> {
-    // Revoking is best effort: there may be no token yet (first-time setup) or
-    // no network. Either way the local token is deleted below, and a failed
-    // revoke must not surface as an unhandled rejection.
     if (this.oauth2Client?.credentials.access_token) {
       this.oauth2Client.revokeCredentials().catch((error: unknown) => {
-        console.warn('Token revoke failed (continuing):', error instanceof Error ? error.message : error);
+        mainLogger.warn('Token revoke failed (continuing)', 'GoogleDrive', errorText(error));
       });
     }
-    if (fs.existsSync(this.tokenPath)) {
-      fs.unlinkSync(this.tokenPath);
-    }
+    this.store.removeToken();
     this.oauth2Client = null;
-    if (CLIENT_ID && CLIENT_SECRET) {
+    if (this.store.hasCredentials()) {
       this.initOAuth2Client();
     }
   }
 
-  private formatError(error: unknown): string {
-    const errorStr = String(error);
-    if (errorStr.includes('API has not been used') || errorStr.includes('it is disabled')) {
-      return t('main.gdrive.apiNotEnabled');
-    }
-    if (errorStr.includes('invalid_grant')) {
-      return t('main.gdrive.sessionExpired');
-    }
-    if (errorStr.includes('insufficient permissions')) {
-      return t('main.gdrive.insufficientPermissions');
-    }
-    return errorStr;
-  }
-
-  private async getOrCreateBackupFolder(): Promise<string | null> {
-    if (!this.oauth2Client) return null;
-
-    try {
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-      const folderName = 'ConstructionERP_Backups';
-
-      // Search for existing folder
-      const searchResponse = await drive.files.list({
-        q: `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        spaces: 'drive',
-        fields: 'files(id, name)',
-      });
-
-      if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-        return searchResponse.data.files[0].id || null;
-      }
-
-      // Create new folder
-      const folderMetadata = {
-        name: folderName,
-        mimeType: 'application/vnd.google-apps.folder',
-      };
-
-      const createResponse = await drive.files.create({
-        requestBody: folderMetadata,
-        fields: 'id',
-      });
-
-      return createResponse.data.id || null;
-    } catch (error) {
-      console.error('Folder error:', error);
-      this.handleError(error);
-      return null;
-    }
+  private connectedDrive(): drive_v3.Drive | null {
+    if (!this.oauth2Client || !this.isConnected()) return null;
+    return new drive_v3.Drive({ auth: this.oauth2Client });
   }
 
   async listBackups(): Promise<DriveFile[]> {
-    if (!this.oauth2Client || !this.isConnected()) {
-      return [];
-    }
-
+    const drive = this.connectedDrive();
+    if (!drive) return [];
     try {
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-      const folderId = await this.getOrCreateBackupFolder();
-
-      if (!folderId) return [];
-
-      const response = await drive.files.list({
-        q: `'${folderId}' in parents and trashed=false`,
-        spaces: 'drive',
-        fields: 'files(id, name, size, createdTime, modifiedTime)',
-        orderBy: 'modifiedTime desc',
-        pageSize: 1, // Sadece tek yedek var
-      });
-
-      return (response.data.files || []).map((file) => ({
-        id: file.id || '',
-        name: file.name || '',
-        size: file.size || '0',
-        createdTime: file.createdTime || '',
-        modifiedTime: file.modifiedTime || '',
-      }));
+      return await listInBackupFolder(drive, '', 'modifiedTime desc', 1);
     } catch (error) {
-      console.error('List error:', error);
+      mainLogger.error('List error', 'GoogleDrive', error);
       this.handleError(error);
       return [];
     }
   }
 
-  async getLatestBackup(): Promise<DriveFile | null> {
-    const backups = await this.listBackups();
-    return backups.length > 0 ? backups[0] : null;
-  }
-
-  async downloadBackup(
-    fileId: string,
-    destPath: string
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.downloadFile(fileId, destPath);
-  }
-
-  async deleteBackup(fileId: string): Promise<{ success: boolean; error?: string }> {
-    if (!this.oauth2Client || !this.isConnected()) {
-      return { success: false, error: t('main.gdrive.notConnected') };
-    }
-
-    try {
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-      await drive.files.delete({ fileId });
-      return { success: true };
-    } catch (error) {
-      console.error('Delete error:', error);
-      return { success: false, error: this.handleError(error) };
-    }
-  }
-
-  // ---- Sync-related methods (used by SyncService) ----
-
-  /**
-   * Finds latest_backup.db in the dedicated backup folder.
-   *
-   * Returns null only when the file does not exist. Drive or network errors
-   * are thrown, so callers never mistake an outage for an empty cloud (which
-   * would make sync upload a second, competing latest_backup.db).
-   */
   async getLatestFile(): Promise<DriveFile | null> {
-    if (!this.oauth2Client || !this.isConnected()) return null;
-
+    const drive = this.connectedDrive();
+    if (!drive) return null;
     try {
-      const folderId = await this.getOrCreateNamedBackupFolder();
-
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-      const response = await drive.files.list({
-        q: `'${folderId}' in parents and name='${LATEST_FILE_NAME}' and trashed=false`,
-        spaces: 'drive',
-        fields: 'files(id, name, size, createdTime, modifiedTime)',
-        // Older versions could leave duplicates behind; always pick the newest.
-        orderBy: 'modifiedTime desc',
-        pageSize: 1,
-      });
-
-      const files = response.data.files || [];
-      if (files.length === 0) return null;
-      const f = files[0];
-      return {
-        id: f.id || '',
-        name: f.name || '',
-        size: f.size || '0',
-        createdTime: f.createdTime || '',
-        modifiedTime: f.modifiedTime || '',
-      };
+      return await findLatestFile(drive);
     } catch (error) {
-      console.error('getLatestFile error:', error);
-      throw new Error(this.handleError(error));
+      mainLogger.error('getLatestFile error', 'GoogleDrive', error);
+      throw new UserFacingError(this.handleError(error), { cause: error });
     }
   }
 
-  /** Uploads the given file as latest_backup.db (replaces if exists) */
   async uploadLatest(
     filePath: string
   ): Promise<{ success: boolean; fileId?: string; modifiedTime?: string; error?: string }> {
-    if (!this.oauth2Client || !this.isConnected()) {
-      return { success: false, error: t('main.gdrive.notConnected') };
-    }
+    const drive = this.connectedDrive();
+    if (!drive) return { success: false, error: t('main.gdrive.notConnected') };
 
     try {
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-      const folderId = await this.getOrCreateNamedBackupFolder();
-      const existing = await this.getLatestFile();
-
-      const media = {
-        mimeType: 'application/octet-stream',
-        body: fs.createReadStream(filePath),
-      };
-
-      if (existing) {
-        const response = await drive.files.update({
-          fileId: existing.id,
-          media,
-          fields: 'id, modifiedTime',
-        });
-        return {
-          success: true,
-          fileId: response.data.id || undefined,
-          modifiedTime: response.data.modifiedTime || undefined,
-        };
-      } else {
-        const response = await drive.files.create({
-          requestBody: { name: LATEST_FILE_NAME, parents: [folderId] },
-          media,
-          fields: 'id, modifiedTime',
-        });
-        return {
-          success: true,
-          fileId: response.data.id || undefined,
-          modifiedTime: response.data.modifiedTime || undefined,
-        };
-      }
+      const uploaded = await uploadLatestFile(drive, filePath, () => this.getLatestFile());
+      return { success: true, ...uploaded };
     } catch (error) {
-      console.error('uploadLatest error:', error);
+      mainLogger.error('uploadLatest error', 'GoogleDrive', error);
       return { success: false, error: this.handleError(error) };
     }
   }
 
-  /** Uploads a timestamped snapshot file */
   async uploadSnapshot(filePath: string): Promise<{ success: boolean; error?: string }> {
-    if (!this.oauth2Client || !this.isConnected()) {
-      return { success: false, error: t('main.gdrive.notConnected') };
-    }
+    const drive = this.connectedDrive();
+    if (!drive) return { success: false, error: t('main.gdrive.notConnected') };
     try {
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-      const folderId = await this.getOrCreateNamedBackupFolder();
-
-      const ts = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-      const name = `${SNAPSHOT_PREFIX}${ts}.db`;
-
-      const existingResp = await drive.files.list({
-        q: `'${folderId}' in parents and name='${name}' and trashed=false`,
-        spaces: 'drive',
-        fields: 'files(id)',
-        pageSize: 1,
-      });
-      if (existingResp.data.files && existingResp.data.files.length > 0) {
-        return { success: true };
-      }
-
-      await drive.files.create({
-        requestBody: { name, parents: [folderId] },
-        media: { mimeType: 'application/octet-stream', body: fs.createReadStream(filePath) },
-        fields: 'id',
-      });
+      await uploadSnapshotFile(drive, filePath);
       return { success: true };
     } catch (error) {
-      console.error('uploadSnapshot error:', error);
+      mainLogger.error('uploadSnapshot error', 'GoogleDrive', error);
       return { success: false, error: this.handleError(error) };
     }
   }
 
-  async listSnapshots(): Promise<DriveFile[]> {
-    if (!this.oauth2Client || !this.isConnected()) return [];
-    try {
-      const folderId = await this.getOrCreateNamedBackupFolder();
-
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-      const response = await drive.files.list({
-        q: `'${folderId}' in parents and name contains '${SNAPSHOT_PREFIX}' and trashed=false`,
-        spaces: 'drive',
-        fields: 'files(id, name, size, createdTime, modifiedTime)',
-        orderBy: 'name desc',
-        pageSize: 50,
-      });
-      return (response.data.files || []).map((f) => ({
-        id: f.id || '',
-        name: f.name || '',
-        size: f.size || '0',
-        createdTime: f.createdTime || '',
-        modifiedTime: f.modifiedTime || '',
-      }));
-    } catch (error) {
-      console.error('listSnapshots error:', error);
-      this.handleError(error);
-      return [];
-    }
-  }
-
-  /** Keeps only the newest `keep` snapshots, deletes older ones */
   async rotateSnapshots(keep: number): Promise<void> {
-    if (!this.oauth2Client || !this.isConnected()) return;
+    const drive = this.connectedDrive();
+    if (!drive) return;
     try {
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-      const snapshots = await this.listSnapshots();
-      const toDelete = snapshots.slice(keep);
-      for (const snap of toDelete) {
-        if (snap.id) {
-          try {
-            await drive.files.delete({ fileId: snap.id });
-          } catch {
-            // ignore individual delete failures
-          }
-        }
-      }
+      await deleteOldSnapshots(drive, keep);
     } catch (error) {
-      console.error('rotateSnapshots error:', error);
+      mainLogger.error('rotateSnapshots error', 'GoogleDrive', error);
       this.handleError(error);
     }
   }
 
-  /**
-   * Downloads a file by ID to `destPath`. Errors on either side of the stream
-   * (network drop, disk full) resolve as a failure and remove the partial
-   * file; they can no longer leave the promise pending forever.
-   */
   async downloadFile(
     fileId: string,
     destPath: string
   ): Promise<{ success: boolean; error?: string }> {
-    if (!this.oauth2Client || !this.isConnected()) {
-      return { success: false, error: t('main.gdrive.notConnected') };
-    }
+    const drive = this.connectedDrive();
+    if (!drive) return { success: false, error: t('main.gdrive.notConnected') };
     try {
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-      const response = await drive.files.get(
-        { fileId, alt: 'media' },
-        { responseType: 'stream' }
-      );
-      await pipeline(response.data, fs.createWriteStream(destPath));
+      await downloadToFile(drive, fileId, destPath);
       return { success: true };
     } catch (error) {
-      console.error('downloadFile error:', error);
+      mainLogger.error('downloadFile error', 'GoogleDrive', error);
       fs.rmSync(destPath, { force: true });
       return { success: false, error: this.handleError(error) };
     }
   }
 
-  /** Ping Drive API to check reachability */
   async ping(): Promise<boolean> {
-    if (!this.oauth2Client || !this.isConnected()) return false;
+    const drive = this.connectedDrive();
+    if (!drive) return false;
     try {
-      const drive = new drive_v3.Drive({ auth: this.oauth2Client });
       await drive.about.get({ fields: 'user' });
       return true;
     } catch (error) {
@@ -668,34 +211,6 @@ class GoogleDriveService {
       return false;
     }
   }
-
-  /** Get-or-create the canonical SyncService backup folder. Distinct from the
-   *  legacy listBackups folder helper to avoid disturbing existing behavior.
-   *  Throws when Drive cannot be reached or returns no folder ID. */
-  private async getOrCreateNamedBackupFolder(): Promise<string> {
-    if (!this.oauth2Client) throw new Error(t('main.gdrive.notConnected'));
-    const drive = new drive_v3.Drive({ auth: this.oauth2Client });
-    const searchResponse = await drive.files.list({
-      q: `name='${BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-      spaces: 'drive',
-      fields: 'files(id, name)',
-    });
-
-    const existingId = searchResponse.data.files?.[0]?.id;
-    if (existingId) return existingId;
-
-    const createResponse = await drive.files.create({
-      requestBody: {
-        name: BACKUP_FOLDER_NAME,
-        mimeType: 'application/vnd.google-apps.folder',
-      },
-      fields: 'id',
-    });
-    const createdId = createResponse.data.id;
-    if (!createdId) throw new Error('Drive did not return an ID for the backup folder');
-    return createdId;
-  }
 }
 
 export const googleDriveService = new GoogleDriveService();
-export default googleDriveService;

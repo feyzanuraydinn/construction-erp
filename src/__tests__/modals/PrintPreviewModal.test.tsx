@@ -3,7 +3,6 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import '../../i18n';
 import { PrintPreviewModal } from '../../components/modals/PrintPreviewModal';
 
-// Mock usePrint hook
 const mockExecutePrint = vi.fn();
 vi.mock('../../hooks/usePrint', () => ({
   usePrint: () => ({ executePrint: mockExecutePrint }),
@@ -20,8 +19,6 @@ describe('PrintPreviewModal', () => {
     vi.clearAllMocks();
   });
 
-  // ==================== RENDERING ====================
-
   it('should render when isOpen is true', () => {
     render(<PrintPreviewModal {...defaultProps} />);
     expect(screen.getByText('Yazdırma Önizleme')).toBeInTheDocument();
@@ -34,7 +31,6 @@ describe('PrintPreviewModal', () => {
 
   it('should render children content', () => {
     render(<PrintPreviewModal {...defaultProps} />);
-    // Children rendered both in modal and hidden print-view; use getAllByText
     const els = screen.getAllByText('Invoice #123');
     expect(els.length).toBeGreaterThanOrEqual(1);
   });
@@ -44,8 +40,6 @@ describe('PrintPreviewModal', () => {
     expect(screen.getByText('Kapat')).toBeInTheDocument();
     expect(screen.getByText('Yazdır')).toBeInTheDocument();
   });
-
-  // ==================== ACTIONS ====================
 
   it('should call onClose when close button is clicked', () => {
     const onClose = vi.fn();
@@ -60,8 +54,6 @@ describe('PrintPreviewModal', () => {
     expect(mockExecutePrint).toHaveBeenCalledOnce();
   });
 
-  // ==================== PRINT STYLES ====================
-
   it('should render hidden print view', () => {
     render(<PrintPreviewModal {...defaultProps} />);
     const printView = document.querySelector('.print-view');
@@ -71,13 +63,11 @@ describe('PrintPreviewModal', () => {
   it('should include print CSS styles', () => {
     render(<PrintPreviewModal {...defaultProps} />);
     const styleElements = document.querySelectorAll('style');
-    const printStyle = Array.from(styleElements).find(s =>
+    const printStyle = Array.from(styleElements).find((s) =>
       s.textContent?.includes('@media print')
     );
     expect(printStyle).toBeTruthy();
   });
-
-  // ==================== A4 LAYOUT ====================
 
   it('should have A4 width container', () => {
     render(<PrintPreviewModal {...defaultProps} />);

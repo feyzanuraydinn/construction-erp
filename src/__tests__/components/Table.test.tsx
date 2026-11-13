@@ -185,6 +185,6 @@ describe('Table full composition', () => {
     expect(screen.getByText('Name')).toBeInTheDocument();
     expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
-    expect(screen.getAllByRole('row')).toHaveLength(3); // 1 header + 2 body
+    expect(screen.getAllByRole('row')).toHaveLength(3);
   });
 });

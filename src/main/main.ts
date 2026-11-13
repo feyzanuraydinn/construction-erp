@@ -1,12 +1,4 @@
-import {
-  app,
-  BrowserWindow,
-  Menu,
-  dialog,
-  shell,
-  session,
-  ipcMain,
-} from 'electron';
+import { app, BrowserWindow, Menu, dialog, shell, session, screen } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { DatabaseService } from '../database/DatabaseService';
@@ -15,8 +7,11 @@ import { syncService } from './SyncService';
 import { initAutoUpdater, checkForUpdates } from './autoUpdater';
 import { mainLogger } from './logger';
 import { registerAllHandlers } from './ipc';
+import { backupDirectory } from './appPaths';
 import { UI } from '../utils/constants';
 import { t } from './i18n';
+import { setDataWrittenListener } from './ipc/writeAndSave';
+import { errorText } from '../utils/errorText';
 
 let mainWindow: BrowserWindow | null = null;
 let dbService: DatabaseService;
@@ -39,8 +34,7 @@ async function saveBeforeQuit(): Promise<void> {
 const isDev = !app.isPackaged;
 const DEV_SERVER_ORIGIN = 'http://localhost:3000';
 
-// EPIPE gibi stream hatalarını yakala — Google Drive bağlantı kopması vb.
-(process as NodeJS.EventEmitter).on('uncaughtException', (error: Error) => {
+process.on('uncaughtException', (error: Error) => {
   if (error.message?.includes('EPIPE') || error.message?.includes('broken pipe')) {
     mainLogger.warn(t('main.streamError'), 'Process');
     return;
@@ -49,24 +43,17 @@ const DEV_SERVER_ORIGIN = 'http://localhost:3000';
   dialog.showErrorBox(t('main.errorTitle'), t('main.unexpectedError', { error: error.message }));
 });
 
-// Remove default menu bar (File, Edit, View, etc.)
 Menu.setApplicationMenu(null);
 
-// Yedeklenmemiş değişiklik var mı kontrol et
 function hasUnbackedChanges(): boolean {
   if (!dbService) return false;
   return dbService.isDirty();
 }
 
-// Yerel yedek al (kapanış sırasında çağrılır)
 function localBackup(): void {
   if (!dbService) return;
   try {
-    const backupDir = path.join(app.getPath('userData'), 'backups');
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
-    }
-    dbService.createBackup(backupDir);
+    dbService.createBackup(backupDirectory());
     mainLogger.debug('Local backup completed', 'Backup');
   } catch (error) {
     mainLogger.error('Local backup failed', 'Backup', error);
@@ -74,12 +61,10 @@ function localBackup(): void {
 }
 
 function createWindow(): void {
-  // Icon path - Windows için .ico, diğerleri için .png
   let iconPath: string;
   if (isDev) {
     iconPath = path.join(__dirname, '../../public/icon.ico');
   } else {
-    // Production'da resources klasöründen veya build klasöründen al
     iconPath = path.join(process.resourcesPath, 'icon.ico');
     if (!fs.existsSync(iconPath)) {
       iconPath = path.join(__dirname, '../build/icon.ico');
@@ -90,8 +75,6 @@ function createWindow(): void {
   }
   mainLogger.debug(`Icon path: ${iconPath}, Exists: ${fs.existsSync(iconPath)}`, 'Window');
 
-  // Ekran boyutlarını al
-  const { screen } = require('electron');
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
@@ -110,12 +93,13 @@ function createWindow(): void {
     backgroundColor: '#0f172a',
   });
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.maximize();
-    mainWindow?.show();
+  const win = mainWindow;
+  win.once('ready-to-show', () => {
+    win.maximize();
+    win.show();
 
     if (!isDev) {
-      initAutoUpdater(mainWindow!, saveBeforeQuit);
+      initAutoUpdater(win, saveBeforeQuit);
       setTimeout(() => checkForUpdates(), 5000);
       setInterval(() => checkForUpdates(), UPDATE_CHECK_INTERVAL_MS);
     }
@@ -128,8 +112,6 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../../build/index.html'));
   }
 
-  // Always intercept close: ask the renderer to show its in-app confirm modal,
-  // then on confirm do a local backup + cloud upload before actually quitting.
   mainWindow.on('close', (e) => {
     if (isQuitting) return;
     e.preventDefault();
@@ -146,11 +128,9 @@ function createWindow(): void {
 }
 
 async function startApp(): Promise<void> {
-  // Initialize logger
   mainLogger.init();
   mainLogger.info('Application starting...', 'Main');
 
-  // Set Content Security Policy
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -188,49 +168,36 @@ async function startApp(): Promise<void> {
           void shell.openExternal(url);
         }
       } catch {
+        mainLogger.warn(`Blocked invalid window URL: ${url}`, 'Security');
       }
       return { action: 'deny' };
     });
   });
 
-  dbService = new DatabaseService();
+  dbService = new DatabaseService(mainLogger.forContext('Database'));
   await dbService.init(app.getPath('userData'));
   googleDriveService.init(app.getPath('userData'));
 
-  // Register all IPC handlers
+  setDataWrittenListener(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('db:changed');
+  });
+
   registerAllHandlers(
     () => dbService,
-    () => mainWindow
+    () => mainWindow,
+    saveBeforeQuit
   );
-
-  ipcMain.handle('app:close-confirmed', async () => {
-    await saveBeforeQuit();
-    mainWindow?.close();
-    return { success: true };
-  });
-
-  // Renderer says "user cancelled close" — nothing to do, the close was
-  // already preventDefault()'d.
-  ipcMain.handle('app:close-cancelled', () => {
-    return { success: true };
-  });
 
   createWindow();
 
   mainLogger.info('Application initialized', 'Main');
 
-  // Initialize sync service after window created. Handles 5-min interval,
-  // ping check, dirty detection, upload/download/conflict, weekly snapshot,
-  // and beforeQuit — replaces the old autoBackupAndSync + startupSync logic.
   if (mainWindow && dbService) {
     syncService.init(dbService, mainWindow, app.getPath('userData'));
     syncService.start();
   }
 }
 
-// Only one instance may run. Each instance keeps the whole database in memory
-// and rewrites the file on every save, so a second instance would silently
-// overwrite the first one's changes (and vice versa).
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -244,7 +211,7 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(startApp)
     .catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorText(error);
       mainLogger.error('Application failed to start', 'Main', error);
       dialog.showErrorBox(t('main.errorTitle'), t('main.unexpectedError', { error: message }));
       app.quit();

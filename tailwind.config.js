@@ -1,10 +1,6 @@
-/** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: 'class',
-  content: [
-    "./src/**/*.{js,jsx,ts,tsx}",
-    "./public/index.html"
-  ],
+  content: ['./src/**/*.{js,jsx,ts,tsx}', './public/index.html'],
   theme: {
     extend: {
       colors: {
@@ -23,7 +19,7 @@ module.exports = {
         sidebar: {
           dark: '#0f172a',
           light: '#1e293b',
-        }
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
@@ -31,4 +27,4 @@ module.exports = {
     },
   },
   plugins: [],
-}
+};

@@ -1,20 +1,16 @@
 import type {
   Company,
   CompanyWithBalance,
-  CompanyFormData,
   AccountType,
   Project,
   ProjectWithSummary,
-  ProjectFormData,
+  ProjectWithClient,
   Transaction,
   TransactionWithDetails,
-  TransactionFormData,
   TransactionFilters,
   Material,
-  MaterialFormData,
   StockMovement,
   StockMovementWithDetails,
-  StockMovementFormData,
   StockMovementFilters,
   Category,
   ProjectParty,
@@ -36,24 +32,30 @@ import type {
   SaveTransactionResult,
 } from './index';
 import type {
-  ApplyResult,
+  ExportRequest,
+  CompanyFormInput,
+  ProjectFormInput,
+  TransactionFormInput,
+  MaterialFormInput,
+  StockMovementFormInput,
+  ConflictChoice,
+} from '../utils/schemas';
+import type { RestoreResult } from '../database/repositories/trashBundle';
+import type {
   DataReviewReport,
   LegacyFirmChoice,
+  ReviewStepResult,
   UnmatchedChoice,
 } from '../database/dataReview';
-
-export interface ReviewStepResult {
-  result: ApplyResult;
-  report: DataReviewReport;
-}
+import type { SyncStatusPayload, SyncConflictPayload } from './sync';
 
 export interface ElectronAPI {
   company: {
     getAll: () => Promise<Company[]>;
     getWithBalance: () => Promise<CompanyWithBalance[]>;
     getById: (id: number) => Promise<Company | undefined>;
-    create: (data: CompanyFormData) => Promise<Company>;
-    update: (id: number, data: CompanyFormData) => Promise<Company>;
+    create: (data: CompanyFormInput) => Promise<Company>;
+    update: (id: number, data: CompanyFormInput) => Promise<Company | undefined>;
     delete: (id: number) => Promise<{ success: boolean }>;
     getRelatedCounts: (id: number) => Promise<{ transactionCount: number; projectCount: number }>;
   };
@@ -61,11 +63,13 @@ export interface ElectronAPI {
   project: {
     getAll: () => Promise<Project[]>;
     getWithSummary: () => Promise<ProjectWithSummary[]>;
-    getById: (id: number) => Promise<ProjectWithSummary | undefined>;
-    create: (data: ProjectFormData) => Promise<Project>;
-    update: (id: number, data: ProjectFormData) => Promise<Project>;
+    getById: (id: number) => Promise<ProjectWithClient | undefined>;
+    create: (data: ProjectFormInput) => Promise<Project>;
+    update: (id: number, data: ProjectFormInput) => Promise<Project | undefined>;
     delete: (id: number) => Promise<{ success: boolean }>;
-    getRelatedCounts: (id: number) => Promise<{ transactionCount: number; linkedTransactionCount: number }>;
+    getRelatedCounts: (
+      id: number
+    ) => Promise<{ transactionCount: number; linkedTransactionCount: number }>;
     generateCode: () => Promise<string>;
     getParties: (projectId: number) => Promise<ProjectPartyWithDetails[]>;
     addParty: (data: {
@@ -87,14 +91,11 @@ export interface ElectronAPI {
       projectId: number,
       filters?: TransactionFilters
     ) => Promise<TransactionWithDetails[]>;
-    create: (data: TransactionFormData) => Promise<Transaction>;
-    update: (id: number, data: TransactionFormData) => Promise<Transaction>;
+    create: (data: TransactionFormInput) => Promise<Transaction>;
+    update: (id: number, data: TransactionFormInput) => Promise<TransactionWithDetails | undefined>;
     delete: (id: number) => Promise<{ success: boolean }>;
-    getInvoicesForProject: (projectId: number) => Promise<TransactionWithDetails[]>;
-    getInvoicesForCompany: (companyId: number) => Promise<TransactionWithDetails[]>;
     save: (request: SaveTransactionRequest) => Promise<SaveTransactionResult>;
     getMatchCandidates: (request: MatchCandidatesRequest) => Promise<MatchCandidate[]>;
-    setAllocations: (paymentId: number, allocations: { invoiceId: number; amount: number }[]) => Promise<{ success: boolean }>;
     getAllocationsForPayment: (paymentId: number) => Promise<PaymentAllocationWithDetails[]>;
     getAllocationsForInvoice: (invoiceId: number) => Promise<PaymentAllocationWithDetails[]>;
   };
@@ -105,44 +106,44 @@ export interface ElectronAPI {
     applyRepairs: (request: { orphanIds: number[] }) => Promise<ReviewStepResult>;
     applyRates: (request: { rates: { id: number; rate: number }[] }) => Promise<ReviewStepResult>;
     applyAllocationFixes: (request: { keys: string[] }) => Promise<ReviewStepResult>;
-    applyUnmatched: (request: { choices: UnmatchedChoice[]; firmChoices: LegacyFirmChoice[] }) => Promise<ReviewStepResult>;
+    applyUnmatched: (request: {
+      choices: UnmatchedChoice[];
+      firmChoices: LegacyFirmChoice[];
+    }) => Promise<ReviewStepResult>;
     complete: () => Promise<DataReviewReport>;
   };
 
   material: {
     getAll: () => Promise<Material[]>;
-    getById: (id: number) => Promise<Material | undefined>;
-    create: (data: MaterialFormData) => Promise<Material>;
-    update: (id: number, data: MaterialFormData) => Promise<Material>;
+    create: (data: MaterialFormInput) => Promise<Material>;
+    update: (id: number, data: MaterialFormInput) => Promise<Material | undefined>;
     delete: (id: number) => Promise<{ success: boolean }>;
     generateCode: () => Promise<string>;
-    getLowStock: () => Promise<Material[]>;
   };
 
   stock: {
     getAll: (filters?: StockMovementFilters) => Promise<StockMovementWithDetails[]>;
-    create: (data: StockMovementFormData) => Promise<StockMovement>;
+    create: (data: StockMovementFormInput) => Promise<StockMovement>;
     delete: (id: number) => Promise<{ success: boolean }>;
   };
 
   category: {
-    getAll: (type?: Category['type']) => Promise<Category[]>;
+    getAll: () => Promise<Category[]>;
     create: (data: { name: string; type: Category['type']; color?: string }) => Promise<Category>;
     delete: (id: number) => Promise<{ success: boolean }>;
   };
 
   trash: {
     getAll: () => Promise<TrashItem[]>;
-    restore: (id: number) => Promise<{ success: boolean; error?: string }>;
+    restore: (id: number) => Promise<RestoreResult>;
     permanentDelete: (id: number) => Promise<{ success: boolean }>;
     empty: () => Promise<{ success: boolean }>;
   };
 
   dashboard: {
     getStats: () => Promise<DashboardStats>;
-    getRecentTransactions: (limit?: number) => Promise<TransactionWithDetails[]>;
-    getTopDebtors: (limit?: number, startDate?: string) => Promise<DebtorCreditor[]>;
-    getTopCreditors: (limit?: number, startDate?: string) => Promise<DebtorCreditor[]>;
+    getTopDebtors: (limit: number) => Promise<DebtorCreditor[]>;
+    getTopCreditors: (limit: number) => Promise<DebtorCreditor[]>;
   };
 
   analytics: {
@@ -157,14 +158,12 @@ export interface ElectronAPI {
     create: () => Promise<string>;
     list: () => Promise<{ name: string; path: string; size: number; date: string }[]>;
     restore: (backupPath: string) => Promise<{ success: boolean; error?: string }>;
-    selectFolder: () => Promise<string | null>;
     openFolder: () => Promise<void>;
   };
 
   export: {
-    toExcel: (data: { type: string; records: unknown[]; filename?: string; metadata?: { summaryStartIndex?: number; amountColumnLabel?: string; balanceColumnLabel?: string; receivableColumnLabel?: string; payableColumnLabel?: string; typeColumnLabel?: string; expenseTypeValues?: string[]; redSummaryLabels?: string[]; greenSummaryLabels?: string[]; highlightSummaryLabels?: string[] } }) => Promise<string>;
-    toPDF: (data: { type: string; html: string; filename?: string }) => Promise<string>;
-    share: (data: { type: string; records: unknown[]; filename?: string; metadata?: { summaryStartIndex?: number; amountColumnLabel?: string; balanceColumnLabel?: string; receivableColumnLabel?: string; payableColumnLabel?: string; typeColumnLabel?: string; expenseTypeValues?: string[]; redSummaryLabels?: string[]; greenSummaryLabels?: string[]; highlightSummaryLabels?: string[] } }) => Promise<{ success: boolean }>;
+    toExcel: (data: ExportRequest) => Promise<string>;
+    share: (data: ExportRequest) => Promise<{ success: boolean }>;
   };
 
   exchange: {
@@ -180,7 +179,6 @@ export interface ElectronAPI {
     listBackups: () => Promise<DriveBackupFile[]>;
     uploadBackup: () => Promise<DriveOperationResult>;
     downloadBackup: (fileId: string, fileName: string) => Promise<DriveOperationResult>;
-    deleteBackup: (fileId: string) => Promise<DriveOperationResult>;
   };
 
   app: {
@@ -190,57 +188,16 @@ export interface ElectronAPI {
     confirmClose: () => Promise<{ success: boolean }>;
     cancelClose: () => Promise<{ success: boolean }>;
     onCloseRequested: (callback: (payload: { hasPendingChanges: boolean }) => void) => () => void;
+    onDataChanged: (callback: () => void) => () => void;
   };
 
   sync: SyncAPI;
 }
 
-export type SyncStatusValue =
-  | 'disconnected'
-  | 'offline'
-  | 'synced'
-  | 'uploading'
-  | 'downloading'
-  | 'pending'
-  | 'conflict'
-  | 'error';
-
-export interface SyncStatusPayload {
-  status: SyncStatusValue;
-  message?: string;
-  lastSyncSuccess?: string | null;
-  nextCheckSeconds?: number | null;
-  error?: string;
-  driveRequired?: boolean;
-  reason?: 'expired';
-}
-
-export interface SyncConflictPayload {
-  remoteModifiedTime: string;
-  remoteSize: string;
-  lastSyncSuccess: string | null;
-}
-
-export interface SyncMetaPayload {
-  remoteFileId: string | null;
-  remoteModTimeAtLastSync: string | null;
-  localSizeAtLastSync: number | null;
-  localMtimeAtLastSync: string | null;
-  lastSyncSuccess: string | null;
-  autoSyncEnabled: boolean;
-  lastSnapshotDate: string | null;
-}
-
 export interface SyncAPI {
   getStatus: () => Promise<SyncStatusPayload>;
-  getMeta: () => Promise<SyncMetaPayload>;
-  setAutoSyncEnabled: (enabled: boolean) => Promise<{ success: boolean }>;
   check: () => Promise<{ success: boolean }>;
-  upload: () => Promise<{ success: boolean; error?: string }>;
-  download: () => Promise<{ success: boolean; error?: string }>;
-  resolveConflict: (
-    choice: 'use-local' | 'use-remote' | 'cancel'
-  ) => Promise<{ success: boolean; error?: string }>;
+  resolveConflict: (choice: ConflictChoice) => Promise<{ success: boolean; error?: string }>;
   onStatus: (callback: (payload: SyncStatusPayload) => void) => () => void;
   onConflict: (callback: (payload: SyncConflictPayload) => void) => () => void;
   onReloadRequired: (callback: () => void) => () => void;

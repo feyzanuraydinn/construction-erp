@@ -1,8 +1,6 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
-// Mock window.electronAPI for tests
-// Mirrors ElectronAPI interface from src/types/electron.d.ts exactly
 const mockElectronAPI = {
   company: {
     getAll: vi.fn().mockResolvedValue([]),
@@ -33,11 +31,8 @@ const mockElectronAPI = {
     create: vi.fn().mockResolvedValue({ id: 1 }),
     update: vi.fn().mockResolvedValue({ id: 1 }),
     delete: vi.fn().mockResolvedValue({ success: true }),
-    getInvoicesForProject: vi.fn().mockResolvedValue([]),
-    getInvoicesForCompany: vi.fn().mockResolvedValue([]),
     save: vi.fn().mockResolvedValue({ transaction: { id: 1 }, documentId: null }),
     getMatchCandidates: vi.fn().mockResolvedValue([]),
-    setAllocations: vi.fn().mockResolvedValue({ success: true }),
     getAllocationsForPayment: vi.fn().mockResolvedValue([]),
     getAllocationsForInvoice: vi.fn().mockResolvedValue([]),
   },
@@ -52,12 +47,10 @@ const mockElectronAPI = {
   },
   material: {
     getAll: vi.fn().mockResolvedValue([]),
-    getById: vi.fn().mockResolvedValue(undefined),
     create: vi.fn().mockResolvedValue({ id: 1, name: 'Test', code: 'M001' }),
     update: vi.fn().mockResolvedValue({ id: 1, name: 'Test', code: 'M001' }),
     delete: vi.fn().mockResolvedValue({ success: true }),
     generateCode: vi.fn().mockResolvedValue('M-001'),
-    getLowStock: vi.fn().mockResolvedValue([]),
   },
   stock: {
     getAll: vi.fn().mockResolvedValue([]),
@@ -81,7 +74,6 @@ const mockElectronAPI = {
       totalProjects: 0,
       totalTransactions: 0,
     }),
-    getRecentTransactions: vi.fn().mockResolvedValue([]),
     getTopDebtors: vi.fn().mockResolvedValue([]),
     getTopCreditors: vi.fn().mockResolvedValue([]),
   },
@@ -96,12 +88,10 @@ const mockElectronAPI = {
     create: vi.fn().mockResolvedValue('/path/to/backup.db'),
     list: vi.fn().mockResolvedValue([]),
     restore: vi.fn().mockResolvedValue({ success: true }),
-    selectFolder: vi.fn().mockResolvedValue(null),
     openFolder: vi.fn().mockResolvedValue(undefined),
   },
   export: {
     toExcel: vi.fn().mockResolvedValue('/path/to/export.xlsx'),
-    toPDF: vi.fn().mockResolvedValue('/path/to/export.pdf'),
   },
   exchange: {
     getRates: vi.fn().mockResolvedValue({ USD: 30, EUR: 32 }),
@@ -115,19 +105,18 @@ const mockElectronAPI = {
     listBackups: vi.fn().mockResolvedValue([]),
     uploadBackup: vi.fn().mockResolvedValue({ success: true }),
     downloadBackup: vi.fn().mockResolvedValue({ success: true }),
-    deleteBackup: vi.fn().mockResolvedValue({ success: true }),
   },
   app: {
     getVersion: vi.fn().mockResolvedValue('1.0.0'),
     print: vi.fn().mockResolvedValue({ success: true }),
+    setLanguage: vi.fn().mockResolvedValue(undefined),
+    onDataChanged: vi.fn(() => () => {}),
   },
 };
 
-// Main-process tests run in the `node` environment, where there is no window.
 if (typeof window !== 'undefined') {
   window.electronAPI = mockElectronAPI as unknown as typeof window.electronAPI;
 
-  // Mock matchMedia
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation((query) => ({
@@ -143,7 +132,6 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Mock ResizeObserver
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),
   unobserve: vi.fn(),

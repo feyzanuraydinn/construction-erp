@@ -1,35 +1,36 @@
 import { memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { Modal, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import { Button } from '../../components/ui/Button';
 import {
-  Modal,
-  ModalBody,
-  ModalFooter,
-  Button,
   Table,
   TableHeader,
   TableBody,
   TableRow,
   TableHead,
   TableCell,
-  Badge,
-  EmptyState,
-} from '../../components/ui';
-import { formatCurrency, formatDate } from '../../utils/formatters';
-import { getTransactionTextColor, getTransactionBadgeVariant, isIncomeType, isExpenseType } from '../../utils/transactionHelpers';
-import { TRANSACTION_TYPE_LABELS } from '../../utils/constants';
+} from '../../components/ui/Table';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { SignedAmount } from '../../components/ui/SignedAmount';
+import { formatDate } from '../../utils/formatters';
+import { getTransactionTextColor, transactionSign } from '../../utils/transactionHelpers';
+import { TransactionTypeBadge } from '../../components/shared/TransactionTypeBadge';
 import type { TransactionWithDetails } from '../../types';
+import { categoryLabel } from '../../utils/categories';
 
 interface StakeholderDetailModalProps {
   stakeholder: { company_id: number; company_name: string } | null;
   transactions: TransactionWithDetails[];
   onClose: () => void;
+  className?: string;
 }
 
 export const StakeholderDetailModal = memo(function StakeholderDetailModal({
   stakeholder,
   transactions,
   onClose,
+  className,
 }: StakeholderDetailModalProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -40,12 +41,15 @@ export const StakeholderDetailModal = memo(function StakeholderDetailModal({
 
   return (
     <Modal
+      className={className}
       isOpen={!!stakeholder}
       onClose={onClose}
-      title={t('projectDetail.stakeholderDetail.title', { company_name: stakeholder?.company_name || '' })}
+      title={t('projectDetail.stakeholderDetail.title', {
+        company_name: stakeholder?.company_name || '',
+      })}
       size="lg"
     >
-      <ModalBody className="p-0">
+      <ModalBody>
         {stakeholder && (
           <>
             {companyTransactions.length === 0 ? (
@@ -65,21 +69,24 @@ export const StakeholderDetailModal = memo(function StakeholderDetailModal({
                     <TableRow key={tx.id}>
                       <TableCell>{formatDate(tx.date)}</TableCell>
                       <TableCell>
-                        <Badge variant={getTransactionBadgeVariant(tx.type)}>
-                          {t(TRANSACTION_TYPE_LABELS[tx.type])}
-                        </Badge>
+                        <TransactionTypeBadge type={tx.type} />
                       </TableCell>
                       <TableCell>
                         <p className="font-medium">{tx.description}</p>
                         {tx.category_name && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{t(`categories.${tx.category_name}`, tx.category_name)}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {categoryLabel(t, tx.category_name)}
+                          </p>
                         )}
                       </TableCell>
                       <TableCell
                         className={`text-right font-medium ${getTransactionTextColor(tx.type)}`}
                       >
-                        {isIncomeType(tx.type) ? '+' : isExpenseType(tx.type) ? '-' : ''}
-                        {formatCurrency(tx.amount, tx.currency)}
+                        <SignedAmount
+                          sign={transactionSign(tx.type)}
+                          amount={tx.amount}
+                          currency={tx.currency}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
